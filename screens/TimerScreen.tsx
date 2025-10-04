@@ -10,9 +10,10 @@ import {
   Animated,
   Modal,
   Pressable,
+  Vibration,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer } from 'expo-audio';
+import { useAudioPlayer, AudioSource } from 'expo-audio';
 import { Swipeable } from 'react-native-gesture-handler';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
@@ -48,6 +49,9 @@ export default function TimerScreen() {
   const beforeTargetBeepPlayedRef = useRef(false);
   const afterStartBeepPlayedRef = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+
+  // Audio player for beeps
+  const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
 
   useEffect(() => {
     if (showWarning) {
@@ -121,16 +125,19 @@ export default function TimerScreen() {
     if (!audioSettings.enabled) return;
 
     try {
-      // Create a simple beep using Web Audio API context
-      // For now, we'll use a simple alert sound approach
-      // In a production app, you'd want to include actual audio files
+      // Play the beep sound and vibrate
+      beepPlayer.seekTo(0);
+      beepPlayer.play();
+      Vibration.vibrate(100);
 
-      // Simplified beep - in production, add actual audio files to assets
-      console.log(isDouble ? 'Double beep' : 'Single beep');
-
-      // TODO: Add actual audio files and use expo-audio player
-      // const player = useAudioPlayer(require('../assets/beep.mp3'));
-      // player.play();
+      if (isDouble) {
+        // Wait 200ms then play again for double beep
+        setTimeout(() => {
+          beepPlayer.seekTo(0);
+          beepPlayer.play();
+          Vibration.vibrate(100);
+        }, 200);
+      }
     } catch (error) {
       console.error('Error playing beep:', error);
     }
