@@ -199,7 +199,7 @@ export default function SettingsScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.settingLabel, { color: theme.text }]}>Volume Button Recording</Text>
               <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                Use volume buttons to record laps. A persistent notification will show the live timer when running.
+                Use volume buttons to record laps while the Timer screen is visible. Works best when app stays in foreground.
               </Text>
             </View>
             <Switch

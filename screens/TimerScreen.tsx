@@ -13,6 +13,7 @@ import {
   Vibration,
   Platform,
 } from 'react-native';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, AudioSource } from 'expo-audio';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -21,7 +22,6 @@ import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
-import { PersistentTimerNotification } from '../services/PersistentTimerNotification';
 
 export default function TimerScreen() {
   const {
@@ -63,10 +63,9 @@ export default function TimerScreen() {
   // Audio player for beeps
   const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
 
-  // Initialize VolumeButtonService and PersistentTimerNotification
+  // Initialize VolumeButtonService
   useEffect(() => {
     VolumeButtonService.initialize();
-    PersistentTimerNotification.initialize();
   }, []);
 
   useEffect(() => {
@@ -92,20 +91,13 @@ export default function TimerScreen() {
 
   useEffect(() => {
     if (isRunning) {
-      // Show persistent notification when timer is running
-      if (driver) {
-        PersistentTimerNotification.showTimer(driver.name, driver.targetTime);
-      }
+      // Keep screen awake when timer is running
+      activateKeepAwakeAsync();
 
       intervalRef.current = setInterval(() => {
         const now = Date.now();
         const elapsed = Math.floor((now - (startTimeRef.current || now)) / 10) / 100;
         setElapsedTime(elapsed);
-
-        // Update persistent notification with start time
-        if (startTimeRef.current) {
-          PersistentTimerNotification.updateTimer(startTimeRef.current);
-        }
 
         // After lap start beep
         if (
@@ -140,13 +132,13 @@ export default function TimerScreen() {
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
       setShowWarning(false);
-      // Hide persistent notification when timer stops
-      PersistentTimerNotification.hideTimer();
+      // Deactivate keep awake when timer stops
+      deactivateKeepAwake();
     }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      PersistentTimerNotification.hideTimer();
+      deactivateKeepAwake();
     };
   }, [isRunning, driver, audioSettings]);
 
