@@ -48,7 +48,7 @@ const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   beforeTargetTime: 10,
   afterLapStart: 15,
   lapGuardEnabled: false,
-  lapGuardRange: 10,
+  lapGuardRange: 15,
   lapGuardSafetyCarThreshold: 30,
   timeFormat: 'seconds',
 };
@@ -108,7 +108,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (parsed.beforeTargetEnabled === undefined) parsed.beforeTargetEnabled = true;
           if (parsed.afterLapStartEnabled === undefined) parsed.afterLapStartEnabled = true;
           if (parsed.lapGuardEnabled === undefined) parsed.lapGuardEnabled = false;
-          if (parsed.lapGuardRange === undefined) parsed.lapGuardRange = 10;
+          if (parsed.lapGuardRange === undefined) parsed.lapGuardRange = 15;
           if (parsed.lapGuardSafetyCarThreshold === undefined) parsed.lapGuardSafetyCarThreshold = 30;
           if (parsed.timeFormat === undefined) parsed.timeFormat = 'seconds';
           setAudioSettings(parsed);

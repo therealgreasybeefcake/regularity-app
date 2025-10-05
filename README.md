@@ -6,10 +6,13 @@ A mobile-first Expo React Native version of the Regularity Race Timer web applic
 
 ### Core Functionality
 - **Live Stopwatch Timer** with millisecond precision
-- **Lap Recording** - Automatic lap type classification (Bonus, Base, Broken, Changeover, Safety)
-- **Multi-Driver Support** - Manage multiple drivers per team
-- **Audio Warnings** - Configurable beeps before target time and after lap start
-- **Dark Mode** - Automatic theme switching
+- **Volume Button Lap Recording** - Use hardware volume buttons to record laps (requires Expo Dev Client)
+- **Lap Recording Guard** - Prevent accidental button presses outside target time range with safety car support
+- **Automatic Lap Classification** - Bonus, Base, Broken, Changeover, Safety
+- **Multi-Driver Support** - Manage multiple drivers per team with full-screen add driver modal
+- **Flexible Time Input** - Enter times in seconds (105) or MM:SS.mmm (1:45.000) format
+- **Audio & Haptic Feedback** - Configurable beeps and vibration patterns
+- **Dark Mode** - Automatic, light, or dark theme
 
 ### Lap Type System
 - **Bonus Lap** (Green): Within +0-0.99s of target → Worth 2 laps
@@ -31,23 +34,51 @@ A mobile-first Expo React Native version of the Regularity Race Timer web applic
 
 ## Installation
 
+### Standard Setup (Expo Go - Limited Features)
+
 1. **Install dependencies:**
    ```bash
    cd regularity-app
    npm install
    ```
 
-2. **Run the app:**
+2. **Run with Expo Go:**
    ```bash
-   # iOS Simulator
-   npm run ios
-
-   # Android Emulator
-   npm run android
-
-   # Expo Go (scan QR code)
    npm start
    ```
+   Scan the QR code with Expo Go app on your device.
+
+   **Note:** Volume button functionality is NOT available in Expo Go.
+
+### Development Build (Full Features - Volume Buttons)
+
+For volume button lap recording, you need to build a custom development client:
+
+1. **Install dependencies:**
+   ```bash
+   cd regularity-app
+   npm install
+   ```
+
+2. **Build development client:**
+   ```bash
+   # For iOS (requires Mac with Xcode)
+   npx expo run:ios
+
+   # For Android (requires Android SDK and Java)
+   npx expo run:android
+
+   # Or use EAS Build (cloud-based, no local setup needed)
+   npm install -g eas-cli
+   eas build --profile development --platform android
+   ```
+
+3. **Run the dev server:**
+   ```bash
+   npx expo start --dev-client
+   ```
+
+The development build will connect to your dev server with full native module support.
 
 ## Project Structure
 
@@ -75,17 +106,21 @@ regularity-app/
 
 ### Timer Tab
 1. Select a driver from the tabs
-2. Press **Start** to begin the timer
-3. Press **Lap** when the driver crosses the finish line
+2. Press **Start** to begin the timer (or use volume buttons with dev client)
+3. Press **Lap** button or **Volume Up/Down** when crossing the finish line
 4. The lap is automatically classified and recorded
-5. Alternatively, enter lap times manually in MM:SS.mmm format
+5. Alternatively, enter lap times manually in seconds or MM:SS.mmm format
+6. **Lap Guard** (if enabled) prevents accidental presses outside target range
+7. **Safety Car Support** - Laps significantly over target are automatically allowed
 
 ### Drivers Tab
-- Add/remove drivers
-- Edit driver names
-- Set target lap times (in seconds)
+- **Add drivers** via full-screen modal popup
+- Edit driver names by tapping
+- **Set target times** in seconds (105) or MM:SS.mmm (1:45.000) format
+- Tap target time to edit in your preferred format
 - Add penalty laps
 - Clear driver lap history
+- View live stats (laps, bonus, broken)
 
 ### Stats Tab
 - View team information and session details
@@ -93,20 +128,45 @@ regularity-app/
 - Review per-driver detailed statistics
 
 ### Settings Tab
-- Toggle dark mode
-- Configure audio warnings
-- Customize lap type values
-- Import/export data
-- Clear all data
+- **Theme**: Light, Dark, or Auto (system)
+- **Time Format**: Seconds (105s) or MM:SS.mmm (1:45.000)
+- **Audio Warnings**: Configure timing and enable/disable
+- **Lap Recording Guard**: Prevent accidental button presses
+  - Set allowed range (±seconds from target)
+  - Configure safety car threshold (seconds over target)
+- **Lap Type Values**: Customize point values
+- **Data Management**: Import/export, clear all
 
-## Audio Warnings
+## Advanced Features
 
-The app supports two configurable audio warnings:
+### Volume Button Controls (Dev Client Only)
+- Press **Volume Up** or **Volume Down** to record laps
+- Works even when phone is locked or screen is off
+- Volume stays constant (buttons don't change actual volume)
+- Haptic feedback confirms lap recording
 
-1. **Before Target Time**: Single beep X seconds before reaching target (default: 10s)
-2. **After Lap Start**: Double beep X seconds after starting timer (default: 15s)
+### Lap Recording Guard
+Prevents accidental lap recording with smart filtering:
 
-Both can be enabled/disabled independently in Settings.
+**Normal Laps**: Accepted within ±range of target time
+- Example: 105s target, ±10s range → accepts 95-115s
+
+**Safety Car Laps**: Automatically allowed when significantly over target
+- Example: 105s target, +30s threshold → accepts 135s+
+
+**Rejected Laps**: Shows message with allowed ranges
+- Double vibration pattern indicates rejection
+- Visual feedback displays exact time and valid ranges
+
+### Audio & Haptic Feedback
+
+**Audio Warnings** (configurable):
+1. **Before Target Time**: Single beep X seconds before target (default: 10s)
+2. **After Lap Start**: Double beep X seconds after lap start (default: 15s)
+
+**Haptic Feedback**:
+- Single 500ms vibration: Lap successfully recorded
+- Double short vibration: Lap rejected by guard
 
 ## 3-Lap Signal System
 
@@ -149,21 +209,50 @@ All data is automatically saved to AsyncStorage:
 
 ## Technologies Used
 
-- **Expo SDK** - React Native framework
-- **React Navigation** - Tab and stack navigation
+- **Expo SDK 52** - React Native framework with new architecture
+- **Expo Dev Client** - Custom development builds for native modules
+- **React Navigation** - Tab navigation
 - **AsyncStorage** - Local data persistence
-- **Expo AV** - Audio playback for warnings
+- **Expo Audio** - Audio playback for warnings
 - **Expo File System** - Import/export functionality
-- **TypeScript** - Type safety
+- **React Native Volume Manager** - Hardware volume button controls
+- **React Native Gesture Handler** - Swipe-to-delete interactions
+- **TypeScript** - Full type safety
+
+## Key Dependencies
+
+```json
+{
+  "expo": "~52.0.29",
+  "expo-dev-client": "~5.0.13",
+  "react-native-volume-manager": "^1.12.1",
+  "react-native-gesture-handler": "~2.20.2",
+  "expo-audio": "~15.0.3",
+  "@react-navigation/native": "^7.0.17",
+  "@react-native-async-storage/async-storage": "2.1.0"
+}
+```
+
+## Recent Updates
+
+### Version 1.1 (Current)
+- ✅ Volume button lap recording (both up and down)
+- ✅ Lap recording guard with safety car support
+- ✅ Flexible time input (seconds or MM:SS.mmm)
+- ✅ Haptic feedback (vibration patterns)
+- ✅ Full-screen add driver modal
+- ✅ Improved swipe-to-delete styling
+- ✅ Time display format setting
+- ✅ Visual rejection feedback
 
 ## Future Enhancements
 
 Planned features for future versions:
 - PDF export functionality
 - Charts visualization (Victory Native)
-- Team management (multi-team support)
-- Race session templates
+- Session history and replay
 - Bluetooth lap counter integration
+- Team comparison analytics
 
 ## License
 
