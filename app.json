@@ -7,6 +7,9 @@
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
+    "description": "Professional regularity race timing app with lap tracking, statistics, and PDF export",
+    "primaryColor": "#1e40af",
+    "owner": "Blind Freddy Race Team",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
@@ -14,7 +17,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.regularity.racetimer"
+      "bundleIdentifier": "com.regularity.racetimer",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -27,7 +33,8 @@
       "permissions": [
         "WAKE_LOCK",
         "MODIFY_AUDIO_SETTINGS"
-      ]
+      ],
+      "versionCode": 1
     },
     "plugins": [
       "expo-dev-client"

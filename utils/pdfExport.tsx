@@ -51,7 +51,6 @@ const generateDriverSection = (
   allDrivers: Driver[]
 ): string => {
   const stats = calculateDriverStats(driver, lapTypeValues, allDrivers, sessionDuration);
-  console.log('Stats calculated for', driver.name, ':', stats);
 
   return `
       <h2>${driver.name}</h2>
@@ -117,22 +116,10 @@ const generateDriverSection = (
 };
 
 export const generatePDF = async ({ team, displayData, lapTypeValues, driver }: PDFExportOptions) => {
-  console.log('=== PDF Export Debug ===');
-  console.log('team:', team.name);
-  console.log('displayData.raceName:', displayData.raceName);
-  console.log('displayData.sessionNumber:', displayData.sessionNumber);
-  console.log('displayData.drivers:', displayData.drivers?.length);
-  console.log('team.drivers:', team.drivers?.length);
-  console.log('driver:', driver?.name);
-
   const teamStats = calculateTeamStats({ ...team, ...displayData } as Team, lapTypeValues);
   const allDrivers = displayData.drivers || team.drivers || [];
   const drivers = driver ? [driver] : allDrivers;
   const sessionDuration = displayData.sessionDuration || team.sessionDuration;
-
-  console.log('allDrivers count:', allDrivers.length);
-  console.log('drivers count:', drivers.length);
-  console.log('drivers:', drivers.map(d => d.name));
 
   const html = `
     <!DOCTYPE html>
@@ -170,12 +157,7 @@ export const generatePDF = async ({ team, displayData, lapTypeValues, driver }: 
         <br/>
         `}
 
-        ${drivers.map(d => {
-          console.log('Generating section for driver:', d.name, 'with', d.laps?.length || 0, 'laps');
-          const section = generateDriverSection(d, lapTypeValues, sessionDuration, allDrivers);
-          console.log('Generated section length:', section.length);
-          return section;
-        }).join('')}
+        ${drivers.map(d => generateDriverSection(d, lapTypeValues, sessionDuration, allDrivers)).join('')}
 
         <hr/>
         <p align="center"><small>${team.name} Regularity Race Timer</small></p>
@@ -183,16 +165,8 @@ export const generatePDF = async ({ team, displayData, lapTypeValues, driver }: 
     </html>
   `;
 
-  console.log('Generated HTML length:', html.length);
-  console.log('HTML preview (first 500):', html.substring(0, 500));
-  console.log('HTML preview (last 500):', html.substring(html.length - 500));
-  console.log('HTML includes first driver name:', html.includes(drivers[0]?.name || 'NODRIVER'));
-  console.log('Count of <table> tags:', (html.match(/<table/g) || []).length);
-  console.log('Count of driver names in HTML:', (html.match(new RegExp(drivers[0]?.name || 'NODRIVER', 'g')) || []).length);
-
   try {
     const { uri } = await Print.printToFileAsync({ html });
-    console.log('PDF generated at:', uri);
 
     if (await Sharing.isAvailableAsync()) {
       const driverName = driver ? `${driver.name.replace(/\s+/g, '-')}` : 'All-Drivers';
@@ -208,9 +182,6 @@ export const generatePDF = async ({ team, displayData, lapTypeValues, driver }: 
         from: uri,
         to: newUri,
       });
-
-      console.log('Sharing PDF with filename:', filename);
-      console.log('Final URI:', newUri);
 
       await Sharing.shareAsync(newUri, {
         UTI: '.pdf',
