@@ -70,17 +70,17 @@ class VolumeButtonServiceClass {
     this.backgroundEnabled = backgroundEnabled;
 
     try {
+      // Disable native volume UI FIRST (before any volume changes)
+      if (Platform.OS === 'android') {
+        await VolumeManager.showNativeVolumeUI({ enabled: false });
+      }
+
       // Get and store initial volume to restore later
       const volumeResult = await VolumeManager.getVolume();
       this.initialVolume = volumeResult.volume;
 
       // Set volume to middle (0.5) so both up and down buttons work
       await VolumeManager.setVolume(0.5, { showUI: false });
-
-      // Disable native volume UI
-      if (Platform.OS === 'android') {
-        await VolumeManager.showNativeVolumeUI({ enabled: false });
-      }
 
       // Set up volume change listener
       VolumeManager.addVolumeListener((result: any) => {
@@ -92,10 +92,12 @@ class VolumeButtonServiceClass {
         }
 
         this.lastVolumeChange = now;
-        this.handleVolumeButtonPress();
 
-        // Restore to middle volume so both buttons continue to work
+        // Immediately restore to middle volume to prevent UI from showing
         VolumeManager.setVolume(0.5, { showUI: false });
+
+        // Then handle the button press
+        this.handleVolumeButtonPress();
       });
 
       if (backgroundEnabled && Platform.OS === 'android') {

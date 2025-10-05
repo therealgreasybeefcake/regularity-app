@@ -199,7 +199,7 @@ export default function SettingsScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.settingLabel, { color: theme.text }]}>Volume Button Recording</Text>
               <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                Use volume buttons to record laps
+                Use volume buttons to record laps. A persistent notification will show the live timer when running.
               </Text>
             </View>
             <Switch
@@ -208,23 +208,6 @@ export default function SettingsScreen() {
                 setAudioSettings({ ...audioSettings, volumeButtonsEnabled: value })
               }
               trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Background Recording</Text>
-              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                Record laps with volume buttons while using other apps
-              </Text>
-            </View>
-            <Switch
-              value={audioSettings.backgroundRecordingEnabled}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, backgroundRecordingEnabled: value })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-              disabled={!audioSettings.volumeButtonsEnabled}
             />
           </View>
         </View>

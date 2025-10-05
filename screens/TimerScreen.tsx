@@ -92,8 +92,8 @@ export default function TimerScreen() {
 
   useEffect(() => {
     if (isRunning) {
-      // Show persistent notification when timer is running (for background mode)
-      if (audioSettings.backgroundRecordingEnabled && driver) {
+      // Show persistent notification when timer is running
+      if (driver) {
         PersistentTimerNotification.showTimer(driver.name, driver.targetTime);
       }
 
@@ -102,9 +102,9 @@ export default function TimerScreen() {
         const elapsed = Math.floor((now - (startTimeRef.current || now)) / 10) / 100;
         setElapsedTime(elapsed);
 
-        // Update persistent notification with current time
-        if (audioSettings.backgroundRecordingEnabled) {
-          PersistentTimerNotification.updateTimer(elapsed);
+        // Update persistent notification with start time
+        if (startTimeRef.current) {
+          PersistentTimerNotification.updateTimer(startTimeRef.current);
         }
 
         // After lap start beep
@@ -158,7 +158,7 @@ export default function TimerScreen() {
     }
 
     // Enable volume button service
-    VolumeButtonService.enable(audioSettings.backgroundRecordingEnabled);
+    VolumeButtonService.enable();
 
     // Add lap recording listener that returns lap details
     const handleLapRecording = (): LapDetails | null => {
@@ -190,7 +190,7 @@ export default function TimerScreen() {
       VolumeButtonService.removeListener(handleLapRecording);
       VolumeButtonService.disable();
     };
-  }, [audioSettings.volumeButtonsEnabled, audioSettings.backgroundRecordingEnabled, driver]);
+  }, [audioSettings.volumeButtonsEnabled, driver]);
 
   const playBeep = (isDouble: boolean) => {
     if (!audioSettings.enabled) return;

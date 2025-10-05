@@ -47,7 +47,6 @@ export interface AudioSettings {
   lapGuardSafetyCarThreshold: number; // seconds over target to automatically allow as safety car
   timeFormat: 'seconds' | 'mmssmmm'; // display format for times
   volumeButtonsEnabled: boolean; // enable volume buttons to record laps
-  backgroundRecordingEnabled: boolean; // allow lap recording when app is in background
 }
 
 export interface LapTypeValues {
