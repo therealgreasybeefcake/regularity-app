@@ -1,12 +1,20 @@
 import { NativeModules, NativeEventEmitter, Platform } from 'react-native';
-import VolumeManager from 'react-native-volume-manager';
+import { VolumeManager } from 'react-native-volume-manager';
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import * as TaskManager from 'expo-task-manager';
+import { LapType } from '../types';
 
 const VOLUME_BUTTON_TASK = 'VOLUME_BUTTON_LAP_RECORDING';
 
-type LapRecordCallback = () => void;
+export interface LapDetails {
+  time: number;
+  lapType: LapType;
+  delta: number;
+  lapNumber: number;
+}
+
+type LapRecordCallback = () => LapDetails | null;
 
 class VolumeButtonServiceClass {
   private listeners: LapRecordCallback[] = [];
@@ -15,12 +23,13 @@ class VolumeButtonServiceClass {
   private backgroundEnabled = false;
   private lastVolumeChange = 0;
   private debounceTime = 300; // ms to prevent double triggers
+  private initialVolume: number | null = null;
 
   async initialize() {
     // Configure notifications for overlay display
     await Notifications.setNotificationHandler({
       handleNotification: async () => ({
-        shouldShowAlert: true,
+        shouldShowBanner: true,
         shouldPlaySound: false,
         shouldSetBadge: false,
       }),
@@ -46,8 +55,12 @@ class VolumeButtonServiceClass {
     this.listeners = this.listeners.filter((listener) => listener !== callback);
   }
 
-  private notifyListeners() {
-    this.listeners.forEach((callback) => callback());
+  private notifyListeners(): LapDetails | null {
+    // Call the first listener and get lap details
+    if (this.listeners.length > 0) {
+      return this.listeners[0]();
+    }
+    return null;
   }
 
   async enable(backgroundEnabled: boolean = false) {
@@ -56,27 +69,42 @@ class VolumeButtonServiceClass {
     this.isEnabled = true;
     this.backgroundEnabled = backgroundEnabled;
 
-    if (Platform.OS === 'android') {
-      VolumeManager.showNativeVolumeUI({ enabled: false });
-    }
+    try {
+      // Get and store initial volume to restore later
+      const volumeResult = await VolumeManager.getVolume();
+      this.initialVolume = volumeResult.volume;
 
-    // Set up volume change listener
-    VolumeManager.addVolumeListener((result: any) => {
-      const now = Date.now();
+      // Set volume to middle (0.5) so both up and down buttons work
+      await VolumeManager.setVolume(0.5, { showUI: false });
 
-      // Debounce to prevent multiple triggers
-      if (now - this.lastVolumeChange < this.debounceTime) {
-        return;
+      // Disable native volume UI
+      if (Platform.OS === 'android') {
+        await VolumeManager.showNativeVolumeUI({ enabled: false });
       }
 
-      this.lastVolumeChange = now;
-      this.handleVolumeButtonPress();
-    });
+      // Set up volume change listener
+      VolumeManager.addVolumeListener((result: any) => {
+        const now = Date.now();
 
-    if (backgroundEnabled && Platform.OS === 'android') {
-      // Note: Full background task implementation would require native module
-      // This is a simplified version
-      console.log('Background recording enabled');
+        // Debounce to prevent multiple triggers
+        if (now - this.lastVolumeChange < this.debounceTime) {
+          return;
+        }
+
+        this.lastVolumeChange = now;
+        this.handleVolumeButtonPress();
+
+        // Restore to middle volume so both buttons continue to work
+        VolumeManager.setVolume(0.5, { showUI: false });
+      });
+
+      if (backgroundEnabled && Platform.OS === 'android') {
+        // Note: Full background task implementation would require native module
+        // This is a simplified version
+        console.log('Background recording enabled');
+      }
+    } catch (error) {
+      console.error('Error enabling volume button service:', error);
     }
   }
 
@@ -85,11 +113,20 @@ class VolumeButtonServiceClass {
 
     this.isEnabled = false;
 
-    if (Platform.OS === 'android') {
-      VolumeManager.showNativeVolumeUI({ enabled: true });
-    }
+    try {
+      // Restore original volume
+      if (this.initialVolume !== null) {
+        await VolumeManager.setVolume(this.initialVolume, { showUI: false });
+        this.initialVolume = null;
+      }
 
-    VolumeManager.removeVolumeListener();
+      // Re-enable native volume UI
+      if (Platform.OS === 'android') {
+        await VolumeManager.showNativeVolumeUI({ enabled: true });
+      }
+    } catch (error) {
+      console.error('Error disabling volume button service:', error);
+    }
 
     if (this.backgroundEnabled) {
       this.backgroundEnabled = false;
@@ -100,27 +137,79 @@ class VolumeButtonServiceClass {
     // Trigger haptic feedback
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Notify listeners (which will record the lap)
-    this.notifyListeners();
+    // Notify listeners (which will record the lap) and get lap details
+    const lapDetails = this.notifyListeners();
 
-    // Show overlay notification
-    await this.showLapRecordedNotification();
+    // Show overlay notification with lap details
+    await this.showLapRecordedNotification(lapDetails);
   }
 
-  private async showLapRecordedNotification() {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: '✓ Lap Recorded',
-        body: 'Lap time saved successfully',
-        data: {},
-      },
-      trigger: null, // Show immediately
-    });
+  private async showLapRecordedNotification(lapDetails: LapDetails | null) {
+    if (!lapDetails) {
+      // Fallback if no lap details available
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: '✓ Lap Recorded',
+          body: 'Lap time saved successfully',
+          data: {},
+        },
+        trigger: null,
+      });
+    } else {
+      // Format lap time (MM:SS.mmm)
+      const minutes = Math.floor(lapDetails.time / 60);
+      const seconds = lapDetails.time % 60;
+      const formattedTime = `${minutes}:${seconds.toFixed(3).padStart(6, '0')}`;
 
-    // Auto-dismiss after 2 seconds
+      // Create lap type emoji and description
+      let lapTypeEmoji = '';
+      let lapTypeText = '';
+
+      switch (lapDetails.lapType) {
+        case 'bonus':
+          lapTypeEmoji = '⭐';
+          lapTypeText = 'BONUS LAP';
+          break;
+        case 'base':
+          lapTypeEmoji = '✓';
+          lapTypeText = 'BASE LAP';
+          break;
+        case 'broken':
+          lapTypeEmoji = '❌';
+          lapTypeText = 'BROKEN';
+          break;
+        case 'changeover':
+          lapTypeEmoji = '🔄';
+          lapTypeText = 'CHANGEOVER';
+          break;
+        case 'safety':
+          lapTypeEmoji = '🚧';
+          lapTypeText = 'SAFETY CAR';
+          break;
+      }
+
+      // Format delta
+      const deltaText = lapDetails.delta >= 0 ? `+${lapDetails.delta.toFixed(3)}s` : `${lapDetails.delta.toFixed(3)}s`;
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `${lapTypeEmoji} Lap #${lapDetails.lapNumber} - ${lapTypeText}`,
+          body: `Time: ${formattedTime} (${deltaText})`,
+          data: {
+            time: lapDetails.time,
+            lapType: lapDetails.lapType,
+            delta: lapDetails.delta,
+            lapNumber: lapDetails.lapNumber,
+          },
+        },
+        trigger: null,
+      });
+    }
+
+    // Auto-dismiss after 3 seconds (increased from 2 to allow reading)
     setTimeout(async () => {
       await Notifications.dismissAllNotificationsAsync();
-    }, 2000);
+    }, 3000);
   }
 
   isVolumeButtonsEnabled(): boolean {

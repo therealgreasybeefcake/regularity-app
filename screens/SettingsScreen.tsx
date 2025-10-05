@@ -98,15 +98,15 @@ export default function SettingsScreen() {
             setTeams([
               {
                 id: 1,
-                name: 'Blind Freddy',
+                name: '',
                 raceName: '',
                 sessionNumber: '',
                 sessionDuration: 120,
                 drivers: [
-                  { id: 1, name: 'Harry', targetTime: 105, laps: [], penaltyLaps: 0 },
-                  { id: 2, name: 'Dave', targetTime: 105, laps: [], penaltyLaps: 0 },
-                  { id: 3, name: 'Tom', targetTime: 105, laps: [], penaltyLaps: 0 },
-                  { id: 4, name: 'Neil', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 1, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 2, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 3, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 4, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
                 ],
                 sessionHistory: [],
               },

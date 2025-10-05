@@ -20,7 +20,8 @@ import { VolumeManager } from 'react-native-volume-manager';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime } from '../utils/calculations';
-import { VolumeButtonService } from '../services/VolumeButtonService';
+import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
+import { PersistentTimerNotification } from '../services/PersistentTimerNotification';
 
 export default function TimerScreen() {
   const {
@@ -62,9 +63,10 @@ export default function TimerScreen() {
   // Audio player for beeps
   const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
 
-  // Initialize VolumeButtonService
+  // Initialize VolumeButtonService and PersistentTimerNotification
   useEffect(() => {
     VolumeButtonService.initialize();
+    PersistentTimerNotification.initialize();
   }, []);
 
   useEffect(() => {
@@ -90,10 +92,20 @@ export default function TimerScreen() {
 
   useEffect(() => {
     if (isRunning) {
+      // Show persistent notification when timer is running (for background mode)
+      if (audioSettings.backgroundRecordingEnabled && driver) {
+        PersistentTimerNotification.showTimer(driver.name, driver.targetTime);
+      }
+
       intervalRef.current = setInterval(() => {
         const now = Date.now();
         const elapsed = Math.floor((now - (startTimeRef.current || now)) / 10) / 100;
         setElapsedTime(elapsed);
+
+        // Update persistent notification with current time
+        if (audioSettings.backgroundRecordingEnabled) {
+          PersistentTimerNotification.updateTimer(elapsed);
+        }
 
         // After lap start beep
         if (
@@ -128,10 +140,13 @@ export default function TimerScreen() {
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
       setShowWarning(false);
+      // Hide persistent notification when timer stops
+      PersistentTimerNotification.hideTimer();
     }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
+      PersistentTimerNotification.hideTimer();
     };
   }, [isRunning, driver, audioSettings]);
 
@@ -145,11 +160,28 @@ export default function TimerScreen() {
     // Enable volume button service
     VolumeButtonService.enable(audioSettings.backgroundRecordingEnabled);
 
-    // Add lap recording listener
-    const handleLapRecording = () => {
+    // Add lap recording listener that returns lap details
+    const handleLapRecording = (): LapDetails | null => {
+      // Store the current lap count before attempting to add a lap
+      const previousLapCount = driver?.laps.length || 0;
+
       if (addLapRef.current) {
         addLapRef.current();
       }
+
+      // Check if a new lap was actually recorded (lap count increased)
+      if (!driver || driver.laps.length === 0 || driver.laps.length === previousLapCount) {
+        return null; // No new lap was recorded (validation failed or other issue)
+      }
+
+      // Get the latest lap details after recording
+      const lastLap = driver.laps[driver.laps.length - 1];
+      return {
+        time: lastLap.time,
+        lapType: lastLap.lapType,
+        delta: lastLap.delta,
+        lapNumber: lastLap.number,
+      };
     };
 
     VolumeButtonService.addListener(handleLapRecording);
@@ -158,7 +190,7 @@ export default function TimerScreen() {
       VolumeButtonService.removeListener(handleLapRecording);
       VolumeButtonService.disable();
     };
-  }, [audioSettings.volumeButtonsEnabled, audioSettings.backgroundRecordingEnabled]);
+  }, [audioSettings.volumeButtonsEnabled, audioSettings.backgroundRecordingEnabled, driver]);
 
   const playBeep = (isDouble: boolean) => {
     if (!audioSettings.enabled) return;
@@ -193,9 +225,23 @@ export default function TimerScreen() {
   const addLap = () => {
     if (!driver) return;
 
-    // Validate Race Name and Session Number are set
+    // Validate all required fields are set
     const currentTeam = teams[activeTeam];
-    if (!currentTeam.raceName || !currentTeam.sessionNumber) {
+
+    // Check team name
+    if (!currentTeam.name?.trim()) {
+      Alert.alert('Missing Information', 'Please set the Team Name in the Team tab before recording laps.');
+      return;
+    }
+
+    // Check driver name
+    if (!driver.name?.trim()) {
+      Alert.alert('Missing Information', 'Please set the Driver Name in the Team tab before recording laps.');
+      return;
+    }
+
+    // Check race name and session number
+    if (!currentTeam.raceName?.trim() || !currentTeam.sessionNumber?.trim()) {
       setTempRaceName(currentTeam.raceName || '');
       setTempSessionNumber(currentTeam.sessionNumber || '');
       setRaceInfoModalVisible(true);
@@ -318,7 +364,7 @@ export default function TimerScreen() {
 
   const saveRaceInfo = () => {
     if (!tempRaceName.trim() || !tempSessionNumber.trim()) {
-      Alert.alert('Error', 'Please enter both Race Name and Session Number');
+      Alert.alert('Missing Information', 'Please enter both Race Name and Session Number');
       return;
     }
 
@@ -327,6 +373,11 @@ export default function TimerScreen() {
     updatedTeams[activeTeam].sessionNumber = tempSessionNumber.trim();
     setTeams(updatedTeams);
     setRaceInfoModalVisible(false);
+
+    // After saving race info, retry lap recording
+    setTimeout(() => {
+      addLap();
+    }, 100);
   };
 
   const saveEditedLap = () => {

@@ -19,7 +19,11 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.regularity.racetimer",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIBackgroundModes": [
+          "fetch",
+          "remote-notification"
+        ]
       }
     },
     "android": {
@@ -34,9 +38,13 @@
         "WAKE_LOCK",
         "MODIFY_AUDIO_SETTINGS",
         "POST_NOTIFICATIONS",
-        "FOREGROUND_SERVICE"
+        "FOREGROUND_SERVICE",
+        "FOREGROUND_SERVICE_DATA_SYNC"
       ],
-      "versionCode": 1
+      "versionCode": 1,
+      "service": {
+        "foregroundServiceType": "dataSync"
+      }
     },
     "plugins": [
       "expo-dev-client",
