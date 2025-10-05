@@ -260,6 +260,48 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Lap Recording Guard */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Guard</Text>
+          <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: 12 }]}>
+            Prevent accidental lap recording outside target time range
+          </Text>
+
+          <View style={styles.settingRow}>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>Enable Guard</Text>
+            <Switch
+              value={audioSettings.lapGuardEnabled}
+              onValueChange={(value) =>
+                setAudioSettings({ ...audioSettings, lapGuardEnabled: value })
+              }
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+
+          <View style={styles.inputRow}>
+            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+              +/- seconds from target
+            </Text>
+            <TextInput
+              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+              value={audioSettings.lapGuardRange.toString()}
+              onChangeText={(text) =>
+                setAudioSettings({
+                  ...audioSettings,
+                  lapGuardRange: parseInt(text) || 10,
+                })
+              }
+              keyboardType="number-pad"
+            />
+          </View>
+
+          {audioSettings.lapGuardEnabled && (
+            <Text style={[styles.settingDescription, { color: theme.textSecondary, marginTop: 8 }]}>
+              Laps will only be recorded when timer is within ±{audioSettings.lapGuardRange}s of target time
+            </Text>
+          )}
+        </View>
+
         {/* Lap Type Values */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Type Values</Text>

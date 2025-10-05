@@ -11,10 +11,12 @@ import {
   Modal,
   Pressable,
   Vibration,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, AudioSource } from 'expo-audio';
 import { Swipeable } from 'react-native-gesture-handler';
+import { VolumeManager } from 'react-native-volume-manager';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime } from '../utils/calculations';
@@ -42,6 +44,7 @@ export default function TimerScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedLapIndex, setSelectedLapIndex] = useState<number | null>(null);
   const [editLapValue, setEditLapValue] = useState('');
+  const [rejectedMessage, setRejectedMessage] = useState<string | null>(null);
 
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -49,6 +52,8 @@ export default function TimerScreen() {
   const beforeTargetBeepPlayedRef = useRef(false);
   const afterStartBeepPlayedRef = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const initialVolumeRef = useRef<number | null>(null);
+  const addLapRef = useRef<() => void>();
 
   // Audio player for beeps
   const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
@@ -121,6 +126,53 @@ export default function TimerScreen() {
     };
   }, [isRunning, driver, audioSettings]);
 
+  // Volume button listener for lap recording
+  useEffect(() => {
+    if (Platform.OS !== 'android') return;
+
+    let volumeListener: any;
+
+    const setupVolumeListener = async () => {
+      try {
+        // Get initial volume to restore later
+        const volumeResult = await VolumeManager.getVolume();
+        initialVolumeRef.current = volumeResult.volume;
+
+        // Set volume to middle (0.5) so both up and down buttons work
+        await VolumeManager.setVolume(0.5);
+
+        // Disable native volume UI
+        await VolumeManager.showNativeVolumeUI({ enabled: false });
+
+        // Listen for volume changes
+        volumeListener = VolumeManager.addVolumeListener((result) => {
+          // Trigger lap on any volume button press
+          if (addLapRef.current) {
+            addLapRef.current();
+          }
+
+          // Restore to middle volume so both buttons continue to work
+          VolumeManager.setVolume(0.5);
+        });
+      } catch (error) {
+        console.error('Error setting up volume button listener:', error);
+      }
+    };
+
+    setupVolumeListener();
+
+    return () => {
+      // Cleanup: remove listener, restore original volume and native volume UI
+      if (volumeListener?.remove) {
+        volumeListener.remove();
+      }
+      if (initialVolumeRef.current !== null) {
+        VolumeManager.setVolume(initialVolumeRef.current);
+      }
+      VolumeManager.showNativeVolumeUI({ enabled: true });
+    };
+  }, []);
+
   const playBeep = (isDouble: boolean) => {
     if (!audioSettings.enabled) return;
 
@@ -161,7 +213,7 @@ export default function TimerScreen() {
       const lapTime = parseFloat(lapInput);
       if (isNaN(lapTime) || lapTime <= 0) return;
 
-      const isChangeover = lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000;
+      const isChangeover = !!(lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000);
       const delta = lapTime - currentDriver.targetTime;
       const lapType = calculateLapType(delta, isChangeover);
 
@@ -177,6 +229,7 @@ export default function TimerScreen() {
       setTeams(updatedTeams);
       setLapInput('');
       lastLapTimeRef.current = Date.now();
+      Vibration.vibrate(500); // Vibrate for half a second
       return;
     }
 
@@ -185,7 +238,22 @@ export default function TimerScreen() {
       lastLapTimeRef.current = Date.now();
     } else {
       const lapTime = elapsedTime;
-      const isChangeover = lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000;
+
+      // Check lap recording guard
+      if (audioSettings.lapGuardEnabled) {
+        const minTime = currentDriver.targetTime - audioSettings.lapGuardRange;
+        const maxTime = currentDriver.targetTime + audioSettings.lapGuardRange;
+
+        if (lapTime < minTime || lapTime > maxTime) {
+          // Outside allowed range - vibrate twice to indicate rejection
+          Vibration.vibrate([0, 100, 100, 100]);
+          setRejectedMessage(`Lap rejected: ${lapTime.toFixed(2)}s outside range (${minTime.toFixed(1)}-${maxTime.toFixed(1)}s)`);
+          setTimeout(() => setRejectedMessage(null), 3000);
+          return;
+        }
+      }
+
+      const isChangeover = !!(lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000);
       const delta = lapTime - currentDriver.targetTime;
       const lapType = calculateLapType(delta, isChangeover);
 
@@ -200,9 +268,15 @@ export default function TimerScreen() {
 
       setTeams(updatedTeams);
       lastLapTimeRef.current = Date.now();
+      Vibration.vibrate(500); // Vibrate for half a second
       startStopwatch();
     }
   };
+
+  // Keep addLap ref updated
+  useEffect(() => {
+    addLapRef.current = addLap;
+  });
 
   const resetTimer = () => {
     setIsRunning(false);
@@ -313,6 +387,55 @@ export default function TimerScreen() {
     );
   };
 
+  const endSession = () => {
+    if (!team || team.drivers.every(d => d.laps.length === 0)) {
+      Alert.alert('No Data', 'Cannot end session with no laps recorded');
+      return;
+    }
+
+    Alert.alert(
+      'End Session',
+      'This will save the current session to history and clear all laps. Continue?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Session',
+          style: 'destructive',
+          onPress: () => {
+            const updatedTeams = [...teams];
+            const currentTeam = updatedTeams[activeTeam];
+
+            // Create session snapshot with deep copy of drivers
+            const session = {
+              id: Date.now().toString(),
+              raceName: currentTeam.raceName || 'Untitled Race',
+              sessionNumber: currentTeam.sessionNumber || 'N/A',
+              sessionDuration: currentTeam.sessionDuration,
+              timestamp: Date.now(),
+              drivers: currentTeam.drivers.map(d => ({
+                ...d,
+                laps: [...d.laps],
+              })),
+            };
+
+            // Add to history
+            currentTeam.sessionHistory.push(session);
+
+            // Clear current session laps
+            currentTeam.drivers.forEach(d => {
+              d.laps = [];
+              d.penaltyLaps = 0;
+            });
+
+            setTeams(updatedTeams);
+            resetTimer();
+            Alert.alert('Session Ended', 'Session saved to history');
+          },
+        },
+      ]
+    );
+  };
+
   const getStatusColor = () => {
     if (!driver || driver.laps.length === 0) return theme.textSecondary;
     const lastLap = driver.laps[driver.laps.length - 1];
@@ -336,6 +459,14 @@ export default function TimerScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
+        {/* Rejected Lap Message */}
+        {rejectedMessage && (
+          <View style={[styles.rejectedCard, { backgroundColor: theme.broken }]}>
+            <Ionicons name="close-circle" size={20} color="#fff" />
+            <Text style={styles.rejectedText}>{rejectedMessage}</Text>
+          </View>
+        )}
+
         {/* Status Card */}
         <Animated.View
           style={[
@@ -442,7 +573,18 @@ export default function TimerScreen() {
 
         {/* Lap History */}
         <View style={[styles.lapHistory, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap History</Text>
+          <View style={styles.historyHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap History</Text>
+            {driver?.laps.length > 0 && (
+              <TouchableOpacity
+                style={[styles.endSessionButton, { backgroundColor: theme.warning }]}
+                onPress={endSession}
+              >
+                <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                <Text style={styles.endSessionText}>End Session</Text>
+              </TouchableOpacity>
+            )}
+          </View>
           {driver?.laps.length === 0 ? (
             <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No laps recorded</Text>
           ) : (
@@ -484,6 +626,7 @@ export default function TimerScreen() {
                             { color: lap.delta < 0 ? theme.broken : lap.delta <= 0.99 ? theme.bonus : theme.base },
                           ]}
                         >
+                          {' • '}
                           {lap.delta >= 0 ? '+' : ''}
                           {lap.delta.toFixed(3)}s
                         </Text>
@@ -575,6 +718,20 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+  },
+  rejectedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 16,
+    gap: 12,
+  },
+  rejectedText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
   statusCard: {
     padding: 24,
@@ -674,10 +831,28 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
   },
+  historyHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    marginBottom: 12,
+  },
+  endSessionButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 6,
+    gap: 6,
+  },
+  endSessionText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   emptyText: {
     fontSize: 14,
@@ -697,14 +872,17 @@ const styles = StyleSheet.create({
     backgroundColor: '#ef4444',
     justifyContent: 'center',
     alignItems: 'center',
-    width: 100,
+    width: 90,
     height: '100%',
+    borderRadius: 8,
+    marginLeft: 8,
   },
   deleteActionText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginTop: 4,
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 6,
+    letterSpacing: 0.5,
   },
   lapNumber: {
     fontSize: 16,
@@ -713,6 +891,8 @@ const styles = StyleSheet.create({
   },
   lapDetails: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   lapTime: {
     fontSize: 16,
@@ -720,7 +900,6 @@ const styles = StyleSheet.create({
   },
   lapDelta: {
     fontSize: 14,
-    marginTop: 2,
   },
   lapTypeBadge: {
     paddingHorizontal: 8,

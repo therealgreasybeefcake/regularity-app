@@ -24,10 +24,21 @@
       "package": "com.regularity.racetimer",
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "permissions": ["WAKE_LOCK"]
+      "permissions": [
+        "WAKE_LOCK",
+        "MODIFY_AUDIO_SETTINGS"
+      ]
     },
+    "plugins": [
+      "expo-dev-client"
+    ],
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "9518c45d-1858-4d87-908f-106cd5784128"
+      }
     }
   }
 }

@@ -17,6 +17,15 @@ export interface Driver {
   laps: Lap[];
 }
 
+export interface Session {
+  id: string;
+  raceName: string;
+  sessionNumber: string;
+  sessionDuration: number; // in minutes
+  timestamp: number;
+  drivers: Driver[];
+}
+
 export interface Team {
   id: number;
   name: string;
@@ -24,6 +33,7 @@ export interface Team {
   sessionNumber: string;
   sessionDuration: number; // in minutes
   drivers: Driver[];
+  sessionHistory: Session[];
 }
 
 export interface AudioSettings {
@@ -32,6 +42,8 @@ export interface AudioSettings {
   afterLapStartEnabled: boolean;
   beforeTargetTime: number; // seconds before target
   afterLapStart: number; // seconds after lap start
+  lapGuardEnabled: boolean; // enable lap recording guard
+  lapGuardRange: number; // +/- seconds from target time to allow recording
 }
 
 export interface LapTypeValues {

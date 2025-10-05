@@ -86,7 +86,9 @@ export const calculateDriverStats = (
 
   const driverTotal = laps.filter(l => l.lapType === 'base' || l.lapType === 'changeover').length;
   const percentage = teamTotal > 0 ? driverTotal / teamTotal : 0;
-  const goalLaps = (percentage * sessionDuration * 60 / driver.targetTime) * 2;
+  const goalLaps = driver.targetTime > 0 && sessionDuration > 0
+    ? (percentage * sessionDuration * 60 / driver.targetTime) * 2
+    : 0;
 
   return {
     achievedLaps,

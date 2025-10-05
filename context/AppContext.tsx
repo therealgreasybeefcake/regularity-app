@@ -37,6 +37,7 @@ const DEFAULT_TEAMS: Team[] = [
       { id: 3, name: 'Tom', targetTime: 105, laps: [], penaltyLaps: 0 },
       { id: 4, name: 'Neil', targetTime: 105, laps: [], penaltyLaps: 0 },
     ],
+    sessionHistory: [],
   },
 ];
 
@@ -46,6 +47,8 @@ const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   afterLapStartEnabled: true,
   beforeTargetTime: 10,
   afterLapStart: 15,
+  lapGuardEnabled: false,
+  lapGuardRange: 10,
 };
 
 const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
@@ -85,7 +88,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             AsyncStorage.getItem('lapTypeValues'),
           ]);
 
-        if (savedTeams) setTeams(JSON.parse(savedTeams));
+        if (savedTeams) {
+          const parsedTeams = JSON.parse(savedTeams);
+          // Migration: add sessionHistory if it doesn't exist
+          const migratedTeams = parsedTeams.map((team: Team) => ({
+            ...team,
+            sessionHistory: team.sessionHistory || [],
+          }));
+          setTeams(migratedTeams);
+        }
         if (savedActiveTeam !== null) setActiveTeam(JSON.parse(savedActiveTeam));
         if (savedActiveDriver !== null) setActiveDriver(JSON.parse(savedActiveDriver));
         if (savedThemeMode) setThemeMode(savedThemeMode as ThemeMode);
@@ -94,6 +105,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (parsed.enabled === undefined) parsed.enabled = true;
           if (parsed.beforeTargetEnabled === undefined) parsed.beforeTargetEnabled = true;
           if (parsed.afterLapStartEnabled === undefined) parsed.afterLapStartEnabled = true;
+          if (parsed.lapGuardEnabled === undefined) parsed.lapGuardEnabled = false;
+          if (parsed.lapGuardRange === undefined) parsed.lapGuardRange = 10;
           setAudioSettings(parsed);
         }
         if (savedLapValues) setLapTypeValues(JSON.parse(savedLapValues));
