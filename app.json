@@ -9,7 +9,7 @@
     "newArchEnabled": true,
     "description": "Professional regularity race timing app with lap tracking, statistics, and PDF export",
     "primaryColor": "#1e40af",
-    "owner": "Blind Freddy Race Team",
+    "owner": "greasybeefcake",
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
