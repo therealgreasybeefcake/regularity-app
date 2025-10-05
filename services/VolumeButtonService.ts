@@ -32,6 +32,7 @@ class VolumeButtonServiceClass {
         shouldShowBanner: true,
         shouldPlaySound: false,
         shouldSetBadge: false,
+        shouldShowList: false,
       }),
     });
 
