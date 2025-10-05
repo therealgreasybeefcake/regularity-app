@@ -20,6 +20,7 @@ import { VolumeManager } from 'react-native-volume-manager';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime } from '../utils/calculations';
+import { VolumeButtonService } from '../services/VolumeButtonService';
 
 export default function TimerScreen() {
   const {
@@ -60,6 +61,11 @@ export default function TimerScreen() {
 
   // Audio player for beeps
   const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
+
+  // Initialize VolumeButtonService
+  useEffect(() => {
+    VolumeButtonService.initialize();
+  }, []);
 
   useEffect(() => {
     if (showWarning) {
@@ -131,50 +137,28 @@ export default function TimerScreen() {
 
   // Volume button listener for lap recording
   useEffect(() => {
-    if (Platform.OS !== 'android') return;
+    if (!audioSettings.volumeButtonsEnabled) {
+      VolumeButtonService.disable();
+      return;
+    }
 
-    let volumeListener: any;
+    // Enable volume button service
+    VolumeButtonService.enable(audioSettings.backgroundRecordingEnabled);
 
-    const setupVolumeListener = async () => {
-      try {
-        // Get initial volume to restore later
-        const volumeResult = await VolumeManager.getVolume();
-        initialVolumeRef.current = volumeResult.volume;
-
-        // Set volume to middle (0.5) so both up and down buttons work
-        await VolumeManager.setVolume(0.5);
-
-        // Disable native volume UI
-        await VolumeManager.showNativeVolumeUI({ enabled: false });
-
-        // Listen for volume changes
-        volumeListener = VolumeManager.addVolumeListener((result) => {
-          // Trigger lap on any volume button press
-          if (addLapRef.current) {
-            addLapRef.current();
-          }
-
-          // Restore to middle volume so both buttons continue to work
-          VolumeManager.setVolume(0.5);
-        });
-      } catch (error) {
-        console.error('Error setting up volume button listener:', error);
+    // Add lap recording listener
+    const handleLapRecording = () => {
+      if (addLapRef.current) {
+        addLapRef.current();
       }
     };
 
-    setupVolumeListener();
+    VolumeButtonService.addListener(handleLapRecording);
 
     return () => {
-      // Cleanup: remove listener, restore original volume and native volume UI
-      if (volumeListener?.remove) {
-        volumeListener.remove();
-      }
-      if (initialVolumeRef.current !== null) {
-        VolumeManager.setVolume(initialVolumeRef.current);
-      }
-      VolumeManager.showNativeVolumeUI({ enabled: true });
+      VolumeButtonService.removeListener(handleLapRecording);
+      VolumeButtonService.disable();
     };
-  }, []);
+  }, [audioSettings.volumeButtonsEnabled, audioSettings.backgroundRecordingEnabled]);
 
   const playBeep = (isDouble: boolean) => {
     if (!audioSettings.enabled) return;

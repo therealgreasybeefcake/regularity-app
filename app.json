@@ -32,13 +32,29 @@
       "predictiveBackGestureEnabled": false,
       "permissions": [
         "WAKE_LOCK",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "POST_NOTIFICATIONS",
+        "FOREGROUND_SERVICE"
       ],
       "versionCode": 1
     },
     "plugins": [
-      "expo-dev-client"
+      "expo-dev-client",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#1e40af",
+          "sounds": []
+        }
+      ]
     ],
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#1e40af",
+      "androidMode": "default",
+      "androidCollapsedTitle": "Regularity Race Timer"
+    },
     "web": {
       "favicon": "./assets/favicon.png"
     },

@@ -10,7 +10,7 @@ import {
   Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import * as FileSystem from 'expo-file-system';
+import { Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useApp, ThemeMode } from '../context/AppContext';
@@ -38,13 +38,13 @@ export default function SettingsScreen() {
         exportDate: new Date().toISOString(),
       };
 
-      const fileUri = FileSystem.documentDirectory + 'regularity-race-data.json';
-      await FileSystem.writeAsStringAsync(fileUri, JSON.stringify(data, null, 2));
+      const file = Paths.document.createFile('regularity-race-data.json', 'application/json');
+      file.write(JSON.stringify(data, null, 2), {});
 
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(fileUri);
+        await Sharing.shareAsync(file.uri);
       } else {
-        Alert.alert('Success', 'Data exported to: ' + fileUri);
+        Alert.alert('Success', 'Data exported to: ' + file.uri);
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to export data');
@@ -59,7 +59,7 @@ export default function SettingsScreen() {
 
       if (result.canceled) return;
 
-      const fileContent = await FileSystem.readAsStringAsync(result.assets[0].uri);
+      const fileContent = await (await fetch(result.assets[0].uri)).text();
       const data = JSON.parse(fileContent);
 
       if (data.teams && Array.isArray(data.teams)) {
@@ -108,6 +108,7 @@ export default function SettingsScreen() {
                   { id: 3, name: 'Tom', targetTime: 105, laps: [], penaltyLaps: 0 },
                   { id: 4, name: 'Neil', targetTime: 105, laps: [], penaltyLaps: 0 },
                 ],
+                sessionHistory: [],
               },
             ]);
             Alert.alert('Success', 'All data cleared');
@@ -190,6 +191,44 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Lap Recording Controls */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Controls</Text>
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Volume Button Recording</Text>
+              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                Use volume buttons to record laps
+              </Text>
+            </View>
+            <Switch
+              value={audioSettings.volumeButtonsEnabled}
+              onValueChange={(value) =>
+                setAudioSettings({ ...audioSettings, volumeButtonsEnabled: value })
+              }
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Background Recording</Text>
+              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                Record laps with volume buttons while using other apps
+              </Text>
+            </View>
+            <Switch
+              value={audioSettings.backgroundRecordingEnabled}
+              onValueChange={(value) =>
+                setAudioSettings({ ...audioSettings, backgroundRecordingEnabled: value })
+              }
+              trackColor={{ false: theme.border, true: theme.primary }}
+              disabled={!audioSettings.volumeButtonsEnabled}
+            />
+          </View>
+        </View>
+
         {/* Audio Settings */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Audio Warnings</Text>
@@ -232,7 +271,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>After Lap Start Warning</Text>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>After Lap-Start Warning</Text>
             <Switch
               value={audioSettings.afterLapStartEnabled}
               onValueChange={(value) =>
