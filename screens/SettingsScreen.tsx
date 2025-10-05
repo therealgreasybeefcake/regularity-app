@@ -260,6 +260,43 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Time Display Format */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Time Display Format</Text>
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Seconds</Text>
+              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                Display as: 105s
+              </Text>
+            </View>
+            <Switch
+              value={audioSettings.timeFormat === 'seconds'}
+              onValueChange={(value) =>
+                setAudioSettings({ ...audioSettings, timeFormat: value ? 'seconds' : 'mmssmmm' })
+              }
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>MM:SS.mmm</Text>
+              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                Display as: 1:45.000
+              </Text>
+            </View>
+            <Switch
+              value={audioSettings.timeFormat === 'mmssmmm'}
+              onValueChange={(value) =>
+                setAudioSettings({ ...audioSettings, timeFormat: value ? 'mmssmmm' : 'seconds' })
+              }
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+        </View>
+
         {/* Lap Recording Guard */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Guard</Text>
@@ -295,9 +332,29 @@ export default function SettingsScreen() {
             />
           </View>
 
+          <View style={styles.inputRow}>
+            <View style={{ flex: 1, marginRight: 12 }}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                Safety car threshold{'\n'}(seconds over target)
+              </Text>
+            </View>
+            <TextInput
+              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+              value={audioSettings.lapGuardSafetyCarThreshold.toString()}
+              onChangeText={(text) =>
+                setAudioSettings({
+                  ...audioSettings,
+                  lapGuardSafetyCarThreshold: parseInt(text) || 30,
+                })
+              }
+              keyboardType="number-pad"
+            />
+          </View>
+
           {audioSettings.lapGuardEnabled && (
             <Text style={[styles.settingDescription, { color: theme.textSecondary, marginTop: 8 }]}>
-              Laps will only be recorded when timer is within ±{audioSettings.lapGuardRange}s of target time
+              Normal laps: within ±{audioSettings.lapGuardRange}s of target{'\n'}
+              Safety car: automatically allowed if {audioSettings.lapGuardSafetyCarThreshold}s+ over target
             </Text>
           )}
         </View>
@@ -427,7 +484,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 6,
     padding: 8,
-    minWidth: 80,
+    width: 80,
     textAlign: 'right',
   },
   button: {

@@ -243,11 +243,16 @@ export default function TimerScreen() {
       if (audioSettings.lapGuardEnabled) {
         const minTime = currentDriver.targetTime - audioSettings.lapGuardRange;
         const maxTime = currentDriver.targetTime + audioSettings.lapGuardRange;
+        const safetyCarThreshold = currentDriver.targetTime + audioSettings.lapGuardSafetyCarThreshold;
 
-        if (lapTime < minTime || lapTime > maxTime) {
-          // Outside allowed range - vibrate twice to indicate rejection
+        // Allow if within normal range OR if it's a safety car lap (significantly over)
+        const isInNormalRange = lapTime >= minTime && lapTime <= maxTime;
+        const isSafetyCar = lapTime >= safetyCarThreshold;
+
+        if (!isInNormalRange && !isSafetyCar) {
+          // Outside allowed range and not a safety car - reject
           Vibration.vibrate([0, 100, 100, 100]);
-          setRejectedMessage(`Lap rejected: ${lapTime.toFixed(2)}s outside range (${minTime.toFixed(1)}-${maxTime.toFixed(1)}s)`);
+          setRejectedMessage(`Lap rejected: ${lapTime.toFixed(2)}s outside range (${minTime.toFixed(1)}-${maxTime.toFixed(1)}s, or ${safetyCarThreshold.toFixed(1)}s+ for safety car)`);
           setTimeout(() => setRejectedMessage(null), 3000);
           return;
         }

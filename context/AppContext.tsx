@@ -49,6 +49,8 @@ const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   afterLapStart: 15,
   lapGuardEnabled: false,
   lapGuardRange: 10,
+  lapGuardSafetyCarThreshold: 30,
+  timeFormat: 'seconds',
 };
 
 const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
@@ -107,6 +109,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (parsed.afterLapStartEnabled === undefined) parsed.afterLapStartEnabled = true;
           if (parsed.lapGuardEnabled === undefined) parsed.lapGuardEnabled = false;
           if (parsed.lapGuardRange === undefined) parsed.lapGuardRange = 10;
+          if (parsed.lapGuardSafetyCarThreshold === undefined) parsed.lapGuardSafetyCarThreshold = 30;
+          if (parsed.timeFormat === undefined) parsed.timeFormat = 'seconds';
           setAudioSettings(parsed);
         }
         if (savedLapValues) setLapTypeValues(JSON.parse(savedLapValues));

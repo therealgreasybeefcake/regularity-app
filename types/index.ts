@@ -44,6 +44,8 @@ export interface AudioSettings {
   afterLapStart: number; // seconds after lap start
   lapGuardEnabled: boolean; // enable lap recording guard
   lapGuardRange: number; // +/- seconds from target time to allow recording
+  lapGuardSafetyCarThreshold: number; // seconds over target to automatically allow as safety car
+  timeFormat: 'seconds' | 'mmssmmm'; // display format for times
 }
 
 export interface LapTypeValues {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,6 +7,11 @@ import {
   TouchableOpacity,
   TextInput,
   Alert,
+  Animated,
+  Modal,
+  Pressable,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -14,27 +19,86 @@ import { lightTheme, darkTheme } from '../constants/theme';
 import { Driver } from '../types';
 
 export default function DriversScreen() {
-  const { teams, setTeams, activeTeam, isDarkMode } = useApp();
+  const { teams, setTeams, activeTeam, isDarkMode, audioSettings } = useApp();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
 
+  const formatTargetTime = (seconds: number) => {
+    if (audioSettings.timeFormat === 'seconds') {
+      return `${seconds}s`;
+    } else {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toFixed(3).padStart(6, '0')}`;
+    }
+  };
+
+  const parseTimeInput = (input: string): number => {
+    // Try to parse as MM:SS.mmm format
+    if (input.includes(':')) {
+      const parts = input.split(':');
+      if (parts.length === 2) {
+        const mins = parseInt(parts[0]) || 0;
+        const secs = parseFloat(parts[1]) || 0;
+        return mins * 60 + secs;
+      }
+    }
+    // Otherwise parse as plain seconds
+    return parseFloat(input) || 0;
+  };
+
+  const getDisplayValue = (seconds: number): string => {
+    if (audioSettings.timeFormat === 'seconds') {
+      return seconds.toString();
+    } else {
+      const mins = Math.floor(seconds / 60);
+      const secs = seconds % 60;
+      return `${mins}:${secs.toFixed(3).padStart(6, '0')}`;
+    }
+  };
+
   const [editingDriver, setEditingDriver] = useState<number | null>(null);
   const [editValue, setEditValue] = useState('');
+  const [editingTargetTime, setEditingTargetTime] = useState<number | null>(null);
+  const [editTargetValue, setEditTargetValue] = useState('');
+  const [addModalVisible, setAddModalVisible] = useState(false);
+  const [newDriverName, setNewDriverName] = useState('');
+  const [newDriverTargetTime, setNewDriverTargetTime] = useState('');
 
-  const addDriver = () => {
+  const openAddDriverModal = () => {
+    const letter = String.fromCharCode(65 + team.drivers.length);
+    setNewDriverName(`Driver ${letter}`);
+    setNewDriverTargetTime(getDisplayValue(105));
+    setAddModalVisible(true);
+  };
+
+  const confirmAddDriver = () => {
+    if (!newDriverName.trim()) {
+      Alert.alert('Error', 'Driver name cannot be empty');
+      return;
+    }
+
+    const targetTime = parseTimeInput(newDriverTargetTime);
+    if (isNaN(targetTime) || targetTime <= 0) {
+      Alert.alert('Error', 'Please enter a valid target time');
+      return;
+    }
+
     const updatedTeams = [...teams];
     const newId = Math.max(...updatedTeams[activeTeam].drivers.map(d => d.id), 0) + 1;
-    const letter = String.fromCharCode(65 + updatedTeams[activeTeam].drivers.length);
 
     updatedTeams[activeTeam].drivers.push({
       id: newId,
-      name: `Driver ${letter}`,
-      targetTime: 105,
+      name: newDriverName.trim(),
+      targetTime: targetTime,
       penaltyLaps: 0,
       laps: [],
     });
 
     setTeams(updatedTeams);
+    setAddModalVisible(false);
+    setNewDriverName('');
+    setNewDriverTargetTime('');
   };
 
   const removeDriver = (index: number) => {
@@ -88,20 +152,26 @@ export default function DriversScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
+    <ScrollView
+      style={[styles.container, { backgroundColor: theme.background }]}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.content}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: theme.text }]}>Drivers</Text>
           <TouchableOpacity
             style={[styles.addButton, { backgroundColor: theme.primary }]}
-            onPress={addDriver}
+            onPress={openAddDriverModal}
           >
             <Ionicons name="add" size={24} color="#fff" />
           </TouchableOpacity>
         </View>
 
         {team?.drivers.map((driver, index) => (
-          <View key={driver.id} style={[styles.driverCard, { backgroundColor: theme.card }]}>
+          <View
+            key={driver.id}
+            style={[styles.driverCard, { backgroundColor: theme.card }]}
+          >
             <View style={styles.driverHeader}>
               {editingDriver === index ? (
                 <TextInput
@@ -132,13 +202,32 @@ export default function DriversScreen() {
 
             <View style={styles.driverInfo}>
               <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Target Time (s)</Text>
-                <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-                  value={driver.targetTime.toString()}
-                  onChangeText={(text) => updateDriverField(index, 'targetTime', parseFloat(text) || 0)}
-                  keyboardType="decimal-pad"
-                />
+                <Text style={[styles.label, { color: theme.textSecondary }]}>Target Time</Text>
+                {editingTargetTime === index ? (
+                  <TextInput
+                    style={[styles.input, { color: theme.text, borderColor: theme.border, minWidth: 120 }]}
+                    value={editTargetValue}
+                    onChangeText={setEditTargetValue}
+                    onBlur={() => {
+                      updateDriverField(index, 'targetTime', parseTimeInput(editTargetValue));
+                      setEditingTargetTime(null);
+                    }}
+                    placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
+                    placeholderTextColor={theme.textSecondary}
+                    autoFocus
+                  />
+                ) : (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setEditingTargetTime(index);
+                      setEditTargetValue(getDisplayValue(driver.targetTime));
+                    }}
+                  >
+                    <Text style={[styles.targetTimeText, { color: theme.text }]}>
+                      {formatTargetTime(driver.targetTime)}
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
 
               <View style={styles.infoRow}>
@@ -183,6 +272,68 @@ export default function DriversScreen() {
           </View>
         ))}
       </View>
+
+      {/* Add Driver Modal */}
+      <Modal
+        visible={addModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setAddModalVisible(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.modalOverlay}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setAddModalVisible(false)}
+          >
+            <Pressable
+              style={[styles.modalContent, { backgroundColor: theme.card }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Driver</Text>
+
+              <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Driver Name</Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                value={newDriverName}
+                onChangeText={setNewDriverName}
+                placeholder="Enter driver name"
+                placeholderTextColor={theme.textSecondary}
+                autoFocus
+              />
+
+              <Text style={[styles.modalLabel, { color: theme.textSecondary, marginTop: 16 }]}>
+                Target Time {audioSettings.timeFormat === 'seconds' ? '(seconds)' : '(MM:SS.mmm)'}
+              </Text>
+              <TextInput
+                style={[styles.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
+                value={newDriverTargetTime}
+                onChangeText={setNewDriverTargetTime}
+                placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
+                placeholderTextColor={theme.textSecondary}
+              />
+
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: theme.textSecondary }]}
+                  onPress={() => setAddModalVisible(false)}
+                >
+                  <Text style={styles.modalButtonText}>Cancel</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={[styles.modalButton, { backgroundColor: theme.primary }]}
+                  onPress={confirmAddDriver}
+                >
+                  <Text style={styles.modalButtonText}>Add Driver</Text>
+                </TouchableOpacity>
+              </View>
+            </Pressable>
+          </Pressable>
+        </KeyboardAvoidingView>
+      </Modal>
     </ScrollView>
   );
 }
@@ -250,6 +401,15 @@ const styles = StyleSheet.create({
     minWidth: 80,
     textAlign: 'right',
   },
+  formatHint: {
+    fontSize: 12,
+    marginTop: 4,
+  },
+  targetTimeText: {
+    fontSize: 16,
+    fontWeight: '600',
+    padding: 8,
+  },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
@@ -282,5 +442,54 @@ const styles = StyleSheet.create({
   clearButtonText: {
     fontSize: 14,
     fontWeight: '500',
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'stretch',
+  },
+  modalContent: {
+    marginHorizontal: 0,
+    borderRadius: 0,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  modalLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+  },
+  modalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 24,
+  },
+  modalButton: {
+    flex: 1,
+    padding: 14,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
