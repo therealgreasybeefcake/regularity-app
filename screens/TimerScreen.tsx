@@ -45,6 +45,9 @@ export default function TimerScreen() {
   const [selectedLapIndex, setSelectedLapIndex] = useState<number | null>(null);
   const [editLapValue, setEditLapValue] = useState('');
   const [rejectedMessage, setRejectedMessage] = useState<string | null>(null);
+  const [raceInfoModalVisible, setRaceInfoModalVisible] = useState(false);
+  const [tempRaceName, setTempRaceName] = useState('');
+  const [tempSessionNumber, setTempSessionNumber] = useState('');
 
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -206,6 +209,15 @@ export default function TimerScreen() {
   const addLap = () => {
     if (!driver) return;
 
+    // Validate Race Name and Session Number are set
+    const currentTeam = teams[activeTeam];
+    if (!currentTeam.raceName || !currentTeam.sessionNumber) {
+      setTempRaceName(currentTeam.raceName || '');
+      setTempSessionNumber(currentTeam.sessionNumber || '');
+      setRaceInfoModalVisible(true);
+      return;
+    }
+
     const updatedTeams = [...teams];
     const currentDriver = updatedTeams[activeTeam].drivers[activeDriver];
 
@@ -318,6 +330,19 @@ export default function TimerScreen() {
     setSelectedLapIndex(actualIndex);
     setEditLapValue(driver!.laps[actualIndex].time.toString());
     setEditModalVisible(true);
+  };
+
+  const saveRaceInfo = () => {
+    if (!tempRaceName.trim() || !tempSessionNumber.trim()) {
+      Alert.alert('Error', 'Please enter both Race Name and Session Number');
+      return;
+    }
+
+    const updatedTeams = [...teams];
+    updatedTeams[activeTeam].raceName = tempRaceName.trim();
+    updatedTeams[activeTeam].sessionNumber = tempSessionNumber.trim();
+    setTeams(updatedTeams);
+    setRaceInfoModalVisible(false);
   };
 
   const saveEditedLap = () => {
@@ -713,6 +738,68 @@ export default function TimerScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Race Info Modal */}
+      <Modal
+        visible={raceInfoModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setRaceInfoModalVisible(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setRaceInfoModalVisible(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: theme.card }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Race Information Required</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+              Please enter race name and session number to record laps
+            </Text>
+
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              value={tempRaceName}
+              onChangeText={setTempRaceName}
+              placeholder="Race Name"
+              placeholderTextColor={theme.textSecondary}
+              autoFocus
+            />
+
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              value={tempSessionNumber}
+              onChangeText={setTempSessionNumber}
+              placeholder="Session Number"
+              placeholderTextColor={theme.textSecondary}
+            />
+
+            <View style={styles.modalButtons}>
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.textSecondary }]}
+                onPress={() => setRaceInfoModalVisible(false)}
+              >
+                <Text style={styles.modalButtonText}>Cancel</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalButton, { backgroundColor: theme.primary }]}
+                onPress={saveRaceInfo}
+              >
+                <Text style={styles.modalButtonText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -935,6 +1022,11 @@ const styles = StyleSheet.create({
   modalTitle: {
     fontSize: 20,
     fontWeight: '600',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
     marginBottom: 16,
     textAlign: 'center',
   },

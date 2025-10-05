@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Pressable, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
 import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/calculations';
 import { Session } from '../types';
+import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
+import { generatePDF } from '../utils/pdfExport';
 
 export default function StatsScreen() {
   const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues } = useApp();
@@ -13,6 +15,7 @@ export default function StatsScreen() {
 
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
 
   // Use selected session if available, otherwise use current team data
   const displayData = selectedSession || {
@@ -56,9 +59,52 @@ export default function StatsScreen() {
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
+  const handleExportPDF = async (driverId?: number) => {
+    try {
+      setIsGeneratingPDF(true);
+      const drivers = displayData.drivers || [];
+      const driver = driverId !== undefined
+        ? drivers.find(d => d.id === driverId)
+        : undefined;
+
+      await generatePDF({
+        team,
+        displayData: {
+          ...displayData,
+          drivers: drivers,
+        },
+        lapTypeValues,
+        driver,
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Failed to generate PDF. Please try again.');
+      console.error('PDF generation error:', error);
+    } finally {
+      setIsGeneratingPDF(false);
+    }
+  };
+
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
+        {/* Export All Button */}
+        <View style={styles.exportSection}>
+          <TouchableOpacity
+            style={[styles.exportButton, { backgroundColor: theme.primary }]}
+            onPress={() => handleExportPDF()}
+            disabled={isGeneratingPDF}
+          >
+            {isGeneratingPDF ? (
+              <ActivityIndicator color="#fff" size="small" />
+            ) : (
+              <>
+                <Ionicons name="share-outline" size={20} color="#fff" />
+                <Text style={styles.exportButtonText}>Export All Drivers to PDF</Text>
+              </>
+            )}
+          </TouchableOpacity>
+        </View>
+
         {/* Session Selector */}
         {team.sessionHistory.length > 0 && (
           <View style={[styles.section, { backgroundColor: theme.card }]}>
@@ -192,7 +238,17 @@ export default function StatsScreen() {
           const stats = calculateDriverStats(driver, lapTypeValues, displayData.drivers, displayData.sessionDuration);
           return (
             <View key={driver.id} style={[styles.section, { backgroundColor: theme.card }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>{driver.name}</Text>
+              <View style={styles.sectionHeader}>
+                <Text style={[styles.sectionTitle, { color: theme.text }]}>{driver.name}</Text>
+                <TouchableOpacity
+                  onPress={() => handleExportPDF(driver.id)}
+                  disabled={isGeneratingPDF}
+                  style={[styles.driverExportButton, { backgroundColor: theme.primary }]}
+                >
+                  <Ionicons name="share-outline" size={18} color="#fff" />
+                  <Text style={styles.driverExportText}>PDF</Text>
+                </TouchableOpacity>
+              </View>
 
               <View style={styles.statsGrid}>
                 <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
@@ -281,6 +337,10 @@ export default function StatsScreen() {
                   </Text>
                 </View>
               </View>
+
+              {/* Charts - Temporarily disabled due to Victory Native compatibility */}
+              {/* <LapTimesChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
+              <DeltaChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} /> */}
             </View>
           );
         })}
@@ -362,6 +422,35 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+  },
+  exportSection: {
+    marginBottom: 16,
+  },
+  exportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  exportButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  driverExportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 4,
+  },
+  driverExportText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   section: {
     borderRadius: 12,
