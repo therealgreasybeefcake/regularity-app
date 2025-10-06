@@ -10,6 +10,7 @@ import {
   Alert,
   Modal,
   Pressable,
+  Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Paths, File } from 'expo-file-system';
@@ -509,6 +510,22 @@ export default function SettingsScreen() {
           >
             <Ionicons name="trash-outline" size={20} color="#fff" />
             <Text style={styles.buttonText}>Clear All Data</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Support Development */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Support Development</Text>
+          <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: 12 }]}>
+            This app is free to use. If you find it helpful, consider supporting its development!
+          </Text>
+
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: '#FFDD00' }]}
+            onPress={() => Linking.openURL('https://buymeacoffee.com/greasybeefcake')}
+          >
+            <Ionicons name="cafe" size={20} color="#000" />
+            <Text style={[styles.buttonText, { color: '#000' }]}>Buy Me a Coffee</Text>
           </TouchableOpacity>
         </View>
 
