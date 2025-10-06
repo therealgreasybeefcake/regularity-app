@@ -152,19 +152,14 @@ export default function DriversScreen() {
   };
 
   return (
-    <ScrollView
-      style={[styles.container, { backgroundColor: theme.background }]}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.content}>
-        <TouchableOpacity
-          style={[styles.addButton, { backgroundColor: theme.primary }]}
-          onPress={openAddDriverModal}
-        >
-          <Ionicons name="add" size={24} color="#fff" />
-        </TouchableOpacity>
-
-        {team?.drivers.map((driver, index) => (
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.content}>
+          {team?.drivers.map((driver, index) => (
           <View
             key={driver.id}
             style={[styles.driverCard, { backgroundColor: theme.card }]}
@@ -270,7 +265,16 @@ export default function DriversScreen() {
             </View>
           </View>
         ))}
-      </View>
+        </View>
+      </ScrollView>
+
+      {/* Floating Add Button */}
+      <TouchableOpacity
+        style={[styles.addButton, { backgroundColor: theme.primary }]}
+        onPress={openAddDriverModal}
+      >
+        <Ionicons name="add" size={24} color="#fff" />
+      </TouchableOpacity>
 
       {/* Add Driver Modal */}
       <Modal
@@ -333,7 +337,7 @@ export default function DriversScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
-    </ScrollView>
+    </View>
   );
 }
 
@@ -341,17 +345,29 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollView: {
+    flex: 1,
+  },
+  scrollContent: {
+    paddingBottom: 80,
+  },
   content: {
     padding: 16,
   },
   addButton: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
+    position: 'absolute',
+    bottom: 24,
+    right: 24,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     alignItems: 'center',
     justifyContent: 'center',
-    alignSelf: 'flex-end',
-    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
   },
   driverCard: {
     borderRadius: 12,

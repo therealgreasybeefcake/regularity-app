@@ -85,19 +85,35 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
     onComplete();
   };
 
+  const handleBack = () => {
+    if (currentPage > 0) {
+      setCurrentPage(currentPage - 1);
+    }
+  };
+
   const page = PAGES[currentPage];
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header */}
       <View style={styles.header}>
+        {currentPage > 0 ? (
+          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
+            <Ionicons name="arrow-back" size={24} color={theme.primary} />
+            <Text style={[styles.backButtonText, { color: theme.primary }]}>Back</Text>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.backButtonPlaceholder} />
+        )}
         <Text style={[styles.pageIndicator, { color: theme.textSecondary }]}>
           {currentPage + 1} / {PAGES.length}
         </Text>
-        {currentPage < PAGES.length - 1 && (
+        {currentPage < PAGES.length - 1 ? (
           <TouchableOpacity onPress={handleSkip}>
             <Text style={[styles.skipButton, { color: theme.primary }]}>Skip</Text>
           </TouchableOpacity>
+        ) : (
+          <View style={styles.skipButtonPlaceholder} />
         )}
       </View>
 
@@ -180,6 +196,21 @@ const styles = StyleSheet.create({
   skipButton: {
     fontSize: 16,
     fontWeight: '600',
+  },
+  backButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  backButtonText: {
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  backButtonPlaceholder: {
+    width: 70,
+  },
+  skipButtonPlaceholder: {
+    width: 50,
   },
   content: {
     flex: 1,
