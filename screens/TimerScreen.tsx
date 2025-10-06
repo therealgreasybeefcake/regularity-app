@@ -49,6 +49,8 @@ export default function TimerScreen() {
   const [editLapValue, setEditLapValue] = useState('');
   const [rejectedMessage, setRejectedMessage] = useState<string | null>(null);
   const [raceInfoModalVisible, setRaceInfoModalVisible] = useState(false);
+  const [tempTeamName, setTempTeamName] = useState('');
+  const [tempDriverName, setTempDriverName] = useState('');
   const [tempRaceName, setTempRaceName] = useState('');
   const [tempSessionNumber, setTempSessionNumber] = useState('');
   const [showSessionSetup, setShowSessionSetup] = useState(false);
@@ -238,20 +240,16 @@ export default function TimerScreen() {
     // Validate all required fields are set
     const currentTeam = teams[activeTeam];
 
-    // Check team name
-    if (!currentTeam.name?.trim()) {
-      Alert.alert('Missing Information', 'Please set the Team Name in the Team tab before recording laps.');
-      return;
-    }
+    // Check if any required fields are missing
+    const missingTeamName = !currentTeam.name?.trim();
+    const missingDriverName = !driver.name?.trim();
+    const missingRaceName = !currentTeam.raceName?.trim();
+    const missingSessionNumber = !currentTeam.sessionNumber?.trim();
 
-    // Check driver name
-    if (!driver.name?.trim()) {
-      Alert.alert('Missing Information', 'Please set the Driver Name in the Team tab before recording laps.');
-      return;
-    }
-
-    // Check race name and session number
-    if (!currentTeam.raceName?.trim() || !currentTeam.sessionNumber?.trim()) {
+    if (missingTeamName || missingDriverName || missingRaceName || missingSessionNumber) {
+      // Pre-fill modal with current values
+      setTempTeamName(currentTeam.name || '');
+      setTempDriverName(driver.name || '');
       setTempRaceName(currentTeam.raceName || '');
       setTempSessionNumber(currentTeam.sessionNumber || '');
       setRaceInfoModalVisible(true);
@@ -387,12 +385,27 @@ export default function TimerScreen() {
   };
 
   const saveRaceInfo = () => {
-    if (!tempRaceName.trim() || !tempSessionNumber.trim()) {
-      Alert.alert('Missing Information', 'Please enter both Race Name and Session Number');
+    // Validate all required fields
+    if (!tempTeamName.trim()) {
+      Alert.alert('Missing Information', 'Please enter Team Name');
+      return;
+    }
+    if (!tempDriverName.trim()) {
+      Alert.alert('Missing Information', 'Please enter Driver Name');
+      return;
+    }
+    if (!tempRaceName.trim()) {
+      Alert.alert('Missing Information', 'Please enter Race Name');
+      return;
+    }
+    if (!tempSessionNumber.trim()) {
+      Alert.alert('Missing Information', 'Please enter Session Number');
       return;
     }
 
     const updatedTeams = [...teams];
+    updatedTeams[activeTeam].name = tempTeamName.trim();
+    updatedTeams[activeTeam].drivers[activeDriver].name = tempDriverName.trim();
     updatedTeams[activeTeam].raceName = tempRaceName.trim();
     updatedTeams[activeTeam].sessionNumber = tempSessionNumber.trim();
     setTeams(updatedTeams);
@@ -828,10 +841,33 @@ export default function TimerScreen() {
             style={[styles.modalContent, { backgroundColor: theme.card }]}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Race Information Required</Text>
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Missing Information</Text>
             <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-              Please enter race name and session number to record laps
+              Please enter all required fields to record laps
             </Text>
+
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              value={tempTeamName}
+              onChangeText={setTempTeamName}
+              placeholder="Team Name"
+              placeholderTextColor={theme.textSecondary}
+              autoFocus
+            />
+
+            <TextInput
+              style={[
+                styles.modalInput,
+                { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
+              ]}
+              value={tempDriverName}
+              onChangeText={setTempDriverName}
+              placeholder="Driver Name"
+              placeholderTextColor={theme.textSecondary}
+            />
 
             <TextInput
               style={[
@@ -842,7 +878,6 @@ export default function TimerScreen() {
               onChangeText={setTempRaceName}
               placeholder="Race Name"
               placeholderTextColor={theme.textSecondary}
-              autoFocus
             />
 
             <TextInput
