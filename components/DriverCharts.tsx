@@ -1,10 +1,9 @@
 import React from 'react';
-import { View, Text, StyleSheet, Dimensions } from 'react-native';
-import { VictoryChart, VictoryLine, VictoryBar, VictoryAxis, VictoryScatter } from 'victory-native';
+import { View, Text, StyleSheet } from 'react-native';
+import { CartesianChart, Line, Bar } from 'victory-native';
+import { Circle } from '@shopify/react-native-skia';
 import { Driver, LapTypeValues } from '../types';
 import { ThemeColors } from '../types';
-
-const screenWidth = Dimensions.get('window').width;
 
 interface DriverChartsProps {
   driver: Driver;
@@ -28,6 +27,13 @@ const calculateTrendLine = (data: number[]): { slope: number; intercept: number 
   return { slope, intercept };
 };
 
+interface LapData {
+  number: number;
+  time: number;
+  lapType: string;
+  [key: string]: unknown;
+}
+
 export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
   if (driver.laps.length === 0) {
     return (
@@ -40,15 +46,10 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
   const lapTimes = driver.laps.map(lap => lap.time);
   const trendLine = calculateTrendLine(lapTimes);
 
-  const chartData = driver.laps.map((lap, index) => ({
-    x: lap.number,
-    y: lap.time,
+  const chartData: LapData[] = driver.laps.map((lap, index) => ({
+    number: lap.number,
+    time: lap.time,
     lapType: lap.lapType,
-  }));
-
-  const trendData = driver.laps.map((lap, index) => ({
-    x: lap.number,
-    y: trendLine.slope * index + trendLine.intercept,
   }));
 
   // Calculate min/max for better scaling
@@ -59,71 +60,61 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
   return (
     <View style={styles.chartContainer}>
       <Text style={[styles.chartTitle, { color: theme.text }]}>Lap Times</Text>
-      <VictoryChart
-        width={screenWidth - 64}
-        height={220}
-        padding={{ top: 20, bottom: 40, left: 50, right: 20 }}
+      <CartesianChart
+        data={chartData}
+        xKey="number"
+        yKeys={["time"]}
+        axisOptions={{
+          tickCount: 5,
+          labelOffset: { x: 2, y: 4 },
+          labelColor: theme.textSecondary,
+          lineColor: theme.border,
+          formatYLabel: (value: unknown) => `${Number(value).toFixed(1)}s`,
+        }}
         domain={{ y: [minTime - padding, maxTime + padding] }}
       >
-        <VictoryAxis
-          style={{
-            axis: { stroke: theme.border },
-            tickLabels: { fill: theme.textSecondary, fontSize: 10 },
-            grid: { stroke: theme.border, strokeDasharray: '4,4', opacity: 0.3 },
-            axisLabel: { fill: theme.textSecondary, fontSize: 12, padding: 30 },
-          }}
-          label="Lap #"
-        />
-        <VictoryAxis
-          dependentAxis
-          style={{
-            axis: { stroke: theme.border },
-            tickLabels: { fill: theme.textSecondary, fontSize: 10 },
-            grid: { stroke: theme.border, strokeDasharray: '4,4', opacity: 0.3 },
-            axisLabel: { fill: theme.textSecondary, fontSize: 12, padding: 40 },
-          }}
-          label="Time (s)"
-        />
-        {/* Trend line */}
-        <VictoryLine
-          data={trendData}
-          style={{
-            data: {
-              stroke: theme.textSecondary,
-              strokeWidth: 1.5,
-              strokeDasharray: '4,4',
-              opacity: 0.6,
-            },
-          }}
-        />
-        {/* Actual lap times */}
-        <VictoryLine
-          data={chartData}
-          style={{
-            data: { stroke: theme.primary, strokeWidth: 2 },
-          }}
-        />
-        <VictoryScatter
-          data={chartData}
-          size={4}
-          style={{
-            data: {
-              fill: ({ datum }) => {
-                switch (datum.lapType) {
-                  case 'bonus': return theme.bonus;
-                  case 'broken': return theme.broken;
-                  case 'changeover': return theme.changeover;
-                  case 'safety': return theme.safety;
-                  default: return theme.primary;
-                }
-              },
-            },
-          }}
-        />
-      </VictoryChart>
+        {({ points }) => (
+          <>
+            {/* Actual lap times line */}
+            <Line
+              points={points.time}
+              color={theme.primary}
+              strokeWidth={2}
+            />
+            {/* Scatter points with lap type colors */}
+            {points.time.map((point, index) => {
+              if (typeof point.y !== 'number') return null;
+              const lapType = chartData[index]?.lapType;
+              let color = theme.primary;
+              switch (lapType) {
+                case 'bonus': color = theme.bonus; break;
+                case 'broken': color = theme.broken; break;
+                case 'changeover': color = theme.changeover; break;
+                case 'safety': color = theme.safety; break;
+              }
+              return (
+                <Circle
+                  key={index}
+                  cx={point.x}
+                  cy={point.y}
+                  r={4}
+                  color={color}
+                />
+              );
+            })}
+          </>
+        )}
+      </CartesianChart>
     </View>
   );
 };
+
+interface DeltaData {
+  number: number;
+  delta: number;
+  lapType: string;
+  [key: string]: unknown;
+}
 
 export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues, theme }) => {
   // Filter out changeover and safety laps for delta chart
@@ -140,17 +131,11 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues,
   }
 
   const deltas = nonChangeoverLaps.map(lap => lap.delta);
-  const trendLine = calculateTrendLine(deltas);
 
-  const chartData = nonChangeoverLaps.map((lap, index) => ({
-    x: lap.number,
-    y: lap.delta,
+  const chartData: DeltaData[] = nonChangeoverLaps.map((lap) => ({
+    number: lap.number,
+    delta: lap.delta,
     lapType: lap.lapType,
-  }));
-
-  const trendData = nonChangeoverLaps.map((lap, index) => ({
-    x: lap.number,
-    y: trendLine.slope * index + trendLine.intercept,
   }));
 
   // Calculate appropriate y-axis range
@@ -160,68 +145,42 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues,
   return (
     <View style={styles.chartContainer}>
       <Text style={[styles.chartTitle, { color: theme.text }]}>Delta from Target</Text>
-      <VictoryChart
-        width={screenWidth - 64}
-        height={220}
-        padding={{ top: 20, bottom: 40, left: 50, right: 20 }}
+      <CartesianChart
+        data={chartData}
+        xKey="number"
+        yKeys={["delta"]}
+        axisOptions={{
+          tickCount: 5,
+          labelOffset: { x: 2, y: 4 },
+          labelColor: theme.textSecondary,
+          lineColor: theme.border,
+          formatYLabel: (value: unknown) => `${Number(value).toFixed(1)}s`,
+        }}
         domain={{ y: [-yMax, yMax] }}
       >
-        <VictoryAxis
-          style={{
-            axis: { stroke: theme.border },
-            tickLabels: { fill: theme.textSecondary, fontSize: 10 },
-            grid: { stroke: theme.border, strokeDasharray: '4,4', opacity: 0.3 },
-            axisLabel: { fill: theme.textSecondary, fontSize: 12, padding: 30 },
-          }}
-          label="Lap #"
-        />
-        <VictoryAxis
-          dependentAxis
-          style={{
-            axis: { stroke: theme.border },
-            tickLabels: { fill: theme.textSecondary, fontSize: 10 },
-            grid: { stroke: theme.border, strokeDasharray: '4,4', opacity: 0.3 },
-            axisLabel: { fill: theme.textSecondary, fontSize: 12, padding: 40 },
-          }}
-          label="Delta (s)"
-        />
-        {/* Zero line */}
-        <VictoryLine
-          data={[
-            { x: Math.min(...chartData.map(d => d.x)), y: 0 },
-            { x: Math.max(...chartData.map(d => d.x)), y: 0 },
-          ]}
-          style={{
-            data: { stroke: theme.textSecondary, strokeWidth: 1, strokeDasharray: '2,2' },
-          }}
-        />
-        {/* Trend line */}
-        <VictoryLine
-          data={trendData}
-          style={{
-            data: {
-              stroke: theme.textSecondary,
-              strokeWidth: 1.5,
-              strokeDasharray: '4,4',
-              opacity: 0.6,
-            },
-          }}
-        />
-        {/* Delta bars */}
-        <VictoryBar
-          data={chartData}
-          style={{
-            data: {
-              fill: ({ datum }) => {
-                if (datum.lapType === 'bonus') return theme.bonus;
-                if (datum.lapType === 'broken') return theme.broken;
-                return datum.y >= 0 ? theme.warning : theme.primary;
-              },
-            },
-          }}
-          barWidth={12}
-        />
-      </VictoryChart>
+        {({ points }) => (
+          <>
+            {/* Delta bars */}
+            {points.delta.map((point, index) => {
+              if (typeof point.y !== 'number') return null;
+              const lapType = chartData[index]?.lapType;
+              let barColor = point.y >= 0 ? theme.warning : theme.primary;
+              if (lapType === 'bonus') barColor = theme.bonus;
+              if (lapType === 'broken') barColor = theme.broken;
+
+              return (
+                <Bar
+                  key={index}
+                  points={[point]}
+                  chartBounds={{ left: 0, right: 300, top: 0, bottom: 200 }}
+                  barWidth={12}
+                  color={barColor}
+                />
+              );
+            })}
+          </>
+        )}
+      </CartesianChart>
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendColor, { backgroundColor: theme.bonus }]} />
