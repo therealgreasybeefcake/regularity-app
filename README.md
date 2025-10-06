@@ -29,7 +29,8 @@ A mobile-first Expo React Native version of the Regularity Race Timer web applic
 
 ### Data Management
 - **Auto-save** - All data persisted to AsyncStorage
-- **Import/Export** - JSON backup and restore
+- **Import/Export** - JSON and CSV backup and restore
+- **PDF Export** - Generate printable session reports
 - **Clear Data** - Reset to defaults
 
 ## Installation
@@ -135,7 +136,7 @@ regularity-app/
   - Set allowed range (±seconds from target)
   - Configure safety car threshold (seconds over target)
 - **Lap Type Values**: Customize point values
-- **Data Management**: Import/export, clear all
+- **Data Management**: Import/export (JSON/CSV), PDF reports, clear all
 
 ## Advanced Features
 
@@ -209,33 +210,49 @@ All data is automatically saved to AsyncStorage:
 
 ## Technologies Used
 
-- **Expo SDK 52** - React Native framework with new architecture
+- **Expo SDK 54** - React Native framework with new architecture
+- **React 19** - Latest React features
+- **React Native 0.81** - Mobile platform
 - **Expo Dev Client** - Custom development builds for native modules
-- **React Navigation** - Tab navigation
+- **React Navigation** - Tab and stack navigation
 - **AsyncStorage** - Local data persistence
 - **Expo Audio** - Audio playback for warnings
 - **Expo File System** - Import/export functionality
+- **Expo Print** - PDF generation for session reports
+- **Expo Sharing** - Share exported files
 - **React Native Volume Manager** - Hardware volume button controls
 - **React Native Gesture Handler** - Swipe-to-delete interactions
+- **Victory Native** - Charts and data visualization
 - **TypeScript** - Full type safety
 
 ## Key Dependencies
 
 ```json
 {
-  "expo": "~52.0.29",
-  "expo-dev-client": "~5.0.13",
-  "react-native-volume-manager": "^1.12.1",
-  "react-native-gesture-handler": "~2.20.2",
-  "expo-audio": "~15.0.3",
-  "@react-navigation/native": "^7.0.17",
-  "@react-native-async-storage/async-storage": "2.1.0"
+  "expo": "~54.0.12",
+  "react": "19.1.0",
+  "react-native": "0.81.4",
+  "expo-dev-client": "^6.0.13",
+  "react-native-volume-manager": "^2.0.8",
+  "react-native-gesture-handler": "^2.28.0",
+  "expo-audio": "^1.0.13",
+  "expo-print": "^15.0.7",
+  "victory-native": "^41.20.1",
+  "@react-navigation/native": "^7.1.17",
+  "@react-native-async-storage/async-storage": "^2.2.0"
 }
 ```
 
 ## Recent Updates
 
-### Version 1.1 (Current)
+### Version 1.2 (Current)
+- ✅ PDF export functionality for session reports
+- ✅ CSV export support
+- ✅ Charts and data visualization with Victory Native
+- ✅ Updated to Expo SDK 54 and React 19
+- ✅ Enhanced file sharing capabilities
+
+### Version 1.1
 - ✅ Volume button lap recording (both up and down)
 - ✅ Lap recording guard with safety car support
 - ✅ Flexible time input (seconds or MM:SS.mmm)
@@ -248,11 +265,41 @@ All data is automatically saved to AsyncStorage:
 ## Future Enhancements
 
 Planned features for future versions:
-- PDF export functionality
-- Charts visualization (Victory Native)
 - Session history and replay
 - Bluetooth lap counter integration
 - Team comparison analytics
+- Live session sharing
+
+## Privacy Policy
+
+**Your privacy is important to us.** Regularity Race Timer is designed with privacy at its core:
+
+### No Data Collection
+- **Zero tracking**: We don't collect, store, or transmit any personal data
+- **No analytics**: No usage tracking or behavioral monitoring
+- **No accounts**: No registration or login required
+- **No third-party services**: No advertising networks or analytics platforms
+
+### Local Storage Only
+All your data stays on your device:
+- Team information and driver names
+- Lap times and session history
+- App settings and preferences
+
+### You Control Your Data
+- **Export**: Export your data in JSON or CSV format
+- **Share**: You decide where exported data goes
+- **Delete**: Clear all data anytime from Settings or by uninstalling
+
+### Permissions
+The app only requests permissions needed for core functionality:
+- **File System Access**: For importing/exporting race data
+- **Volume Button Controls**: Optional feature to record laps using hardware buttons
+
+### Support Development
+This app is completely free with no ads or subscriptions. If you find it valuable, consider supporting development: [Buy Me a Coffee](https://buymeacoffee.com/greasybeefcake)
+
+For the complete privacy policy, see [PRIVACY_POLICY.MD](PRIVACY_POLICY.MD).
 
 ## License
 
