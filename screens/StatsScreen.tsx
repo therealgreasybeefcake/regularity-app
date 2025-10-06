@@ -91,24 +91,6 @@ export default function StatsScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
-        {/* Export All Button */}
-        <View style={styles.exportSection}>
-          <TouchableOpacity
-            style={[styles.exportButton, { backgroundColor: theme.primary }]}
-            onPress={() => handleExportPDF()}
-            disabled={isGeneratingPDF}
-          >
-            {isGeneratingPDF ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Ionicons name="share-outline" size={20} color="#fff" />
-                <Text style={styles.exportButtonText}>Export All Drivers to PDF</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-
         {/* Session Selector */}
         {team.sessionHistory.length > 0 && (
           <View style={[styles.section, { backgroundColor: theme.card }]}>
@@ -230,7 +212,23 @@ export default function StatsScreen() {
 
         {/* Team Stats */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Team Statistics</Text>
+          <View style={styles.sectionHeader}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Team Statistics</Text>
+            <TouchableOpacity
+              onPress={() => handleExportPDF()}
+              disabled={isGeneratingPDF}
+              style={[styles.teamExportButton, { backgroundColor: theme.primary }]}
+            >
+              {isGeneratingPDF ? (
+                <ActivityIndicator color="#fff" size="small" />
+              ) : (
+                <>
+                  <Ionicons name="stats-chart" size={18} color="#fff" />
+                  <Text style={styles.teamExportText}>Team PDF</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </View>
           <View style={[styles.statCard, { borderBottomColor: theme.border }]}>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Goal Laps</Text>
             <Text style={[styles.statValue, { color: theme.text }]}>
@@ -441,20 +439,17 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
   },
-  exportSection: {
-    marginBottom: 16,
-  },
-  exportButton: {
+  teamExportButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    padding: 14,
-    borderRadius: 12,
-    gap: 8,
+    padding: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
   },
-  exportButtonText: {
+  teamExportText: {
     color: '#fff',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
   },
   driverExportButton: {

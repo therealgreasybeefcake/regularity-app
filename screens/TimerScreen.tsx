@@ -470,8 +470,10 @@ export default function TimerScreen() {
         {
           text: 'Cancel',
           style: 'cancel',
+          onPress: () => {},
         },
-      ]
+      ],
+      { cancelable: true }
     );
   };
 
@@ -694,9 +696,12 @@ export default function TimerScreen() {
                     <TouchableOpacity
                       style={styles.deleteAction}
                       onPress={() => deleteLap(index)}
+                      activeOpacity={0.7}
                     >
-                      <Ionicons name="trash-outline" size={24} color="#fff" />
-                      <Text style={styles.deleteActionText}>Delete</Text>
+                      <View style={styles.deleteIconContainer}>
+                        <Ionicons name="trash" size={26} color="#fff" />
+                      </View>
+                      <Text style={styles.deleteActionText}>DELETE</Text>
                     </TouchableOpacity>
                   </View>
                 );
@@ -1141,22 +1146,31 @@ const styles = StyleSheet.create({
   },
   swipeActions: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingLeft: 12,
   },
   deleteAction: {
-    backgroundColor: '#ef4444',
+    backgroundColor: '#dc2626',
     justifyContent: 'center',
     alignItems: 'center',
-    width: 90,
-    height: '100%',
-    borderRadius: 8,
-    marginLeft: 8,
+    width: 85,
+    height: 85,
+    borderRadius: 16,
+    shadowColor: '#dc2626',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.4,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  deleteIconContainer: {
+    marginBottom: 2,
   },
   deleteActionText: {
     color: '#fff',
-    fontSize: 13,
-    fontWeight: '700',
-    marginTop: 6,
-    letterSpacing: 0.5,
+    fontSize: 11,
+    fontWeight: '800',
+    marginTop: 2,
+    letterSpacing: 0.8,
   },
   lapNumber: {
     fontSize: 16,
