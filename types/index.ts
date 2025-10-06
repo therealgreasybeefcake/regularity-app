@@ -47,6 +47,7 @@ export interface AudioSettings {
   lapGuardSafetyCarThreshold: number; // seconds over target to automatically allow as safety car
   timeFormat: 'seconds' | 'mmssmmm'; // display format for times
   volumeButtonsEnabled: boolean; // enable volume buttons to record laps
+  showPenaltyLaps: boolean; // show/hide penalty laps field in driver screen
 }
 
 export interface LapTypeValues {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,12 +9,21 @@ import TimerScreen from '../screens/TimerScreen';
 import DriversScreen from '../screens/DriversScreen';
 import StatsScreen from '../screens/StatsScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import WelcomeScreen from '../screens/WelcomeScreen';
 
 const Tab = createBottomTabNavigator();
 
 export default function AppNavigator() {
-  const { isDarkMode } = useApp();
+  const { isDarkMode, hasSeenWelcome, setHasSeenWelcome } = useApp();
   const theme = isDarkMode ? darkTheme : lightTheme;
+
+  const handleWelcomeComplete = () => {
+    setHasSeenWelcome(true);
+  };
+
+  if (!hasSeenWelcome) {
+    return <WelcomeScreen onComplete={handleWelcomeComplete} />;
+  }
 
   return (
     <NavigationContainer>
@@ -41,11 +50,7 @@ export default function AppNavigator() {
             backgroundColor: theme.card,
             borderTopColor: theme.border,
           },
-          headerStyle: {
-            backgroundColor: theme.card,
-          },
-          headerTintColor: theme.text,
-          headerShadowVisible: false,
+          headerShown: false,
         })}
       >
         <Tab.Screen name="Timer" component={TimerScreen} />

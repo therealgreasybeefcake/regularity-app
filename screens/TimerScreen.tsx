@@ -58,7 +58,7 @@ export default function TimerScreen() {
   const afterStartBeepPlayedRef = useRef(false);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const initialVolumeRef = useRef<number | null>(null);
-  const addLapRef = useRef<() => void>();
+  const addLapRef = useRef<(() => void) | undefined>(undefined);
 
   // Audio player for beeps
   const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
@@ -516,6 +516,9 @@ export default function TimerScreen() {
   return (
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
+        {/* Title */}
+        <Text style={[styles.screenTitle, { color: theme.text }]}>Regularity Race Timer</Text>
+
         {/* Rejected Lap Message */}
         {rejectedMessage && (
           <View style={[styles.rejectedCard, { backgroundColor: theme.broken }]}>
@@ -614,7 +617,7 @@ export default function TimerScreen() {
               styles.input,
               { backgroundColor: theme.card, color: theme.text, borderColor: theme.border },
             ]}
-            placeholder="Enter lap time (MM:SS.mmm)"
+            placeholder="Manually enter lap time (MM:SS.mmm)"
             placeholderTextColor={theme.textSecondary}
             value={lapInput}
             onChangeText={setLapInput}
@@ -837,6 +840,14 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+  },
+  screenTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    textAlign: 'left',
+    marginBottom: 16,
+    marginTop: 32,
+    letterSpacing: 0.5,
   },
   rejectedCard: {
     flexDirection: 'row',

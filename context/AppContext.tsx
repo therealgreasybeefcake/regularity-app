@@ -20,6 +20,8 @@ interface AppContextType {
   lapTypeValues: LapTypeValues;
   setLapTypeValues: (values: LapTypeValues) => void;
   isLoading: boolean;
+  hasSeenWelcome: boolean;
+  setHasSeenWelcome: (value: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -32,10 +34,10 @@ const DEFAULT_TEAMS: Team[] = [
     sessionNumber: '',
     sessionDuration: 120,
     drivers: [
-      { id: 1, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
-      { id: 2, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
-      { id: 3, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
-      { id: 4, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
+      { id: 1, name: 'Driver A', targetTime: 105, laps: [], penaltyLaps: 0 },
+      { id: 2, name: 'Driver B', targetTime: 105, laps: [], penaltyLaps: 0 },
+      { id: 3, name: 'Driver C', targetTime: 105, laps: [], penaltyLaps: 0 },
+      { id: 4, name: 'Driver D', targetTime: 105, laps: [], penaltyLaps: 0 },
     ],
     sessionHistory: [],
   },
@@ -52,6 +54,7 @@ const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   lapGuardSafetyCarThreshold: 30,
   timeFormat: 'seconds',
   volumeButtonsEnabled: false,
+  showPenaltyLaps: true,
 };
 
 const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
@@ -71,6 +74,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(DEFAULT_AUDIO_SETTINGS);
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
 
   // Calculate isDarkMode based on theme mode and system preference
   const isDarkMode = themeMode === 'auto'
@@ -81,7 +85,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [savedTeams, savedActiveTeam, savedActiveDriver, savedThemeMode, savedAudio, savedLapValues] =
+        const [savedTeams, savedActiveTeam, savedActiveDriver, savedThemeMode, savedAudio, savedLapValues, savedWelcome] =
           await Promise.all([
             AsyncStorage.getItem('blindFreddyRaceTeams'),
             AsyncStorage.getItem('blindFreddyActiveTeam'),
@@ -89,14 +93,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             AsyncStorage.getItem('themeMode'),
             AsyncStorage.getItem('audioSettings'),
             AsyncStorage.getItem('lapTypeValues'),
+            AsyncStorage.getItem('hasSeenWelcome'),
           ]);
 
         if (savedTeams) {
           const parsedTeams = JSON.parse(savedTeams);
-          // Migration: add sessionHistory if it doesn't exist
+          // Migration: add sessionHistory if it doesn't exist and fix empty driver names
           const migratedTeams = parsedTeams.map((team: Team) => ({
             ...team,
             sessionHistory: team.sessionHistory || [],
+            drivers: team.drivers.map((driver, index) => ({
+              ...driver,
+              name: driver.name || `Driver ${String.fromCharCode(65 + index)}`,
+            })),
           }));
           setTeams(migratedTeams);
         }
@@ -113,11 +122,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (parsed.lapGuardSafetyCarThreshold === undefined) parsed.lapGuardSafetyCarThreshold = 30;
           if (parsed.timeFormat === undefined) parsed.timeFormat = 'seconds';
           if (parsed.volumeButtonsEnabled === undefined) parsed.volumeButtonsEnabled = false;
+          if (parsed.showPenaltyLaps === undefined) parsed.showPenaltyLaps = true;
           // Remove old backgroundRecordingEnabled if it exists
           delete parsed.backgroundRecordingEnabled;
           setAudioSettings(parsed);
         }
         if (savedLapValues) setLapTypeValues(JSON.parse(savedLapValues));
+        if (savedWelcome !== null) setHasSeenWelcome(JSON.parse(savedWelcome));
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
@@ -127,6 +138,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
     loadData();
   }, []);
+
+  // Fix empty driver names on every render (defensive)
+  useEffect(() => {
+    if (!isLoading) {
+      const needsFix = teams.some(team =>
+        team.drivers.some(driver => !driver.name || driver.name.trim() === '')
+      );
+
+      if (needsFix) {
+        const fixedTeams = teams.map(team => ({
+          ...team,
+          drivers: team.drivers.map((driver, index) => ({
+            ...driver,
+            name: driver.name && driver.name.trim() !== ''
+              ? driver.name
+              : `Driver ${String.fromCharCode(65 + index)}`,
+          })),
+        }));
+        setTeams(fixedTeams);
+      }
+    }
+  }, [isLoading]);
 
   // Save teams to AsyncStorage
   useEffect(() => {
@@ -162,6 +195,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [lapTypeValues, isLoading]);
 
+  useEffect(() => {
+    if (!isLoading) {
+      AsyncStorage.setItem('hasSeenWelcome', JSON.stringify(hasSeenWelcome));
+    }
+  }, [hasSeenWelcome, isLoading]);
+
   return (
     <AppContext.Provider
       value={{
@@ -179,6 +218,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         lapTypeValues,
         setLapTypeValues,
         isLoading,
+        hasSeenWelcome,
+        setHasSeenWelcome,
       }}
     >
       {children}

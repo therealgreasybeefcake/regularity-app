@@ -34,14 +34,17 @@ export default function StatsScreen() {
   const [editedTeamName, setEditedTeamName] = useState(team.name);
   const [editedRaceName, setEditedRaceName] = useState(team.raceName || '');
   const [editedSessionNumber, setEditedSessionNumber] = useState(team.sessionNumber || '');
+  const [editedSessionDuration, setEditedSessionDuration] = useState(team.sessionDuration.toString());
 
   const handleSave = () => {
+    const duration = parseInt(editedSessionDuration) || 120;
     const updatedTeams = [...teams];
     updatedTeams[activeTeam] = {
       ...team,
       name: editedTeamName,
       raceName: editedRaceName,
       sessionNumber: editedSessionNumber,
+      sessionDuration: duration,
     };
     setTeams(updatedTeams);
     setIsEditing(false);
@@ -51,6 +54,7 @@ export default function StatsScreen() {
     setEditedTeamName(team.name);
     setEditedRaceName(team.raceName || '');
     setEditedSessionNumber(team.sessionNumber || '');
+    setEditedSessionDuration(team.sessionDuration.toString());
     setIsEditing(false);
   };
 
@@ -204,9 +208,23 @@ export default function StatsScreen() {
           </View>
           <View style={styles.infoRow}>
             <Text style={[styles.label, { color: theme.textSecondary }]}>Duration</Text>
-            <Text style={[styles.value, { color: theme.text }]}>
-              {displayData.sessionDuration} min
-            </Text>
+            {isEditing && !selectedSession ? (
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput
+                  style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background, minWidth: 80 }]}
+                  value={editedSessionDuration}
+                  onChangeText={setEditedSessionDuration}
+                  placeholder="120"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="number-pad"
+                />
+                <Text style={[styles.value, { color: theme.textSecondary, marginLeft: 8 }]}>min</Text>
+              </View>
+            ) : (
+              <Text style={[styles.value, { color: theme.text }]}>
+                {displayData.sessionDuration} min
+              </Text>
+            )}
           </View>
         </View>
 

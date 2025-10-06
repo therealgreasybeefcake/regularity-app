@@ -157,15 +157,12 @@ export default function DriversScreen() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.content}>
-        <View style={styles.header}>
-          <Text style={[styles.title, { color: theme.text }]}>Drivers</Text>
-          <TouchableOpacity
-            style={[styles.addButton, { backgroundColor: theme.primary }]}
-            onPress={openAddDriverModal}
-          >
-            <Ionicons name="add" size={24} color="#fff" />
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          style={[styles.addButton, { backgroundColor: theme.primary }]}
+          onPress={openAddDriverModal}
+        >
+          <Ionicons name="add" size={24} color="#fff" />
+        </TouchableOpacity>
 
         {team?.drivers.map((driver, index) => (
           <View
@@ -230,15 +227,17 @@ export default function DriversScreen() {
                 )}
               </View>
 
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Penalty Laps</Text>
-                <TextInput
-                  style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-                  value={driver.penaltyLaps.toString()}
-                  onChangeText={(text) => updateDriverField(index, 'penaltyLaps', parseInt(text) || 0)}
-                  keyboardType="number-pad"
-                />
-              </View>
+              {audioSettings.showPenaltyLaps && (
+                <View style={styles.infoRow}>
+                  <Text style={[styles.label, { color: theme.textSecondary }]}>Penalty Laps</Text>
+                  <TextInput
+                    style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                    value={driver.penaltyLaps.toString()}
+                    onChangeText={(text) => updateDriverField(index, 'penaltyLaps', parseInt(text) || 0)}
+                    keyboardType="number-pad"
+                  />
+                </View>
+              )}
 
               <View style={styles.statsRow}>
                 <View style={styles.stat}>
@@ -345,22 +344,14 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
   },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 16,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-  },
   addButton: {
     width: 40,
     height: 40,
     borderRadius: 20,
     alignItems: 'center',
     justifyContent: 'center',
+    alignSelf: 'flex-end',
+    marginBottom: 16,
   },
   driverCard: {
     borderRadius: 12,

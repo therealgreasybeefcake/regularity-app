@@ -8,9 +8,11 @@ import {
   Switch,
   TextInput,
   Alert,
+  Modal,
+  Pressable,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Paths } from 'expo-file-system';
+import { Paths, File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useApp, ThemeMode } from '../context/AppContext';
@@ -27,27 +29,82 @@ export default function SettingsScreen() {
     setAudioSettings,
     lapTypeValues,
     setLapTypeValues,
+    setHasSeenWelcome,
   } = useApp();
 
   const theme = isDarkMode ? darkTheme : lightTheme;
+  const [showExportModal, setShowExportModal] = useState(false);
 
-  const exportData = async () => {
+  const convertToCSV = (teams: any[]) => {
+    const rows: string[] = [];
+
+    // Header
+    rows.push('Team,Race Name,Session,Driver,Lap #,Lap Type,Time,Delta,Target Time');
+
+    // Data rows
+    teams.forEach(team => {
+      team.drivers.forEach((driver: any) => {
+        driver.laps.forEach((lap: any) => {
+          rows.push([
+            team.name || 'Unnamed',
+            team.raceName || '',
+            team.sessionNumber || '',
+            driver.name || '',
+            lap.number,
+            lap.lapType,
+            lap.time,
+            lap.delta,
+            driver.targetTime,
+          ].join(','));
+        });
+      });
+    });
+
+    return rows.join('\n');
+  };
+
+  const exportData = async (format: 'json' | 'csv') => {
     try {
       const data = {
         teams,
         exportDate: new Date().toISOString(),
       };
 
-      const file = Paths.document.createFile('regularity-race-data.json', 'application/json');
-      file.write(JSON.stringify(data, null, 2), {});
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const fileName = `regularity-race-data-${timestamp}.${format}`;
+      const file = new File(Paths.cache, fileName);
+
+      let content: string;
+      let mimeType: string;
+
+      if (format === 'json') {
+        content = JSON.stringify(data, null, 2);
+        mimeType = 'application/json';
+      } else {
+        content = convertToCSV(teams);
+        mimeType = 'text/csv';
+      }
+
+      // Write content to file using writable stream
+      const writer = file.writableStream().getWriter();
+      const encoder = new TextEncoder();
+      await writer.write(encoder.encode(content));
+      await writer.close();
 
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri);
+        await Sharing.shareAsync(file.uri, {
+          mimeType,
+          dialogTitle: 'Export Race Data',
+          UTI: format === 'json' ? 'public.json' : 'public.comma-separated-values-text',
+        });
       } else {
-        Alert.alert('Success', 'Data exported to: ' + file.uri);
+        Alert.alert('Success', `Data exported to: ${fileName}`);
       }
+
+      setShowExportModal(false);
     } catch (error) {
-      Alert.alert('Error', 'Failed to export data');
+      console.error('Export error:', error);
+      Alert.alert('Error', 'Failed to export data: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -103,10 +160,10 @@ export default function SettingsScreen() {
                 sessionNumber: '',
                 sessionDuration: 120,
                 drivers: [
-                  { id: 1, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
-                  { id: 2, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
-                  { id: 3, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
-                  { id: 4, name: '', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 1, name: 'Driver A', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 2, name: 'Driver B', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 3, name: 'Driver C', targetTime: 105, laps: [], penaltyLaps: 0 },
+                  { id: 4, name: 'Driver D', targetTime: 105, laps: [], penaltyLaps: 0 },
                 ],
                 sessionHistory: [],
               },
@@ -282,6 +339,27 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Driver Display Settings */}
+        <View style={[styles.section, { backgroundColor: theme.card }]}>
+          <Text style={[styles.sectionTitle, { color: theme.text }]}>Driver Display Settings</Text>
+
+          <View style={styles.settingRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Show Penalty Laps</Text>
+              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                Display penalty laps field in driver screen
+              </Text>
+            </View>
+            <Switch
+              value={audioSettings.showPenaltyLaps}
+              onValueChange={(value) =>
+                setAudioSettings({ ...audioSettings, showPenaltyLaps: value })
+              }
+              trackColor={{ false: theme.border, true: theme.primary }}
+            />
+          </View>
+        </View>
+
         {/* Time Display Format */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Time Display Format</Text>
@@ -411,7 +489,7 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={exportData}
+            onPress={() => setShowExportModal(true)}
           >
             <Ionicons name="download-outline" size={20} color="#fff" />
             <Text style={styles.buttonText}>Export Data</Text>
@@ -437,12 +515,81 @@ export default function SettingsScreen() {
         {/* App Info */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
+
+          <TouchableOpacity
+            style={[styles.button, { backgroundColor: theme.primary }]}
+            onPress={() => setHasSeenWelcome(false)}
+          >
+            <Ionicons name="help-circle-outline" size={20} color="#fff" />
+            <Text style={styles.buttonText}>Show Welcome Guide</Text>
+          </TouchableOpacity>
+
           <Text style={[styles.infoText, { color: theme.textSecondary }]}>
             Regularity Race Timer
           </Text>
           <Text style={[styles.infoText, { color: theme.textSecondary }]}>Version 1.0.0</Text>
         </View>
       </View>
+
+      {/* Export Format Modal */}
+      <Modal
+        visible={showExportModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowExportModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowExportModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: theme.card }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Export Format</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+              Choose the format for your data export
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+              onPress={() => exportData('json')}
+            >
+              <View style={styles.formatButtonContent}>
+                <Ionicons name="code-outline" size={32} color={theme.primary} />
+                <View style={styles.formatButtonText}>
+                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>JSON</Text>
+                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                    Complete data structure for backup and import
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+              onPress={() => exportData('csv')}
+            >
+              <View style={styles.formatButtonContent}>
+                <Ionicons name="grid-outline" size={32} color={theme.primary} />
+                <View style={styles.formatButtonText}>
+                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>CSV</Text>
+                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                    Spreadsheet format for analysis
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary }]}
+              onPress={() => setShowExportModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -526,5 +673,65 @@ const styles = StyleSheet.create({
   infoText: {
     fontSize: 14,
     marginBottom: 8,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    width: '85%',
+    borderRadius: 16,
+    padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  modalTitle: {
+    fontSize: 22,
+    fontWeight: '600',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  modalSubtitle: {
+    fontSize: 14,
+    marginBottom: 24,
+    textAlign: 'center',
+  },
+  formatButton: {
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 2,
+  },
+  formatButtonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  formatButtonText: {
+    flex: 1,
+  },
+  formatButtonTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  formatButtonDescription: {
+    fontSize: 13,
+  },
+  modalCancelButton: {
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  modalCancelText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
