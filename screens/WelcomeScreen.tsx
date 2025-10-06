@@ -25,7 +25,7 @@ const PAGES = [
   {
     icon: 'volume-high' as const,
     title: 'Volume Button Recording',
-    description: 'Enable volume buttons in Settings to record laps hands-free while keeping the Timer screen visible.',
+    description: 'Enable volume buttons in Settings to record laps while keeping your eyes on the track.',
     features: [
       'Press volume up/down to record laps',
       'Works when Timer screen is active',
@@ -39,7 +39,7 @@ const PAGES = [
     description: 'Get audio alerts to help maintain consistent lap times.',
     features: [
       'Warning before target time approaches',
-      'Alert after lap start',
+      'Alert after lap start (for pit-wall signals)',
       'Configurable timing offsets',
       'Enable/disable in Settings',
     ],
