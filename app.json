@@ -19,11 +19,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.regularity.racetimer",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false,
-        "UIBackgroundModes": [
-          "fetch",
-          "remote-notification"
-        ]
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
@@ -32,37 +28,15 @@
         "backgroundColor": "#1e40af"
       },
       "package": "com.regularity.racetimer",
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false,
       "permissions": [
         "WAKE_LOCK",
-        "MODIFY_AUDIO_SETTINGS",
-        "POST_NOTIFICATIONS",
-        "FOREGROUND_SERVICE",
-        "FOREGROUND_SERVICE_DATA_SYNC"
+        "MODIFY_AUDIO_SETTINGS"
       ],
-      "versionCode": 1,
-      "service": {
-        "foregroundServiceType": "dataSync"
-      }
+      "versionCode": 1
     },
     "plugins": [
-      "expo-dev-client",
-      [
-        "expo-notifications",
-        {
-          "icon": "./assets/notification-icon.png",
-          "color": "#1e40af",
-          "sounds": []
-        }
-      ]
+      "expo-dev-client"
     ],
-    "notification": {
-      "icon": "./assets/notification-icon.png",
-      "color": "#1e40af",
-      "androidMode": "default",
-      "androidCollapsedTitle": "Regularity Race Timer"
-    },
     "web": {
       "favicon": "./assets/favicon.png"
     },
