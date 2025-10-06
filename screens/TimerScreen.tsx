@@ -50,6 +50,11 @@ export default function TimerScreen() {
   const [raceInfoModalVisible, setRaceInfoModalVisible] = useState(false);
   const [tempRaceName, setTempRaceName] = useState('');
   const [tempSessionNumber, setTempSessionNumber] = useState('');
+  const [showSessionSetup, setShowSessionSetup] = useState(false);
+  const [setupTeamName, setSetupTeamName] = useState('');
+  const [setupRaceName, setSetupRaceName] = useState('');
+  const [setupSessionNumber, setSetupSessionNumber] = useState('');
+  const [setupSessionDuration, setSetupSessionDuration] = useState('120');
 
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -66,6 +71,18 @@ export default function TimerScreen() {
   // Initialize VolumeButtonService
   useEffect(() => {
     VolumeButtonService.initialize();
+  }, []);
+
+  // Check if session setup is needed on mount
+  useEffect(() => {
+    const needsSetup = !team.name && !team.raceName && !team.sessionNumber && driver.laps.length === 0;
+    if (needsSetup) {
+      setShowSessionSetup(true);
+      setSetupTeamName(team.name || '');
+      setSetupRaceName(team.raceName || '');
+      setSetupSessionNumber(team.sessionNumber || '');
+      setSetupSessionDuration(team.sessionDuration.toString());
+    }
   }, []);
 
   useEffect(() => {
@@ -323,6 +340,20 @@ export default function TimerScreen() {
     if (intervalRef.current) clearInterval(intervalRef.current);
   };
 
+  const handleStartSession = () => {
+    const duration = parseInt(setupSessionDuration) || 120;
+    const updatedTeams = [...teams];
+    updatedTeams[activeTeam] = {
+      ...team,
+      name: setupTeamName,
+      raceName: setupRaceName,
+      sessionNumber: setupSessionNumber,
+      sessionDuration: duration,
+    };
+    setTeams(updatedTeams);
+    setShowSessionSetup(false);
+  };
+
   const deleteLap = (lapIndex: number) => {
     const actualIndex = driver!.laps.length - 1 - lapIndex;
     Alert.alert(
@@ -517,7 +548,13 @@ export default function TimerScreen() {
     <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
       <View style={styles.content}>
         {/* Title */}
-        <Text style={[styles.screenTitle, { color: theme.text }]}>Regularity Race Timer</Text>
+        <View style={styles.titleContainer}>
+          <View style={styles.titleRow}>
+            <Ionicons name="timer" size={28} color={theme.primary} />
+            <Text style={[styles.screenTitle, { color: theme.text }]}>Regularity Race Timer</Text>
+          </View>
+          <View style={[styles.titleUnderline, { backgroundColor: theme.primary }]} />
+        </View>
 
         {/* Rejected Lap Message */}
         {rejectedMessage && (
@@ -830,6 +867,100 @@ export default function TimerScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Session Setup Modal */}
+      <Modal
+        visible={showSessionSetup}
+        transparent
+        animationType="slide"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.sessionSetupOverlay}>
+          <View style={[styles.sessionSetupContent, { backgroundColor: theme.card }]}>
+            <View style={styles.sessionSetupHeader}>
+              <Ionicons name="flag" size={40} color={theme.primary} />
+              <Text style={[styles.sessionSetupTitle, { color: theme.text }]}>
+                Start New Session
+              </Text>
+              <Text style={[styles.sessionSetupSubtitle, { color: theme.textSecondary }]}>
+                Set up your race session details
+              </Text>
+            </View>
+
+            <View style={styles.sessionSetupFields}>
+              <View style={styles.sessionField}>
+                <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
+                  Team Name
+                </Text>
+                <TextInput
+                  style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                  value={setupTeamName}
+                  onChangeText={setSetupTeamName}
+                  placeholder="Enter team name"
+                  placeholderTextColor={theme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.sessionField}>
+                <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
+                  Race Name
+                </Text>
+                <TextInput
+                  style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                  value={setupRaceName}
+                  onChangeText={setSetupRaceName}
+                  placeholder="Enter race name"
+                  placeholderTextColor={theme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.sessionField}>
+                <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
+                  Session Number
+                </Text>
+                <TextInput
+                  style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                  value={setupSessionNumber}
+                  onChangeText={setSetupSessionNumber}
+                  placeholder="e.g., 1, 2, Practice"
+                  placeholderTextColor={theme.textSecondary}
+                />
+              </View>
+
+              <View style={styles.sessionField}>
+                <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
+                  Session Duration (minutes)
+                </Text>
+                <TextInput
+                  style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
+                  value={setupSessionDuration}
+                  onChangeText={setSetupSessionDuration}
+                  placeholder="120"
+                  placeholderTextColor={theme.textSecondary}
+                  keyboardType="number-pad"
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.sessionStartButton, { backgroundColor: theme.primary }]}
+              onPress={handleStartSession}
+            >
+              <Ionicons name="checkmark-circle" size={24} color="#fff" />
+              <Text style={styles.sessionStartButtonText}>Start Session</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.sessionSkipButton}
+              onPress={() => setShowSessionSetup(false)}
+            >
+              <Text style={[styles.sessionSkipButtonText, { color: theme.textSecondary }]}>
+                Skip for now
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -841,13 +972,26 @@ const styles = StyleSheet.create({
   content: {
     padding: 16,
   },
+  titleContainer: {
+    marginTop: 24,
+    marginBottom: 20,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 8,
+  },
   screenTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    textAlign: 'left',
-    marginBottom: 16,
-    marginTop: 32,
-    letterSpacing: 0.5,
+    fontSize: 22,
+    fontWeight: '700',
+    letterSpacing: 0.3,
+  },
+  titleUnderline: {
+    height: 3,
+    width: 60,
+    borderRadius: 2,
+    marginLeft: 40,
   },
   rejectedCard: {
     flexDirection: 'row',
@@ -1088,6 +1232,76 @@ const styles = StyleSheet.create({
   modalButtonText: {
     color: '#fff',
     fontSize: 16,
+    fontWeight: '600',
+  },
+  sessionSetupOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sessionSetupContent: {
+    width: '90%',
+    maxWidth: 500,
+    borderRadius: 20,
+    padding: 28,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 10,
+  },
+  sessionSetupHeader: {
+    alignItems: 'center',
+    marginBottom: 28,
+  },
+  sessionSetupTitle: {
+    fontSize: 26,
+    fontWeight: 'bold',
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  sessionSetupSubtitle: {
+    fontSize: 15,
+    textAlign: 'center',
+  },
+  sessionSetupFields: {
+    gap: 20,
+    marginBottom: 24,
+  },
+  sessionField: {
+    gap: 8,
+  },
+  sessionFieldLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  sessionInput: {
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 14,
+    fontSize: 16,
+  },
+  sessionStartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 10,
+    marginBottom: 12,
+  },
+  sessionStartButtonText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  sessionSkipButton: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  sessionSkipButtonText: {
+    fontSize: 15,
     fontWeight: '600',
   },
 });
