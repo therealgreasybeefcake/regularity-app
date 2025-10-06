@@ -286,7 +286,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>Before Target Warning (Single Beep)</Text>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>Before Target (Single Beep)</Text>
             <Switch
               value={audioSettings.beforeTargetEnabled}
               onValueChange={(value) =>
@@ -314,7 +314,7 @@ export default function SettingsScreen() {
           </View>
 
           <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>After Lap-Start Warning (Double Beep)</Text>
+            <Text style={[styles.settingLabel, { color: theme.text }]}>After Lap-Start (Double Beep)</Text>
             <Switch
               value={audioSettings.afterLapStartEnabled}
               onValueChange={(value) =>

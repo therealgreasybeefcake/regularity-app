@@ -67,6 +67,17 @@ const PAGES = [
       'CSV/JSON data export',
     ],
   },
+  {
+    icon: 'cafe' as const,
+    title: 'Support Development',
+    description: 'This app is completely free to use. If you find it valuable and have the means, you can support its development.',
+    features: [
+      '100% free - no ads, no subscriptions',
+      'Buy Me A Coffee if you want to help',
+      'All support goes to app improvements and helping me pay my bills',
+      'Optional - enjoy the app either way!',
+    ],
+  },
 ];
 
 export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
