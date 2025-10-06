@@ -12,6 +12,7 @@ import {
   Pressable,
   Linking,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { Paths, File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -177,8 +178,9 @@ export default function SettingsScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.content}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
         {/* Theme */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
@@ -607,12 +609,16 @@ export default function SettingsScreen() {
           </Pressable>
         </Pressable>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  scrollView: {
     flex: 1,
   },
   content: {

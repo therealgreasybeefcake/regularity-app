@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
@@ -94,7 +95,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   const page = PAGES[currentPage];
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         {currentPage > 0 ? (
@@ -174,7 +175,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           />
         </TouchableOpacity>
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 
@@ -187,7 +188,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
-    paddingTop: 60,
   },
   pageIndicator: {
     fontSize: 14,

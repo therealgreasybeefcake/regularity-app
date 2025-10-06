@@ -13,6 +13,7 @@ import {
   Vibration,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
 import { useAudioPlayer, AudioSource } from 'expo-audio';
@@ -547,8 +548,9 @@ export default function TimerScreen() {
   };
 
   return (
-    <ScrollView style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={styles.content}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <ScrollView style={styles.scrollView}>
+        <View style={styles.content}>
         {/* Title */}
         <View style={styles.titleContainer}>
           <View style={styles.titleRow}>
@@ -966,7 +968,8 @@ export default function TimerScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
@@ -974,11 +977,13 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+  scrollView: {
+    flex: 1,
+  },
   content: {
     padding: 16,
   },
   titleContainer: {
-    marginTop: 24,
     marginBottom: 20,
   },
   titleRow: {
