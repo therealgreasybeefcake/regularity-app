@@ -36,6 +36,7 @@ export default function SettingsScreen() {
 
   const theme = isDarkMode ? darkTheme : lightTheme;
   const [showExportModal, setShowExportModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const convertToCSV = (teams: any[]) => {
     const rows: string[] = [];
@@ -63,6 +64,62 @@ export default function SettingsScreen() {
     });
 
     return rows.join('\n');
+  };
+
+  const parseCSV = (csvContent: string) => {
+    const lines = csvContent.trim().split('\n');
+    if (lines.length < 2) {
+      throw new Error('CSV file is empty or invalid');
+    }
+
+    // Skip header
+    const dataLines = lines.slice(1);
+    const teamsMap: { [key: string]: any } = {};
+    let teamId = 1;
+    let driverId = 1;
+
+    dataLines.forEach(line => {
+      const parts = line.split(',');
+      if (parts.length < 9) return;
+
+      const [teamName, raceName, sessionNumber, driverName, lapNumber, lapType, time, delta, targetTime] = parts;
+      const teamKey = `${teamName}-${raceName}-${sessionNumber}`;
+
+      if (!teamsMap[teamKey]) {
+        teamsMap[teamKey] = {
+          id: teamId++,
+          name: teamName,
+          raceName: raceName,
+          sessionNumber: sessionNumber,
+          sessionDuration: 120,
+          drivers: [],
+          sessionHistory: [],
+        };
+      }
+
+      const team = teamsMap[teamKey];
+      let driver = team.drivers.find((d: any) => d.name === driverName);
+
+      if (!driver) {
+        driver = {
+          id: driverId++,
+          name: driverName,
+          targetTime: parseFloat(targetTime),
+          laps: [],
+          penaltyLaps: 0,
+        };
+        team.drivers.push(driver);
+      }
+
+      driver.laps.push({
+        number: parseInt(lapNumber),
+        lapType: lapType,
+        time: parseFloat(time),
+        delta: parseFloat(delta),
+      });
+    });
+
+    return Object.values(teamsMap);
   };
 
   const exportData = async (format: 'json' | 'csv') => {
@@ -110,37 +167,47 @@ export default function SettingsScreen() {
     }
   };
 
-  const importData = async () => {
+  const importData = async (format: 'json' | 'csv') => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/json',
+        type: format === 'json' ? 'application/json' : 'text/csv',
       });
 
       if (result.canceled) return;
 
       const fileContent = await (await fetch(result.assets[0].uri)).text();
-      const data = JSON.parse(fileContent);
+      let importedTeams: any[];
 
-      if (data.teams && Array.isArray(data.teams)) {
-        Alert.alert(
-          'Import Data',
-          'This will replace all current data. Continue?',
-          [
-            { text: 'Cancel', style: 'cancel' },
-            {
-              text: 'Import',
-              onPress: () => {
-                setTeams(data.teams);
-                Alert.alert('Success', 'Data imported successfully');
-              },
-            },
-          ]
-        );
+      if (format === 'json') {
+        const data = JSON.parse(fileContent);
+        if (!data.teams || !Array.isArray(data.teams)) {
+          Alert.alert('Error', 'Invalid JSON format - missing teams array');
+          return;
+        }
+        importedTeams = data.teams;
       } else {
-        Alert.alert('Error', 'Invalid file format');
+        // CSV format
+        importedTeams = parseCSV(fileContent);
       }
+
+      Alert.alert(
+        'Import Data',
+        'This will replace all current data. Continue?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Import',
+            onPress: () => {
+              setTeams(importedTeams);
+              setShowImportModal(false);
+              Alert.alert('Success', 'Data imported successfully');
+            },
+          },
+        ]
+      );
     } catch (error) {
-      Alert.alert('Error', 'Failed to import data');
+      console.error('Import error:', error);
+      Alert.alert('Error', 'Failed to import data: ' + (error instanceof Error ? error.message : 'Unknown error'));
     }
   };
 
@@ -500,7 +567,7 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={importData}
+            onPress={() => setShowImportModal(true)}
           >
             <Ionicons name="cloud-upload-outline" size={20} color="#fff" />
             <Text style={styles.buttonText}>Import Data</Text>
@@ -603,6 +670,66 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary }]}
               onPress={() => setShowExportModal(false)}
+            >
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      {/* Import Format Modal */}
+      <Modal
+        visible={showImportModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowImportModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowImportModal(false)}
+        >
+          <Pressable
+            style={[styles.modalContent, { backgroundColor: theme.card }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <Text style={[styles.modalTitle, { color: theme.text }]}>Import Format</Text>
+            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+              Choose the format of your data file
+            </Text>
+
+            <TouchableOpacity
+              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+              onPress={() => importData('json')}
+            >
+              <View style={styles.formatButtonContent}>
+                <Ionicons name="code-outline" size={32} color={theme.primary} />
+                <View style={styles.formatButtonText}>
+                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>JSON</Text>
+                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                    Import from JSON backup file
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+              onPress={() => importData('csv')}
+            >
+              <View style={styles.formatButtonContent}>
+                <Ionicons name="grid-outline" size={32} color={theme.primary} />
+                <View style={styles.formatButtonText}>
+                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>CSV</Text>
+                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                    Import from CSV spreadsheet
+                  </Text>
+                </View>
+              </View>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary }]}
+              onPress={() => setShowImportModal(false)}
             >
               <Text style={styles.modalCancelText}>Cancel</Text>
             </TouchableOpacity>
