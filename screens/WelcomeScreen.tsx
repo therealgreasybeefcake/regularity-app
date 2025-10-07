@@ -108,7 +108,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   const page = PAGES[currentPage];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['left', 'right', 'bottom']}>
       {/* Header */}
       <View style={styles.header}>
         {currentPage > 0 ? (
@@ -212,6 +212,7 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
+    paddingTop: 60,
   },
   pageIndicator: {
     fontSize: 14,
@@ -314,7 +315,7 @@ const styles = StyleSheet.create({
     padding: 16,
     borderRadius: 12,
     gap: 8,
-    marginTop: 24,
+    marginTop: 8,
     marginBottom: 20,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
