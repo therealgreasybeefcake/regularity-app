@@ -116,12 +116,10 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
         xAxisThickness={1}
         noOfSections={5}
         maxValue={maxTime + (maxTime - minTime) * 0.1}
-        minValue={minTime - (maxTime - minTime) * 0.1}
         formatYLabel={(value) => `${parseFloat(value).toFixed(1)}s`}
         showVerticalLines
         verticalLinesColor={theme.border}
         verticalLinesThickness={0.5}
-        verticalLinesOpacity={0.3}
         curved={false}
         animateOnDataChange
         animationDuration={800}
@@ -179,12 +177,32 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
   const avgDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
   const bonusCount = nonChangeoverLaps.filter(l => l.lapType === 'bonus').length;
   const brokenCount = nonChangeoverLaps.filter(l => l.lapType === 'broken').length;
-  const maxAbsDelta = Math.max(...deltas.map(Math.abs));
-  const yMax = Math.max(maxAbsDelta * 1.2, 1);
+  const maxDelta = Math.max(...deltas, 0);
+  const minDelta = Math.min(...deltas, 0);
 
   // Prepare data for bar chart
-  const barData = nonChangeoverLaps.map((lap, index) => {
-    let frontColor = lap.delta >= 0 ? theme.warning : theme.primary;
+  const positiveData = nonChangeoverLaps.map((lap, index) => {
+    let frontColor = theme.primary;
+
+    if (lap.lapType === 'bonus') {
+      frontColor = theme.bonus;
+    } else if (lap.lapType === 'broken') {
+      frontColor = theme.broken;
+    } else if (lap.delta >= 0) {
+      frontColor = theme.warning;
+    }
+
+    return {
+      value: lap.delta >= 0 ? lap.delta : 0,
+      label: `${lap.number}`,
+      frontColor,
+      topLabelComponent: () => null,
+      onPress: () => setSelectedLap(index),
+    };
+  });
+
+  const negativeData = nonChangeoverLaps.map((lap, index) => {
+    let frontColor = theme.primary;
 
     if (lap.lapType === 'bonus') {
       frontColor = theme.bonus;
@@ -193,8 +211,8 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
     }
 
     return {
-      value: lap.delta,
-      label: `${lap.number}`,
+      value: lap.delta < 0 ? Math.abs(lap.delta) : 0,
+      label: '',
       frontColor,
       topLabelComponent: () => null,
       onPress: () => setSelectedLap(index),
@@ -224,46 +242,89 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
         </View>
       )}
 
-      <BarChart
-        data={barData}
-        height={180}
-        width={300}
-        barWidth={barData.length > 15 ? 12 : 18}
-        initialSpacing={10}
-        spacing={barData.length > 10 ? 12 : 18}
-        noOfSections={6}
-        maxValue={yMax}
-        minValue={-yMax}
-        yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
-        xAxisLabelTextStyle={{ color: theme.textSecondary, fontSize: 9 }}
-        yAxisColor={theme.border}
-        xAxisColor={theme.border}
-        rulesColor={theme.border}
-        rulesType="solid"
-        yAxisThickness={1}
-        xAxisThickness={1}
-        formatYLabel={(value) => {
-          const v = parseFloat(value);
-          return v >= 0 ? `+${v.toFixed(1)}` : `${v.toFixed(1)}`;
-        }}
-        showVerticalLines
-        verticalLinesColor={theme.border}
-        verticalLinesThickness={0.5}
-        verticalLinesOpacity={0.3}
-        roundedTop
-        roundedBottom
-        animateOnDataChange
-        animationDuration={800}
-        // Add zero reference line
-        referenceLine1Position={0}
-        referenceLine1Config={{
-          color: theme.textSecondary,
-          thickness: 1.5,
-          opacity: 0.4,
-          dashWidth: 4,
-          dashGap: 4,
-        }}
-      />
+      <View style={{ alignItems: 'center' }}>
+        {/* Positive deltas */}
+        <BarChart
+          data={positiveData}
+          height={90}
+          width={300}
+          barWidth={positiveData.length > 15 ? 12 : 18}
+          initialSpacing={10}
+          spacing={positiveData.length > 10 ? 12 : 18}
+          noOfSections={3}
+          stepValue={Math.max(maxDelta * 1.1, 0.1) / 3}
+          maxValue={Math.max(maxDelta * 1.1, 0.1)}
+          yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
+          xAxisLabelTextStyle={{ color: 'transparent', fontSize: 1 }}
+          yAxisColor={theme.border}
+          xAxisColor="transparent"
+          rulesColor={theme.border}
+          rulesType="solid"
+          yAxisThickness={1}
+          xAxisThickness={0}
+          formatYLabel={(value) => `+${parseFloat(value).toFixed(1)}`}
+          hideAxesAndRules={false}
+          roundedTop
+          showVerticalLines
+          verticalLinesColor={theme.border}
+          verticalLinesThickness={0.5}
+        />
+
+        {/* Zero line with indicators for zero deltas */}
+        <View style={{ width: 300, height: 2, backgroundColor: theme.textSecondary, marginVertical: -2, flexDirection: 'row', position: 'relative' }}>
+          {nonChangeoverLaps.map((lap, index) => {
+            if (Math.abs(lap.delta) < 0.01) {
+              const barWidth = positiveData.length > 15 ? 12 : 18;
+              const spacing = positiveData.length > 10 ? 12 : 18;
+              const leftPosition = 10 + index * (barWidth + spacing) + barWidth / 2 - 3;
+              return (
+                <View
+                  key={index}
+                  style={{
+                    position: 'absolute',
+                    left: leftPosition,
+                    top: -3,
+                    width: 6,
+                    height: 8,
+                    backgroundColor: theme.bonus,
+                    borderRadius: 3,
+                  }}
+                />
+              );
+            }
+            return null;
+          })}
+        </View>
+
+        {/* Negative deltas (inverted) */}
+        <BarChart
+          data={negativeData}
+          height={90}
+          width={300}
+          barWidth={negativeData.length > 15 ? 12 : 18}
+          initialSpacing={10}
+          spacing={negativeData.length > 10 ? 12 : 18}
+          noOfSections={3}
+          stepValue={Math.max(Math.abs(minDelta) * 1.1, 0.1) / 3}
+          maxValue={Math.max(Math.abs(minDelta) * 1.1, 0.1)}
+          yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
+          xAxisLabelTextStyle={{ color: theme.textSecondary, fontSize: 9 }}
+          yAxisColor={theme.border}
+          xAxisColor={theme.border}
+          rulesColor={theme.border}
+          rulesType="solid"
+          yAxisThickness={1}
+          xAxisThickness={1}
+          formatYLabel={(value) => `-${parseFloat(value).toFixed(1)}`}
+          hideAxesAndRules={false}
+          roundedBottom
+          isAnimated={false}
+          rotateLabel
+          showVerticalLines
+          verticalLinesColor={theme.border}
+          verticalLinesThickness={0.5}
+        />
+      </View>
 
       <View style={styles.statsRow}>
         <Text style={[styles.statsText, { color: theme.textSecondary }]}>
