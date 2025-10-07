@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -70,12 +70,10 @@ const PAGES = [
   {
     icon: 'cafe' as const,
     title: 'Support Development',
-    description: 'This app is completely free to use. If you find it valuable and have the means, you can support its development.',
+    description: 'This app is 100% free with no ads or subscriptions. If you find it valuable, consider supporting development.',
     features: [
-      '100% free - no ads, no subscriptions',
-      'Buy Me A Coffee if you want to help',
-      'All support goes to app improvements and helping me pay my bills',
       'Optional - enjoy the app either way!',
+      'All support helps with improvements',
     ],
   },
 ];
@@ -101,6 +99,10 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
     if (currentPage > 0) {
       setCurrentPage(currentPage - 1);
     }
+  };
+
+  const handleBuyMeACoffee = () => {
+    Linking.openURL('https://buymeacoffee.com/greasybeefcake');
   };
 
   const page = PAGES[currentPage];
@@ -150,6 +152,17 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
             </View>
           ))}
         </View>
+
+        {/* Buy Me A Coffee Button - only on last page */}
+        {currentPage === PAGES.length - 1 && (
+          <TouchableOpacity
+            style={styles.coffeeButton}
+            onPress={handleBuyMeACoffee}
+          >
+            <Ionicons name="cafe" size={24} color="#000" />
+            <Text style={styles.coffeeButtonText}>Buy Me A Coffee</Text>
+          </TouchableOpacity>
+        )}
       </ScrollView>
 
       {/* Footer */}
@@ -292,5 +305,26 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  coffeeButton: {
+    backgroundColor: '#FFDD00',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 16,
+    borderRadius: 12,
+    gap: 8,
+    marginTop: 24,
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  coffeeButtonText: {
+    color: '#000',
+    fontSize: 18,
+    fontWeight: '700',
   },
 });
