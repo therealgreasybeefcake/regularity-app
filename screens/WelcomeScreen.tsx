@@ -108,7 +108,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
   const page = PAGES[currentPage];
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
       {/* Header */}
       <View style={styles.header}>
         {currentPage > 0 ? (
