@@ -421,8 +421,8 @@ export default function StatsScreen() {
                 displayData.drivers.map((driver) => (
                   <View key={driver.id} style={styles.driverChartSection}>
                     <Text style={[styles.driverChartTitle, { color: theme.text }]}>{driver.name}</Text>
-                    <LapTimesChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
-                    <DeltaChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
+                    <LapTimesChart driver={driver} theme={theme} />
+                    <DeltaChart driver={driver} theme={theme} />
                   </View>
                 ))
               ) : (
@@ -431,8 +431,8 @@ export default function StatsScreen() {
                   const driver = displayData.drivers.find(d => d.id === selectedDriverForCharts);
                   return driver ? (
                     <View>
-                      <LapTimesChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
-                      <DeltaChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
+                      <LapTimesChart driver={driver} theme={theme} />
+                      <DeltaChart driver={driver} theme={theme} />
                     </View>
                   ) : null;
                 })()

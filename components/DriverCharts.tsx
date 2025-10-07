@@ -1,41 +1,17 @@
-import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import { CartesianChart, Line, Bar } from 'victory-native';
-import { Circle } from '@shopify/react-native-skia';
-import { Driver, LapTypeValues } from '../types';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { LineChart, BarChart } from 'react-native-gifted-charts';
+import { Driver } from '../types';
 import { ThemeColors } from '../types';
 
 interface DriverChartsProps {
   driver: Driver;
-  lapTypeValues: LapTypeValues;
   theme: ThemeColors;
 }
 
-// Calculate linear regression for trend line
-const calculateTrendLine = (data: number[]): { slope: number; intercept: number } => {
-  const n = data.length;
-  if (n === 0) return { slope: 0, intercept: 0 };
-
-  const sumX = data.reduce((sum, _, i) => sum + i, 0);
-  const sumY = data.reduce((sum, val) => sum + val, 0);
-  const sumXY = data.reduce((sum, val, i) => sum + i * val, 0);
-  const sumXX = data.reduce((sum, _, i) => sum + i * i, 0);
-
-  const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-  const intercept = (sumY - slope * sumX) / n;
-
-  return { slope, intercept };
-};
-
-interface LapData {
-  number: number;
-  time: number;
-  trend: number;
-  lapType: string;
-  [key: string]: unknown;
-}
-
 export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
+  const [selectedLap, setSelectedLap] = useState<number | null>(null);
+
   if (driver.laps.length === 0) {
     return (
       <View style={[styles.emptyContainer, { backgroundColor: theme.background }]}>
@@ -45,22 +21,56 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
   }
 
   const lapTimes = driver.laps.map(lap => lap.time);
-  const { slope, intercept } = calculateTrendLine(lapTimes);
-
-  const chartData: LapData[] = driver.laps.map((lap, index) => ({
-    number: lap.number,
-    time: lap.time,
-    trend: slope * index + intercept,
-    lapType: lap.lapType,
-  }));
-
-  // Calculate min/max for better scaling
+  const avgTime = lapTimes.reduce((a, b) => a + b, 0) / lapTimes.length;
   const minTime = Math.min(...lapTimes);
   const maxTime = Math.max(...lapTimes);
-  const padding = (maxTime - minTime) * 0.15 || 1;
 
-  // Calculate average lap time
-  const avgTime = lapTimes.reduce((a, b) => a + b, 0) / lapTimes.length;
+  // Prepare data for line chart
+  const lineData = driver.laps.map((lap, index) => {
+    let dataPointColor = theme.primary;
+    let dataPointRadius = 5;
+
+    switch (lap.lapType) {
+      case 'bonus':
+        dataPointColor = theme.bonus;
+        dataPointRadius = 7;
+        break;
+      case 'broken':
+        dataPointColor = theme.broken;
+        dataPointRadius = 7;
+        break;
+      case 'changeover':
+        dataPointColor = theme.changeover;
+        dataPointRadius = 6;
+        break;
+      case 'safety':
+        dataPointColor = theme.safety;
+        dataPointRadius = 6;
+        break;
+    }
+
+    const isSelected = selectedLap === index;
+
+    return {
+      value: lap.time,
+      label: `${lap.number}`,
+      dataPointColor,
+      dataPointRadius: isSelected ? dataPointRadius + 2 : dataPointRadius,
+      customDataPoint: () => (
+        <View
+          style={{
+            width: (isSelected ? dataPointRadius + 2 : dataPointRadius) * 2,
+            height: (isSelected ? dataPointRadius + 2 : dataPointRadius) * 2,
+            backgroundColor: dataPointColor,
+            borderRadius: isSelected ? dataPointRadius + 2 : dataPointRadius,
+            borderWidth: isSelected ? 2 : 0,
+            borderColor: '#fff',
+          }}
+        />
+      ),
+      onPress: () => setSelectedLap(index),
+    };
+  });
 
   return (
     <View style={styles.chartContainer}>
@@ -70,72 +80,63 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
           Avg: {avgTime.toFixed(2)}s
         </Text>
       </View>
-      <CartesianChart
-        data={chartData}
-        xKey="number"
-        yKeys={["time", "trend"]}
-        axisOptions={{
-          tickCount: { x: 5, y: 6 },
-          labelOffset: { x: 2, y: 4 },
-          labelColor: theme.textSecondary,
-          lineColor: theme.border,
-          formatYLabel: (value: unknown) => `${Number(value).toFixed(1)}s`,
-          formatXLabel: (value: unknown) => `L${Math.round(Number(value))}`,
-        }}
-        domain={{ y: [minTime - padding, maxTime + padding] }}
-      >
-        {({ points, chartBounds }) => (
-          <>
-            {/* Trend line */}
-            <Line
-              points={points.trend}
-              color={theme.textSecondary}
-              strokeWidth={1.5}
-              opacity={0.5}
-            />
-            {/* Actual lap times line */}
-            <Line
-              points={points.time}
-              color={theme.primary}
-              strokeWidth={2.5}
-            />
-            {/* Scatter points with lap type colors */}
-            {points.time.map((point, index) => {
-              if (typeof point.y !== 'number') return null;
-              const lapType = chartData[index]?.lapType;
-              let color = theme.primary;
-              let radius = 5;
-              switch (lapType) {
-                case 'bonus':
-                  color = theme.bonus;
-                  radius = 6;
-                  break;
-                case 'broken':
-                  color = theme.broken;
-                  radius = 6;
-                  break;
-                case 'changeover':
-                  color = theme.changeover;
-                  radius = 5;
-                  break;
-                case 'safety':
-                  color = theme.safety;
-                  radius = 5;
-                  break;
-              }
-              return (
-                <Circle
-                  key={index}
-                  cx={point.x}
-                  cy={point.y}
-                  r={radius}
-                  color={color}
-                />
-              );
-            })}
-          </>
-        )}
-      </CartesianChart>
+
+      {selectedLap !== null && driver.laps[selectedLap] && (
+        <View style={[styles.selectedLapInfo, { backgroundColor: theme.background, borderColor: theme.border }]}>
+          <Text style={[styles.selectedLapText, { color: theme.text }]}>
+            Lap {driver.laps[selectedLap].number}: {driver.laps[selectedLap].time?.toFixed(2) || 'N/A'}s
+            {' '}({driver.laps[selectedLap].lapType})
+          </Text>
+          <TouchableOpacity onPress={() => setSelectedLap(null)}>
+            <Text style={[styles.closeButton, { color: theme.primary }]}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <LineChart
+        data={lineData}
+        height={180}
+        width={300}
+        initialSpacing={10}
+        spacing={lineData.length > 10 ? 20 : 30}
+        thickness={2.5}
+        color={theme.primary}
+        hideDataPoints={false}
+        dataPointsColor={theme.primary}
+        dataPointsRadius={5}
+        textColor={theme.textSecondary}
+        textFontSize={10}
+        yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
+        xAxisLabelTextStyle={{ color: theme.textSecondary, fontSize: 9 }}
+        yAxisColor={theme.border}
+        xAxisColor={theme.border}
+        rulesColor={theme.border}
+        rulesType="solid"
+        yAxisThickness={1}
+        xAxisThickness={1}
+        noOfSections={5}
+        maxValue={maxTime + (maxTime - minTime) * 0.1}
+        minValue={minTime - (maxTime - minTime) * 0.1}
+        formatYLabel={(value) => `${parseFloat(value).toFixed(1)}s`}
+        showVerticalLines
+        verticalLinesColor={theme.border}
+        verticalLinesThickness={0.5}
+        verticalLinesOpacity={0.3}
+        curved={false}
+        animateOnDataChange
+        animationDuration={800}
+        focusEnabled
+        showDataPointOnFocus
+        showStripOnFocus
+        showTextOnFocus
+        stripColor={theme.primary}
+        stripOpacity={0.3}
+        stripWidth={2}
+        unFocusOnPressOut={false}
+        delayBeforeUnFocus={3000}
+        onFocus={(item: any, index: number) => setSelectedLap(index)}
+      />
+
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendColor, { backgroundColor: theme.bonus }]} />
@@ -158,15 +159,9 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
   );
 };
 
-interface DeltaData {
-  number: number;
-  delta: number;
-  zero: number;
-  lapType: string;
-  [key: string]: unknown;
-}
-
 export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
+  const [selectedLap, setSelectedLap] = useState<number | null>(null);
+
   // Filter out changeover and safety laps for delta chart
   const nonChangeoverLaps = driver.laps.filter(
     lap => lap.lapType !== 'changeover' && lap.lapType !== 'safety'
@@ -181,22 +176,30 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
   }
 
   const deltas = nonChangeoverLaps.map(lap => lap.delta);
-
-  const chartData: DeltaData[] = nonChangeoverLaps.map((lap) => ({
-    number: lap.number,
-    delta: lap.delta,
-    zero: 0,
-    lapType: lap.lapType,
-  }));
-
-  // Calculate appropriate y-axis range
-  const maxAbsDelta = Math.max(...deltas.map(Math.abs));
-  const yMax = Math.max(maxAbsDelta * 1.2, 1);
-
-  // Calculate statistics
   const avgDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
   const bonusCount = nonChangeoverLaps.filter(l => l.lapType === 'bonus').length;
   const brokenCount = nonChangeoverLaps.filter(l => l.lapType === 'broken').length;
+  const maxAbsDelta = Math.max(...deltas.map(Math.abs));
+  const yMax = Math.max(maxAbsDelta * 1.2, 1);
+
+  // Prepare data for bar chart
+  const barData = nonChangeoverLaps.map((lap, index) => {
+    let frontColor = lap.delta >= 0 ? theme.warning : theme.primary;
+
+    if (lap.lapType === 'bonus') {
+      frontColor = theme.bonus;
+    } else if (lap.lapType === 'broken') {
+      frontColor = theme.broken;
+    }
+
+    return {
+      value: lap.delta,
+      label: `${lap.number}`,
+      frontColor,
+      topLabelComponent: () => null,
+      onPress: () => setSelectedLap(index),
+    };
+  });
 
   return (
     <View style={styles.chartContainer}>
@@ -206,64 +209,68 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
           Avg: {avgDelta >= 0 ? '+' : ''}{avgDelta.toFixed(3)}s
         </Text>
       </View>
-      <CartesianChart
-        data={chartData}
-        xKey="number"
-        yKeys={["delta", "zero"]}
-        axisOptions={{
-          tickCount: { x: 5, y: 7 },
-          labelOffset: { x: 2, y: 4 },
-          labelColor: theme.textSecondary,
-          lineColor: theme.border,
-          formatYLabel: (value: unknown) => {
-            const v = Number(value);
-            return v >= 0 ? `+${v.toFixed(1)}s` : `${v.toFixed(1)}s`;
-          },
-          formatXLabel: (value: unknown) => `L${Math.round(Number(value))}`,
-        }}
-        domain={{ y: [-yMax, yMax] }}
-      >
-        {({ points, chartBounds }) => (
-          <>
-            {/* Zero reference line */}
-            <Line
-              points={points.zero}
-              color={theme.textSecondary}
-              strokeWidth={1}
-              opacity={0.3}
-            />
-            {/* Delta bars */}
-            {points.delta.map((point, index) => {
-              if (typeof point.y !== 'number' || typeof point.x !== 'number') return null;
-              const lapType = chartData[index]?.lapType;
-              let barColor = point.y >= 0 ? theme.warning : theme.primary;
-              if (lapType === 'bonus') barColor = theme.bonus;
-              if (lapType === 'broken') barColor = theme.broken;
 
-              return (
-                <Bar
-                  key={index}
-                  points={[point]}
-                  chartBounds={chartBounds}
-                  barWidth={8}
-                  color={barColor}
-                  roundedCorners={{
-                    topLeft: 2,
-                    topRight: 2,
-                    bottomLeft: 2,
-                    bottomRight: 2,
-                  }}
-                />
-              );
-            })}
-          </>
-        )}
-      </CartesianChart>
+      {selectedLap !== null && (
+        <View style={[styles.selectedLapInfo, { backgroundColor: theme.background, borderColor: theme.border }]}>
+          <Text style={[styles.selectedLapText, { color: theme.text }]}>
+            Lap {nonChangeoverLaps[selectedLap].number}:
+            {nonChangeoverLaps[selectedLap].delta >= 0 ? '+' : ''}
+            {nonChangeoverLaps[selectedLap].delta.toFixed(3)}s
+            {' '}({nonChangeoverLaps[selectedLap].lapType})
+          </Text>
+          <TouchableOpacity onPress={() => setSelectedLap(null)}>
+            <Text style={[styles.closeButton, { color: theme.primary }]}>✕</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      <BarChart
+        data={barData}
+        height={180}
+        width={300}
+        barWidth={barData.length > 15 ? 12 : 18}
+        initialSpacing={10}
+        spacing={barData.length > 10 ? 12 : 18}
+        noOfSections={6}
+        maxValue={yMax}
+        minValue={-yMax}
+        yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
+        xAxisLabelTextStyle={{ color: theme.textSecondary, fontSize: 9 }}
+        yAxisColor={theme.border}
+        xAxisColor={theme.border}
+        rulesColor={theme.border}
+        rulesType="solid"
+        yAxisThickness={1}
+        xAxisThickness={1}
+        formatYLabel={(value) => {
+          const v = parseFloat(value);
+          return v >= 0 ? `+${v.toFixed(1)}` : `${v.toFixed(1)}`;
+        }}
+        showVerticalLines
+        verticalLinesColor={theme.border}
+        verticalLinesThickness={0.5}
+        verticalLinesOpacity={0.3}
+        roundedTop
+        roundedBottom
+        animateOnDataChange
+        animationDuration={800}
+        // Add zero reference line
+        referenceLine1Position={0}
+        referenceLine1Config={{
+          color: theme.textSecondary,
+          thickness: 1.5,
+          opacity: 0.4,
+          dashWidth: 4,
+          dashGap: 4,
+        }}
+      />
+
       <View style={styles.statsRow}>
         <Text style={[styles.statsText, { color: theme.textSecondary }]}>
           Bonus: {bonusCount} | Broken: {brokenCount}
         </Text>
       </View>
+
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendColor, { backgroundColor: theme.bonus }]} />
@@ -289,13 +296,13 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
 const styles = StyleSheet.create({
   chartContainer: {
     marginVertical: 12,
-    height: 250,
+    paddingVertical: 8,
   },
   chartHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   chartTitle: {
     fontSize: 16,
@@ -304,6 +311,24 @@ const styles = StyleSheet.create({
   chartSubtitle: {
     fontSize: 13,
     fontWeight: '500',
+  },
+  selectedLapInfo: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    marginBottom: 12,
+  },
+  selectedLapText: {
+    fontSize: 13,
+    fontWeight: '500',
+  },
+  closeButton: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    paddingHorizontal: 8,
   },
   emptyContainer: {
     padding: 40,
@@ -316,7 +341,7 @@ const styles = StyleSheet.create({
   },
   statsRow: {
     alignItems: 'center',
-    marginTop: 4,
+    marginTop: 8,
   },
   statsText: {
     fontSize: 12,
@@ -327,7 +352,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     justifyContent: 'center',
     gap: 12,
-    marginTop: 8,
+    marginTop: 12,
   },
   legendItem: {
     flexDirection: 'row',
