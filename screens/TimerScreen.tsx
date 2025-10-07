@@ -21,7 +21,7 @@ import { Swipeable } from 'react-native-gesture-handler';
 import { VolumeManager } from 'react-native-volume-manager';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
-import { calculateLapType, calculateLapValue, formatTime } from '../utils/calculations';
+import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
 
 export default function TimerScreen() {
@@ -260,8 +260,8 @@ export default function TimerScreen() {
     const currentDriver = updatedTeams[activeTeam].drivers[activeDriver];
 
     if (lapInput) {
-      const lapTime = parseFloat(lapInput);
-      if (isNaN(lapTime) || lapTime <= 0) return;
+      const lapTime = parseTimeInput(lapInput);
+      if (lapTime === null || lapTime <= 0) return;
 
       const isChangeover = !!(lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000);
       const delta = lapTime - currentDriver.targetTime;
