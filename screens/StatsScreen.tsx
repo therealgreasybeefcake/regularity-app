@@ -17,6 +17,8 @@ export default function StatsScreen() {
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+  const [showChartsModal, setShowChartsModal] = useState(false);
+  const [selectedDriverForCharts, setSelectedDriverForCharts] = useState<number | null>(null);
 
   // Use selected session if available, otherwise use current team data
   const displayData = selectedSession || {
@@ -215,21 +217,33 @@ export default function StatsScreen() {
         {/* Team Stats */}
         <View style={[styles.section, { backgroundColor: theme.card }]}>
           <View style={styles.sectionHeader}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>Team Statistics</Text>
-            <TouchableOpacity
-              onPress={() => handleExportPDF()}
-              disabled={isGeneratingPDF}
-              style={[styles.teamExportButton, { backgroundColor: theme.primary }]}
-            >
-              {isGeneratingPDF ? (
-                <ActivityIndicator color="#fff" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="stats-chart" size={18} color="#fff" />
-                  <Text style={styles.teamExportText}>Team PDF</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Team</Text>
+            <View style={styles.buttonGroup}>
+              <TouchableOpacity
+                onPress={() => {
+                  setSelectedDriverForCharts(null);
+                  setShowChartsModal(true);
+                }}
+                style={[styles.chartButton, { backgroundColor: '#9333ea' }]}
+              >
+                <Ionicons name="bar-chart-outline" size={18} color="#fff" />
+                <Text style={styles.buttonText}>Charts</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={() => handleExportPDF()}
+                disabled={isGeneratingPDF}
+                style={[styles.teamExportButton, { backgroundColor: theme.primary }]}
+              >
+                {isGeneratingPDF ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="stats-chart" size={18} color="#fff" />
+                    <Text style={styles.teamExportText}>Team PDF</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
           <View style={[styles.statCard, { borderBottomColor: theme.border }]}>
             <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Goal Laps</Text>
@@ -258,14 +272,26 @@ export default function StatsScreen() {
             <View key={driver.id} style={[styles.section, { backgroundColor: theme.card }]}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>{driver.name}</Text>
-                <TouchableOpacity
-                  onPress={() => handleExportPDF(driver.id)}
-                  disabled={isGeneratingPDF}
-                  style={[styles.driverExportButton, { backgroundColor: theme.primary }]}
-                >
-                  <Ionicons name="share-outline" size={18} color="#fff" />
-                  <Text style={styles.driverExportText}>PDF</Text>
-                </TouchableOpacity>
+                <View style={styles.buttonGroup}>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSelectedDriverForCharts(driver.id);
+                      setShowChartsModal(true);
+                    }}
+                    style={[styles.chartButton, { backgroundColor: '#9333ea' }]}
+                  >
+                    <Ionicons name="bar-chart-outline" size={18} color="#fff" />
+                    <Text style={styles.buttonText}>Charts</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleExportPDF(driver.id)}
+                    disabled={isGeneratingPDF}
+                    style={[styles.driverExportButton, { backgroundColor: theme.primary }]}
+                  >
+                    <Ionicons name="share-outline" size={18} color="#fff" />
+                    <Text style={styles.driverExportText}>PDF</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
 
               <View style={styles.statsGrid}>
@@ -364,6 +390,58 @@ export default function StatsScreen() {
         })}
       </View>
 
+      {/* Charts Modal */}
+      <Modal
+        visible={showChartsModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowChartsModal(false)}
+      >
+        <Pressable
+          style={styles.modalOverlay}
+          onPress={() => setShowChartsModal(false)}
+        >
+          <Pressable
+            style={[styles.chartsModalContent, { backgroundColor: theme.card }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            <View style={styles.chartsModalHeader}>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>
+                {selectedDriverForCharts === null
+                  ? 'Team Performance Charts'
+                  : displayData.drivers.find(d => d.id === selectedDriverForCharts)?.name || 'Driver Charts'}
+              </Text>
+              <TouchableOpacity onPress={() => setShowChartsModal(false)}>
+                <Ionicons name="close" size={24} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={styles.chartsScrollView}>
+              {selectedDriverForCharts === null ? (
+                // Show charts for all drivers
+                displayData.drivers.map((driver) => (
+                  <View key={driver.id} style={styles.driverChartSection}>
+                    <Text style={[styles.driverChartTitle, { color: theme.text }]}>{driver.name}</Text>
+                    <LapTimesChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
+                    <DeltaChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
+                  </View>
+                ))
+              ) : (
+                // Show charts for selected driver
+                (() => {
+                  const driver = displayData.drivers.find(d => d.id === selectedDriverForCharts);
+                  return driver ? (
+                    <View>
+                      <LapTimesChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
+                      <DeltaChart driver={driver} lapTypeValues={lapTypeValues} theme={theme} />
+                    </View>
+                  ) : null;
+                })()
+              )}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       {/* Session Picker Modal */}
       <Modal
         visible={showSessionPicker}
@@ -444,6 +522,24 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: 16,
+  },
+  buttonGroup: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  chartButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    gap: 6,
+  },
+  buttonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
   },
   teamExportButton: {
     flexDirection: 'row',
@@ -590,6 +686,40 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 4,
     elevation: 5,
+  },
+  chartsModalContent: {
+    width: '95%',
+    maxHeight: '85%',
+    borderRadius: 16,
+    padding: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  chartsModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
+  },
+  chartsScrollView: {
+    maxHeight: '100%',
+  },
+  driverChartSection: {
+    marginBottom: 24,
+    paddingBottom: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(128, 128, 128, 0.1)',
+  },
+  driverChartTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    marginBottom: 12,
   },
   modalTitle: {
     fontSize: 20,
