@@ -30,6 +30,7 @@ const calculateTrendLine = (data: number[]): { slope: number; intercept: number 
 interface LapData {
   number: number;
   time: number;
+  trend: number;
   lapType: string;
   [key: string]: unknown;
 }
@@ -44,60 +45,90 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
   }
 
   const lapTimes = driver.laps.map(lap => lap.time);
-  const trendLine = calculateTrendLine(lapTimes);
+  const { slope, intercept } = calculateTrendLine(lapTimes);
 
   const chartData: LapData[] = driver.laps.map((lap, index) => ({
     number: lap.number,
     time: lap.time,
+    trend: slope * index + intercept,
     lapType: lap.lapType,
   }));
 
   // Calculate min/max for better scaling
   const minTime = Math.min(...lapTimes);
   const maxTime = Math.max(...lapTimes);
-  const padding = (maxTime - minTime) * 0.1 || 1;
+  const padding = (maxTime - minTime) * 0.15 || 1;
+
+  // Calculate average lap time
+  const avgTime = lapTimes.reduce((a, b) => a + b, 0) / lapTimes.length;
 
   return (
     <View style={styles.chartContainer}>
-      <Text style={[styles.chartTitle, { color: theme.text }]}>Lap Times</Text>
+      <View style={styles.chartHeader}>
+        <Text style={[styles.chartTitle, { color: theme.text }]}>Lap Times</Text>
+        <Text style={[styles.chartSubtitle, { color: theme.textSecondary }]}>
+          Avg: {avgTime.toFixed(2)}s
+        </Text>
+      </View>
       <CartesianChart
         data={chartData}
         xKey="number"
-        yKeys={["time"]}
+        yKeys={["time", "trend"]}
         axisOptions={{
-          tickCount: 5,
+          tickCount: { x: 5, y: 6 },
           labelOffset: { x: 2, y: 4 },
           labelColor: theme.textSecondary,
           lineColor: theme.border,
           formatYLabel: (value: unknown) => `${Number(value).toFixed(1)}s`,
+          formatXLabel: (value: unknown) => `L${Math.round(Number(value))}`,
         }}
         domain={{ y: [minTime - padding, maxTime + padding] }}
       >
-        {({ points }) => (
+        {({ points, chartBounds }) => (
           <>
+            {/* Trend line */}
+            <Line
+              points={points.trend}
+              color={theme.textSecondary}
+              strokeWidth={1.5}
+              opacity={0.5}
+            />
             {/* Actual lap times line */}
             <Line
               points={points.time}
               color={theme.primary}
-              strokeWidth={2}
+              strokeWidth={2.5}
             />
             {/* Scatter points with lap type colors */}
             {points.time.map((point, index) => {
               if (typeof point.y !== 'number') return null;
               const lapType = chartData[index]?.lapType;
               let color = theme.primary;
+              let radius = 5;
               switch (lapType) {
-                case 'bonus': color = theme.bonus; break;
-                case 'broken': color = theme.broken; break;
-                case 'changeover': color = theme.changeover; break;
-                case 'safety': color = theme.safety; break;
+                case 'bonus':
+                  color = theme.bonus;
+                  radius = 6;
+                  break;
+                case 'broken':
+                  color = theme.broken;
+                  radius = 6;
+                  break;
+                case 'changeover':
+                  color = theme.changeover;
+                  radius = 5;
+                  break;
+                case 'safety':
+                  color = theme.safety;
+                  radius = 5;
+                  break;
               }
               return (
                 <Circle
                   key={index}
                   cx={point.x}
                   cy={point.y}
-                  r={4}
+                  r={radius}
                   color={color}
                 />
               );
@@ -105,6 +136,24 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
           </>
         )}
       </CartesianChart>
+      <View style={styles.legend}>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendColor, { backgroundColor: theme.bonus }]} />
+          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Bonus</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendColor, { backgroundColor: theme.broken }]} />
+          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Broken</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendColor, { backgroundColor: theme.changeover }]} />
+          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Changeover</Text>
+        </View>
+        <View style={styles.legendItem}>
+          <View style={[styles.legendColor, { backgroundColor: theme.safety }]} />
+          <Text style={[styles.legendText, { color: theme.textSecondary }]}>Safety</Text>
+        </View>
+      </View>
     </View>
   );
 };
@@ -112,11 +161,12 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
 interface DeltaData {
   number: number;
   delta: number;
+  zero: number;
   lapType: string;
   [key: string]: unknown;
 }
 
-export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues, theme }) => {
+export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
   // Filter out changeover and safety laps for delta chart
   const nonChangeoverLaps = driver.laps.filter(
     lap => lap.lapType !== 'changeover' && lap.lapType !== 'safety'
@@ -135,6 +185,7 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues,
   const chartData: DeltaData[] = nonChangeoverLaps.map((lap) => ({
     number: lap.number,
     delta: lap.delta,
+    zero: 0,
     lapType: lap.lapType,
   }));
 
@@ -142,27 +193,48 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues,
   const maxAbsDelta = Math.max(...deltas.map(Math.abs));
   const yMax = Math.max(maxAbsDelta * 1.2, 1);
 
+  // Calculate statistics
+  const avgDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+  const bonusCount = nonChangeoverLaps.filter(l => l.lapType === 'bonus').length;
+  const brokenCount = nonChangeoverLaps.filter(l => l.lapType === 'broken').length;
+
   return (
     <View style={styles.chartContainer}>
-      <Text style={[styles.chartTitle, { color: theme.text }]}>Delta from Target</Text>
+      <View style={styles.chartHeader}>
+        <Text style={[styles.chartTitle, { color: theme.text }]}>Delta from Target</Text>
+        <Text style={[styles.chartSubtitle, { color: theme.textSecondary }]}>
+          Avg: {avgDelta >= 0 ? '+' : ''}{avgDelta.toFixed(3)}s
+        </Text>
+      </View>
       <CartesianChart
         data={chartData}
         xKey="number"
-        yKeys={["delta"]}
+        yKeys={["delta", "zero"]}
         axisOptions={{
-          tickCount: 5,
+          tickCount: { x: 5, y: 7 },
           labelOffset: { x: 2, y: 4 },
           labelColor: theme.textSecondary,
           lineColor: theme.border,
-          formatYLabel: (value: unknown) => `${Number(value).toFixed(1)}s`,
+          formatYLabel: (value: unknown) => {
+            const v = Number(value);
+            return v >= 0 ? `+${v.toFixed(1)}s` : `${v.toFixed(1)}s`;
+          },
+          formatXLabel: (value: unknown) => `L${Math.round(Number(value))}`,
         }}
         domain={{ y: [-yMax, yMax] }}
       >
-        {({ points }) => (
+        {({ points, chartBounds }) => (
           <>
+            {/* Zero reference line */}
+            <Line
+              points={points.zero}
+              color={theme.textSecondary}
+              strokeWidth={1}
+              opacity={0.3}
+            />
             {/* Delta bars */}
             {points.delta.map((point, index) => {
-              if (typeof point.y !== 'number') return null;
+              if (typeof point.y !== 'number' || typeof point.x !== 'number') return null;
               const lapType = chartData[index]?.lapType;
               let barColor = point.y >= 0 ? theme.warning : theme.primary;
               if (lapType === 'bonus') barColor = theme.bonus;
@@ -172,15 +244,26 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues,
                 <Bar
                   key={index}
                   points={[point]}
-                  chartBounds={{ left: 0, right: 300, top: 0, bottom: 200 }}
-                  barWidth={12}
+                  chartBounds={chartBounds}
+                  barWidth={8}
                   color={barColor}
+                  roundedCorners={{
+                    topLeft: 2,
+                    topRight: 2,
+                    bottomLeft: 2,
+                    bottomRight: 2,
+                  }}
                 />
               );
             })}
           </>
         )}
       </CartesianChart>
+      <View style={styles.statsRow}>
+        <Text style={[styles.statsText, { color: theme.textSecondary }]}>
+          Bonus: {bonusCount} | Broken: {brokenCount}
+        </Text>
+      </View>
       <View style={styles.legend}>
         <View style={styles.legendItem}>
           <View style={[styles.legendColor, { backgroundColor: theme.bonus }]} />
@@ -206,11 +289,21 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, lapTypeValues,
 const styles = StyleSheet.create({
   chartContainer: {
     marginVertical: 12,
+    height: 250,
+  },
+  chartHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
   },
   chartTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
+  },
+  chartSubtitle: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   emptyContainer: {
     padding: 40,
@@ -220,6 +313,14 @@ const styles = StyleSheet.create({
   },
   emptyText: {
     fontSize: 14,
+  },
+  statsRow: {
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  statsText: {
+    fontSize: 12,
+    fontWeight: '500',
   },
   legend: {
     flexDirection: 'row',
