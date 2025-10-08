@@ -1,12 +1,16 @@
 {
   "name": "regularity-app",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "version:bump": "node scripts/bump-version.js",
+    "build:android": "npm run version:bump && eas build --platform android",
+    "build:ios": "npm run version:bump && eas build --platform ios",
+    "build:all": "npm run version:bump && eas build --platform all"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
