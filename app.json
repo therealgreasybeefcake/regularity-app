@@ -33,7 +33,9 @@
         "WAKE_LOCK",
         "MODIFY_AUDIO_SETTINGS"
       ],
-      "versionCode": 2
+      "versionCode": 2,
+      "enableProguardInReleaseBuilds": true,
+      "enableShrinkResourcesInReleaseBuilds": true
     },
     "plugins": [
       "expo-dev-client"
