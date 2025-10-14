@@ -164,30 +164,40 @@ export default function TimerScreen() {
 
   // Volume button listener for lap recording
   useEffect(() => {
+    console.log('[TimerScreen] Volume button enabled setting:', audioSettings.volumeButtonsEnabled);
+
     if (!audioSettings.volumeButtonsEnabled) {
       VolumeButtonService.disable();
       return;
     }
 
     // Enable volume button service
+    console.log('[TimerScreen] Enabling volume button service...');
     VolumeButtonService.enable();
 
     // Add lap recording listener that returns lap details
     const handleLapRecording = (): LapDetails | null => {
+      console.log('[TimerScreen] handleLapRecording called, driver:', driver?.name);
+
       // Store the current lap count before attempting to add a lap
       const previousLapCount = driver?.laps.length || 0;
 
       if (addLapRef.current) {
+        console.log('[TimerScreen] Calling addLap function');
         addLapRef.current();
+      } else {
+        console.log('[TimerScreen] ERROR: addLapRef.current is null!');
       }
 
       // Check if a new lap was actually recorded (lap count increased)
       if (!driver || driver.laps.length === 0 || driver.laps.length === previousLapCount) {
+        console.log('[TimerScreen] No lap recorded - validation failed or no change');
         return null; // No new lap was recorded (validation failed or other issue)
       }
 
       // Get the latest lap details after recording
       const lastLap = driver.laps[driver.laps.length - 1];
+      console.log('[TimerScreen] Lap recorded successfully:', lastLap);
       return {
         time: lastLap.time,
         lapType: lastLap.lapType,
@@ -196,9 +206,11 @@ export default function TimerScreen() {
       };
     };
 
+    console.log('[TimerScreen] Adding lap recording listener');
     VolumeButtonService.addListener(handleLapRecording);
 
     return () => {
+      console.log('[TimerScreen] Cleaning up volume button listener');
       VolumeButtonService.removeListener(handleLapRecording);
       VolumeButtonService.disable();
     };
