@@ -54,7 +54,7 @@ const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   lapGuardSafetyCarThreshold: 30,
   timeFormat: 'seconds',
   volumeButtonsEnabled: false,
-  showPenaltyLaps: true,
+  showPenaltyLaps: false,
 };
 
 const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
@@ -122,7 +122,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (parsed.lapGuardSafetyCarThreshold === undefined) parsed.lapGuardSafetyCarThreshold = 30;
           if (parsed.timeFormat === undefined) parsed.timeFormat = 'seconds';
           if (parsed.volumeButtonsEnabled === undefined) parsed.volumeButtonsEnabled = false;
-          if (parsed.showPenaltyLaps === undefined) parsed.showPenaltyLaps = true;
+          if (parsed.showPenaltyLaps === undefined) parsed.showPenaltyLaps = false;
           // Remove old backgroundRecordingEnabled if it exists
           delete parsed.backgroundRecordingEnabled;
           setAudioSettings(parsed);

@@ -25,6 +25,10 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
   const minTime = Math.min(...lapTimes);
   const maxTime = Math.max(...lapTimes);
 
+  // Calculate a tighter range around average (±7.5s)
+  const rangeMin = avgTime - 7.5;
+  const rangeMax = avgTime + 7.5;
+
   // Prepare data for line chart
   const lineData = driver.laps.map((lap, index) => {
     let dataPointColor = theme.primary;
@@ -52,7 +56,7 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
     const isSelected = selectedLap === index;
 
     return {
-      value: lap.time,
+      value: lap.time - rangeMin,
       label: `${lap.number}`,
       dataPointColor,
       dataPointRadius: isSelected ? dataPointRadius + 2 : dataPointRadius,
@@ -114,9 +118,10 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
         rulesType="solid"
         yAxisThickness={1}
         xAxisThickness={1}
-        noOfSections={5}
-        maxValue={maxTime + (maxTime - minTime) * 0.1}
-        formatYLabel={(value) => `${parseFloat(value).toFixed(1)}s`}
+        noOfSections={4}
+        stepValue={(rangeMax - rangeMin) / 4}
+        maxValue={rangeMax - rangeMin}
+        formatYLabel={(value) => `${(parseFloat(value) + rangeMin).toFixed(1)}s`}
         showVerticalLines
         verticalLinesColor={theme.border}
         verticalLinesThickness={0.5}

@@ -16,6 +16,149 @@ const formatSessionDate = (timestamp: number) => {
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 };
 
+const generateLapTimesChartSVG = (driver: Driver): string => {
+  if (driver.laps.length === 0) {
+    return '<p>No lap data available</p>';
+  }
+
+  const lapTimes = driver.laps.map(lap => lap.time);
+  const avgTime = lapTimes.reduce((a, b) => a + b, 0) / lapTimes.length;
+
+  // Calculate range (±7.5s from average)
+  const rangeMin = avgTime - 7.5;
+  const rangeMax = avgTime + 7.5;
+
+  // SVG dimensions
+  const width = 700;
+  const height = 300;
+  const padding = { top: 20, right: 40, bottom: 40, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+
+  // Calculate data points
+  const points = driver.laps.map((lap, index) => {
+    const x = padding.left + (index / (driver.laps.length - 1)) * chartWidth;
+    const normalizedValue = (lap.time - rangeMin) / (rangeMax - rangeMin);
+    const y = padding.top + chartHeight - (normalizedValue * chartHeight);
+    return { x, y, lap };
+  });
+
+  // Generate path
+  const pathData = points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x},${p.y}`).join(' ');
+
+  // Generate y-axis labels (5 labels)
+  const yAxisLabels = Array.from({ length: 5 }, (_, i) => {
+    const value = rangeMin + (rangeMax - rangeMin) * (i / 4);
+    const y = padding.top + chartHeight - (i / 4) * chartHeight;
+    return { value: value.toFixed(1), y };
+  });
+
+  // Color mapping
+  const getColor = (lapType: string) => {
+    switch (lapType) {
+      case 'bonus': return '#10b981';
+      case 'broken': return '#ef4444';
+      case 'changeover': return '#f59e0b';
+      case 'safety': return '#3b82f6';
+      default: return '#6366f1';
+    }
+  };
+
+  return `
+    <svg width="${width}" height="${height}" style="background: white;">
+      <!-- Y-axis -->
+      <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}" stroke="#d1d5db" stroke-width="2"/>
+
+      <!-- X-axis -->
+      <line x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" stroke="#d1d5db" stroke-width="2"/>
+
+      <!-- Y-axis labels -->
+      ${yAxisLabels.map(label => `
+        <text x="${padding.left - 10}" y="${label.y}" text-anchor="end" dominant-baseline="middle" font-size="12" fill="#6b7280">${label.value}s</text>
+        <line x1="${padding.left}" y1="${label.y}" x2="${width - padding.right}" y2="${label.y}" stroke="#e5e7eb" stroke-width="1"/>
+      `).join('')}
+
+      <!-- Line -->
+      <path d="${pathData}" fill="none" stroke="#6366f1" stroke-width="2"/>
+
+      <!-- Data points -->
+      ${points.map(p => `
+        <circle cx="${p.x}" cy="${p.y}" r="4" fill="${getColor(p.lap.lapType)}" stroke="white" stroke-width="1"/>
+      `).join('')}
+
+      <!-- X-axis labels (lap numbers) -->
+      ${points.filter((_, i) => i % Math.max(1, Math.floor(driver.laps.length / 10)) === 0).map(p => `
+        <text x="${p.x}" y="${height - padding.bottom + 20}" text-anchor="middle" font-size="10" fill="#6b7280">${p.lap.number}</text>
+      `).join('')}
+
+      <!-- Title -->
+      <text x="${width / 2}" y="15" text-anchor="middle" font-size="14" font-weight="bold" fill="#111827">Lap Times (Avg: ${avgTime.toFixed(2)}s)</text>
+    </svg>
+  `;
+};
+
+const generateDeltaChartSVG = (driver: Driver): string => {
+  const nonChangeoverLaps = driver.laps.filter(
+    lap => lap.lapType !== 'changeover' && lap.lapType !== 'safety'
+  );
+
+  if (nonChangeoverLaps.length === 0) {
+    return '<p>No delta data available</p>';
+  }
+
+  const deltas = nonChangeoverLaps.map(lap => lap.delta);
+  const avgDelta = deltas.reduce((a, b) => a + b, 0) / deltas.length;
+  const maxDelta = Math.max(...deltas, 0);
+  const minDelta = Math.min(...deltas, 0);
+
+  // SVG dimensions
+  const width = 700;
+  const height = 300;
+  const padding = { top: 40, right: 40, bottom: 40, left: 60 };
+  const chartWidth = width - padding.left - padding.right;
+  const chartHeight = height - padding.top - padding.bottom;
+  const zeroY = padding.top + chartHeight * (maxDelta * 1.1 / ((maxDelta * 1.1) + (Math.abs(minDelta) * 1.1)));
+
+  const barWidth = Math.min(20, chartWidth / nonChangeoverLaps.length - 2);
+
+  const getColor = (lap: any) => {
+    if (lap.lapType === 'bonus') return '#10b981';
+    if (lap.lapType === 'broken') return '#ef4444';
+    if (lap.delta >= 0) return '#f59e0b';
+    return '#6366f1';
+  };
+
+  return `
+    <svg width="${width}" height="${height}" style="background: white;">
+      <!-- Y-axis -->
+      <line x1="${padding.left}" y1="${padding.top}" x2="${padding.left}" y2="${height - padding.bottom}" stroke="#d1d5db" stroke-width="2"/>
+
+      <!-- X-axis -->
+      <line x1="${padding.left}" y1="${height - padding.bottom}" x2="${width - padding.right}" y2="${height - padding.bottom}" stroke="#d1d5db" stroke-width="2"/>
+
+      <!-- Zero line -->
+      <line x1="${padding.left}" y1="${zeroY}" x2="${width - padding.right}" y2="${zeroY}" stroke="#6b7280" stroke-width="2"/>
+
+      <!-- Bars -->
+      ${nonChangeoverLaps.map((lap, index) => {
+        const x = padding.left + (index / nonChangeoverLaps.length) * chartWidth + (chartWidth / nonChangeoverLaps.length - barWidth) / 2;
+        const barHeight = Math.abs(lap.delta) * (chartHeight / ((maxDelta * 1.1) + (Math.abs(minDelta) * 1.1)));
+        const y = lap.delta >= 0 ? zeroY - barHeight : zeroY;
+        return `<rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${getColor(lap)}"/>`;
+      }).join('')}
+
+      <!-- X-axis labels (lap numbers) -->
+      ${nonChangeoverLaps.filter((_, i) => i % Math.max(1, Math.floor(nonChangeoverLaps.length / 15)) === 0).map((lap, index) => {
+        const x = padding.left + (nonChangeoverLaps.indexOf(lap) / nonChangeoverLaps.length) * chartWidth + (chartWidth / nonChangeoverLaps.length) / 2;
+        return `<text x="${x}" y="${height - padding.bottom + 20}" text-anchor="middle" font-size="10" fill="#6b7280">${lap.number}</text>`;
+      }).join('')}
+
+      <!-- Title -->
+      <text x="${width / 2}" y="20" text-anchor="middle" font-size="14" font-weight="bold" fill="#111827">Delta from Target (Avg: ${avgDelta >= 0 ? '+' : ''}${avgDelta.toFixed(3)}s)</text>
+    </svg>
+  `;
+};
+
 const generateDriverLapsTable = (driver: Driver, lapTypeValues: LapTypeValues): string => {
   if (driver.laps.length === 0) {
     return '<tr><td colspan="4" align="center">No lap data</td></tr>';
@@ -100,6 +243,13 @@ const generateDriverSection = (
           </td>
         </tr>
       </table>
+
+      <h3>Performance Charts</h3>
+      <div align="center">
+        ${generateLapTimesChartSVG(driver)}
+        <br/><br/>
+        ${generateDeltaChartSVG(driver)}
+      </div>
 
       <h3>Lap History</h3>
       <table width="100%" cellpadding="6" cellspacing="0" border="1">
