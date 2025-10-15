@@ -20,6 +20,7 @@ import { useAudioPlayer, AudioSource } from 'expo-audio';
 import { Swipeable } from 'react-native-gesture-handler';
 import { VolumeManager } from 'react-native-volume-manager';
 import { useApp } from '../context/AppContext';
+import { useWalkthroughContext } from '../context/WalkthroughContext';
 import { lightTheme, darkTheme } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
@@ -35,6 +36,8 @@ export default function TimerScreen() {
     audioSettings,
     lapTypeValues,
   } = useApp();
+
+  const { setElementPosition } = useWalkthroughContext();
 
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
@@ -68,8 +71,38 @@ export default function TimerScreen() {
   const initialVolumeRef = useRef<number | null>(null);
   const addLapRef = useRef<(() => void) | undefined>(undefined);
 
+  // Refs for measuring element positions
+  const startButtonRef = useRef<any>(null);
+  const driverTabsRef = useRef<any>(null);
+  const lapHistoryRef = useRef<any>(null);
+
   // Audio player for beeps
   const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
+
+  // Measure element positions for walkthrough
+  useEffect(() => {
+    const measureElements = () => {
+      if (startButtonRef.current) {
+        startButtonRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
+          setElementPosition('startButton', { x, y, width, height });
+        });
+      }
+      if (driverTabsRef.current) {
+        driverTabsRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
+          setElementPosition('driverTabs', { x, y, width, height });
+        });
+      }
+      if (lapHistoryRef.current) {
+        lapHistoryRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
+          setElementPosition('lapHistory', { x, y, width, height });
+        });
+      }
+    };
+
+    // Delay measurement to ensure elements are rendered
+    const timer = setTimeout(measureElements, 100);
+    return () => clearTimeout(timer);
+  }, [driver?.laps.length]); // Re-measure when laps change
 
   // Initialize VolumeButtonService
   useEffect(() => {
@@ -604,7 +637,12 @@ export default function TimerScreen() {
         </Animated.View>
 
         {/* Driver Tabs */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.driverTabs}>
+        <ScrollView
+          ref={driverTabsRef}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.driverTabs}
+        >
           {team?.drivers.map((d, index) => (
             <TouchableOpacity
               key={d.id}
@@ -649,6 +687,7 @@ export default function TimerScreen() {
 
         {/* Controls */}
         <TouchableOpacity
+          ref={startButtonRef}
           style={[styles.primaryButton, { backgroundColor: theme.primary }]}
           onPress={addLap}
         >
@@ -698,7 +737,10 @@ export default function TimerScreen() {
         </View>
 
         {/* Lap History */}
-        <View style={[styles.lapHistory, { backgroundColor: theme.card }]}>
+        <View
+          ref={lapHistoryRef}
+          style={[styles.lapHistory, { backgroundColor: theme.card }]}
+        >
           <View style={styles.historyHeader}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap History</Text>
             {driver?.laps.length > 0 && (

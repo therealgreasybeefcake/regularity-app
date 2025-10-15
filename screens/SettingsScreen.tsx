@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Paths, File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
+import Constants from 'expo-constants';
 import { useApp, ThemeMode } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
 
@@ -31,7 +32,7 @@ export default function SettingsScreen() {
     setAudioSettings,
     lapTypeValues,
     setLapTypeValues,
-    setHasSeenWelcome,
+    setHasSeenWalkthrough,
   } = useApp();
 
   const theme = isDarkMode ? darkTheme : lightTheme;
@@ -604,16 +605,18 @@ export default function SettingsScreen() {
 
           <TouchableOpacity
             style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => setHasSeenWelcome(false)}
+            onPress={() => setHasSeenWalkthrough(false)}
           >
-            <Ionicons name="help-circle-outline" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Show Welcome Guide</Text>
+            <Ionicons name="walk-outline" size={20} color="#fff" />
+            <Text style={styles.buttonText}>Show Guided Walkthrough</Text>
           </TouchableOpacity>
 
           <Text style={[styles.infoText, { color: theme.textSecondary }]}>
             Regularity Race Timer
           </Text>
-          <Text style={[styles.infoText, { color: theme.textSecondary }]}>Version 1.0.0</Text>
+          <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+            Version {Constants.expoConfig?.version || '1.0.0'}
+          </Text>
         </View>
       </View>
 

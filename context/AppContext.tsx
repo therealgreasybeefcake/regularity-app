@@ -20,8 +20,8 @@ interface AppContextType {
   lapTypeValues: LapTypeValues;
   setLapTypeValues: (values: LapTypeValues) => void;
   isLoading: boolean;
-  hasSeenWelcome: boolean;
-  setHasSeenWelcome: (value: boolean) => void;
+  hasSeenWalkthrough: boolean;
+  setHasSeenWalkthrough: (value: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -74,7 +74,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [audioSettings, setAudioSettings] = useState<AudioSettings>(DEFAULT_AUDIO_SETTINGS);
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
+  const [hasSeenWalkthrough, setHasSeenWalkthrough] = useState(false);
 
   // Calculate isDarkMode based on theme mode and system preference
   const isDarkMode = themeMode === 'auto'
@@ -85,7 +85,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [savedTeams, savedActiveTeam, savedActiveDriver, savedThemeMode, savedAudio, savedLapValues, savedWelcome] =
+        const [savedTeams, savedActiveTeam, savedActiveDriver, savedThemeMode, savedAudio, savedLapValues, savedWalkthrough] =
           await Promise.all([
             AsyncStorage.getItem('blindFreddyRaceTeams'),
             AsyncStorage.getItem('blindFreddyActiveTeam'),
@@ -93,7 +93,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             AsyncStorage.getItem('themeMode'),
             AsyncStorage.getItem('audioSettings'),
             AsyncStorage.getItem('lapTypeValues'),
-            AsyncStorage.getItem('hasSeenWelcome'),
+            AsyncStorage.getItem('hasSeenWalkthrough'),
           ]);
 
         if (savedTeams) {
@@ -128,7 +128,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           setAudioSettings(parsed);
         }
         if (savedLapValues) setLapTypeValues(JSON.parse(savedLapValues));
-        if (savedWelcome !== null) setHasSeenWelcome(JSON.parse(savedWelcome));
+        if (savedWalkthrough !== null) setHasSeenWalkthrough(JSON.parse(savedWalkthrough));
       } catch (error) {
         console.error('Error loading data:', error);
       } finally {
@@ -197,9 +197,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   useEffect(() => {
     if (!isLoading) {
-      AsyncStorage.setItem('hasSeenWelcome', JSON.stringify(hasSeenWelcome));
+      AsyncStorage.setItem('hasSeenWalkthrough', JSON.stringify(hasSeenWalkthrough));
     }
-  }, [hasSeenWelcome, isLoading]);
+  }, [hasSeenWalkthrough, isLoading]);
 
   return (
     <AppContext.Provider
@@ -218,8 +218,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         lapTypeValues,
         setLapTypeValues,
         isLoading,
-        hasSeenWelcome,
-        setHasSeenWelcome,
+        hasSeenWalkthrough,
+        setHasSeenWalkthrough,
       }}
     >
       {children}
