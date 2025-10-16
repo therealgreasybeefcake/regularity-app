@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Animated,
   Dimensions,
-  Platform,
   Linking,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -28,7 +27,7 @@ interface WalkthroughStep {
     width: number;
     height: number;
   };
-  measureElement?: 'startButton' | 'lapHistory' | 'driverTabs';
+  measureElement?: 'startButton' | 'lapHistory' | 'driverTabs' | 'settingsTab';
   icon?: keyof typeof Ionicons.glyphMap;
 }
 
@@ -42,21 +41,19 @@ interface GuidedWalkthroughProps {
   activeTeam: number;
 }
 
-// Calculate positions based on typical layout
-// SafeAreaView top edge varies: iOS ~47px, Android ~24px
-// Title + status: ~140px
-// Driver tabs: starts ~160px from top
-// Timer + button area: ~320-400px from top
-// Lap history: starts ~500px from top (varies by device)
+// Dynamic highlight area calculation based on measured element positions
+const getHighlightArea = (elementKey: string, positions: any) => {
+  const position = positions[elementKey];
+  if (!position) return undefined;
 
-const getDriverTabsY = () => Platform.OS === 'ios' ? 140 : 120;
-const getStartButtonY = () => {
-  // Button appears around 52-53% of screen height on most devices
-  return SCREEN_HEIGHT * 0.53;
-};
-const getLapHistoryY = () => {
-  // After button(84) + secondary controls(60) + manual input(60) + margins(48) = ~252 from button
-  return getStartButtonY() + 250;
+  // Add some padding around the element for better visibility
+  const padding = 8;
+  return {
+    x: Math.max(0, position.x - padding),
+    y: Math.max(0, position.y - padding),
+    width: position.width + (padding * 2),
+    height: position.height + (padding * 2),
+  };
 };
 
 const WALKTHROUGH_STEPS: WalkthroughStep[] = [
@@ -70,40 +67,42 @@ const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     title: 'Start/Lap Button',
     description: 'Tap this large button to start the timer on your first press, then tap again to record each lap time.',
     position: 'top',
-    highlightArea: { x: 16, y: getStartButtonY()-5, width: SCREEN_WIDTH - 32, height: 88 },
+    measureElement: 'startButton',
     icon: 'play-circle',
   },
   {
     title: 'Press and Hold Laps',
     description: 'Press and hold any lap in the history to edit its time, mark it as a changeover/safety car lap, or delete it.',
     position: 'center',
-    highlightArea: { x: 16, y: getLapHistoryY()+30, width: SCREEN_WIDTH - 32, height: 50 },
+    measureElement: 'lapHistory',
     icon: 'hand-left',
   },
   {
     title: 'Swipe to Delete',
     description: 'Swipe left on any lap to quickly delete it. This is faster than the long press menu.',
     position: 'center',
-    highlightArea: { x: 16, y: getLapHistoryY()+25, width: SCREEN_WIDTH - 32, height: 50 },
+    measureElement: 'lapHistory',
     icon: 'swap-horizontal',
   },
   {
     title: 'Volume Button Recording',
     description: 'Enable volume buttons in Settings to record laps by pressing volume up/down - keep your eyes on the track!',
     position: 'center',
+    measureElement: 'settingsTab',
     icon: 'volume-high',
   },
   {
     title: 'Audio Warnings',
     description: 'Set up audio beeps in Settings to get warnings before your target time. Perfect for signaling to your pit wall!',
     position: 'center',
+    measureElement: 'settingsTab',
     icon: 'notifications',
   },
   {
     title: 'Driver Management',
     description: 'Switch between drivers using the tabs at the top. Each driver has their own target time and lap history.',
     position: 'bottom',
-    highlightArea: { x: 16, y: getDriverTabsY()+90, width: SCREEN_WIDTH - 32, height: 70 },
+    measureElement: 'driverTabs',
     icon: 'people',
   },
   {
@@ -289,7 +288,10 @@ export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, nav
   const isFirstStep = currentStep === 0;
   const isLastStep = currentStep === WALKTHROUGH_STEPS.length - 1;
 
-  const highlightArea = step.highlightArea;
+  // Get dynamic highlight area from measured element positions
+  const highlightArea = step.measureElement
+    ? getHighlightArea(step.measureElement, elementPositions)
+    : undefined;
 
   return (
     <Modal
@@ -347,9 +349,9 @@ export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, nav
             style={{
               position: 'absolute',
               left: highlightArea.x,
-              top: highlightArea.y,
+              top: highlightArea.y + 16, // Offset to show first lap item
               width: highlightArea.width,
-              height: 42,
+              height: 50,
               overflow: 'hidden',
               backgroundColor: theme.background,
             }}
@@ -597,16 +599,16 @@ const styles = StyleSheet.create({
   swipeIndicator: {
     flexDirection: 'row',
     alignItems: 'center',
-    height: 42,
+    height: 50,
   },
   swipeLapItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 10,
+    paddingVertical: 12,
     paddingHorizontal: 12,
     borderBottomWidth: 1,
     flex: 1,
-    height:42,
+    height: 50,
   },
   swipeLapNumber: {
     fontSize: 14,
@@ -639,7 +641,7 @@ const styles = StyleSheet.create({
   deleteIndicator: {
     backgroundColor: '#ef4444',
     width: 80,
-    height: 42,
+    height: 50,
     alignItems: 'center',
     justifyContent: 'center',
     marginLeft: -80,
