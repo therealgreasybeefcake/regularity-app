@@ -1,6 +1,7 @@
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { AppProvider, useApp } from './context/AppContext';
 import { WalkthroughProvider } from './context/WalkthroughContext';
 import AppNavigator from './navigation/AppNavigator';
@@ -26,12 +27,14 @@ function AppContent() {
 
 export default function App() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <AppProvider>
-        <WalkthroughProvider>
-          <AppContent />
-        </WalkthroughProvider>
-      </AppProvider>
-    </GestureHandlerRootView>
+    <SafeAreaProvider>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <AppProvider>
+          <WalkthroughProvider>
+            <AppContent />
+          </WalkthroughProvider>
+        </AppProvider>
+      </GestureHandlerRootView>
+    </SafeAreaProvider>
   );
 }

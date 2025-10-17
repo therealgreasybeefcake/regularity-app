@@ -39,6 +39,7 @@ interface GuidedWalkthroughProps {
   teams: Team[];
   setTeams: (teams: Team[]) => void;
   activeTeam: number;
+  bottomInset: number;
 }
 
 // Dynamic highlight area calculation based on measured element positions
@@ -131,7 +132,7 @@ const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   },
 ];
 
-export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, navigation, teams, setTeams, activeTeam }: GuidedWalkthroughProps) {
+export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, navigation, teams, setTeams, activeTeam, bottomInset }: GuidedWalkthroughProps) {
   const theme = isDarkMode ? darkTheme : lightTheme;
   const { elementPositions } = useWalkthroughContext();
   const [currentStep, setCurrentStep] = useState(0);
@@ -367,7 +368,7 @@ export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, nav
               ]}
             >
               <View style={[styles.swipeLapItem, { backgroundColor: theme.card, borderBottomColor: theme.border }]}>
-                <Text style={[styles.swipeLapNumber, { color: theme.text }]}>#3</Text>
+                <Text style={[styles.swipeLapNumber, { color: theme.text }]}>#7</Text>
                 <View style={styles.swipeLapDetails}>
                   <Text style={[styles.swipeLapTime, { color: theme.text }]}>1:44.567</Text>
                   <Text style={[styles.swipeLapDelta, { color: theme.bonus }]}> • -0.433s</Text>
@@ -390,7 +391,7 @@ export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, nav
             styles.tooltip,
             { backgroundColor: theme.card },
             step.position === 'top' && styles.tooltipTop,
-            step.position === 'bottom' && styles.tooltipBottom,
+            step.position === 'bottom' && { bottom: 120 + bottomInset },
             step.position === 'center' && styles.tooltipCenter,
           ]}
         >

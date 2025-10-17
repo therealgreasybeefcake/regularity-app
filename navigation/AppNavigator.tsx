@@ -95,6 +95,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
 export default function AppNavigator() {
   const { isDarkMode, hasSeenWalkthrough, setHasSeenWalkthrough, teams, setTeams, activeTeam } = useApp();
   const theme = isDarkMode ? darkTheme : lightTheme;
+  const insets = useSafeAreaInsets();
   const navigationRef = useRef<any>(null);
 
   return (
@@ -120,6 +121,7 @@ export default function AppNavigator() {
         teams={teams}
         setTeams={setTeams}
         activeTeam={activeTeam}
+        bottomInset={insets.bottom}
       />
     </>
   );
