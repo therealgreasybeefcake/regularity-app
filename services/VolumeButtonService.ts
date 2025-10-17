@@ -20,6 +20,7 @@ class VolumeButtonServiceClass {
   private debounceTime = 300; // ms to prevent double triggers
   private initialVolume: number | null = null;
   private volumeListener: any = null;
+  private isInitializing = false; // Flag to prevent triggers during initialization
 
   async initialize() {
     // No initialization needed
@@ -46,6 +47,7 @@ class VolumeButtonServiceClass {
 
     this.isEnabled = true;
     this.backgroundEnabled = backgroundEnabled;
+    this.isInitializing = true; // Set flag to prevent initial volume changes from triggering
 
     try {
       // Set up audio session for iOS - this is REQUIRED for volume events to work
@@ -57,7 +59,7 @@ class VolumeButtonServiceClass {
         console.log('[VolumeButtonService] Enabled audio in silent mode');
 
         // Set audio session category to ambient with mixing
-        await VolumeManager.setCategory('ambient', true);
+        await VolumeManager.setCategory('Ambient', true);
         console.log('[VolumeButtonService] Set category to ambient with mixing');
 
         // Enable and activate the audio session
@@ -85,6 +87,13 @@ class VolumeButtonServiceClass {
       // Set up volume change listener
       this.volumeListener = VolumeManager.addVolumeListener((result: any) => {
         console.log('[VolumeButtonService] Volume changed detected:', result);
+
+        // Ignore volume changes during initialization
+        if (this.isInitializing) {
+          console.log('[VolumeButtonService] Initializing - ignoring volume change');
+          return;
+        }
+
         const now = Date.now();
 
         // Debounce to prevent multiple triggers
@@ -103,6 +112,12 @@ class VolumeButtonServiceClass {
         this.handleVolumeButtonPress();
       });
 
+      // Wait a bit before clearing the initialization flag to ensure any triggered events are ignored
+      setTimeout(() => {
+        this.isInitializing = false;
+        console.log('[VolumeButtonService] Initialization complete, volume buttons ready');
+      }, 500);
+
       console.log('[VolumeButtonService] Volume button service enabled successfully');
 
       if (backgroundEnabled && Platform.OS === 'android') {
@@ -120,6 +135,7 @@ class VolumeButtonServiceClass {
 
     console.log('[VolumeButtonService] Disabling volume button service...');
     this.isEnabled = false;
+    this.isInitializing = false; // Reset initialization flag
 
     try {
       // Remove volume listener
