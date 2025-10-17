@@ -12,6 +12,8 @@ interface WalkthroughContextType {
     startButton?: ElementPosition;
     lapHistory?: ElementPosition;
     driverTabs?: ElementPosition;
+    driversTabBottom?: ElementPosition;
+    statsTab?: ElementPosition;
     settingsTab?: ElementPosition;
   };
   setElementPosition: (element: string, position: ElementPosition) => void;
@@ -24,6 +26,8 @@ export const WalkthroughProvider: React.FC<{ children: ReactNode }> = ({ childre
     startButton?: ElementPosition;
     lapHistory?: ElementPosition;
     driverTabs?: ElementPosition;
+    driversTabBottom?: ElementPosition;
+    statsTab?: ElementPosition;
     settingsTab?: ElementPosition;
   }>({});
 

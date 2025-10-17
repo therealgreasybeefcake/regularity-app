@@ -22,19 +22,31 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const theme = isDarkMode ? darkTheme : lightTheme;
   const insets = useSafeAreaInsets();
   const settingsTabRef = useRef<any>(null);
+  const driversTabRef = useRef<any>(null);
+  const statsTabRef = useRef<any>(null);
 
-  // Measure Settings tab position
+  // Measure Settings, Drivers, and Stats tab positions
   React.useEffect(() => {
-    const measureSettingsTab = () => {
+    const measureTabs = () => {
       if (settingsTabRef.current) {
         settingsTabRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
           setElementPosition('settingsTab', { x, y, width, height });
         });
       }
+      if (driversTabRef.current) {
+        driversTabRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
+          setElementPosition('driversTabBottom', { x, y, width, height });
+        });
+      }
+      if (statsTabRef.current) {
+        statsTabRef.current.measureInWindow((x: number, y: number, width: number, height: number) => {
+          setElementPosition('statsTab', { x, y, width, height });
+        });
+      }
     };
 
     // Delay measurement to ensure element is rendered
-    const timer = setTimeout(measureSettingsTab, 100);
+    const timer = setTimeout(measureTabs, 100);
     return () => clearTimeout(timer);
   }, []);
 
@@ -69,11 +81,13 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
         }
 
         const isSettingsTab = route.name === 'Settings';
+        const isDriversTab = route.name === 'Drivers';
+        const isStatsTab = route.name === 'Stats';
 
         return (
           <TouchableOpacity
             key={route.key}
-            ref={isSettingsTab ? settingsTabRef : null}
+            ref={isSettingsTab ? settingsTabRef : isDriversTab ? driversTabRef : isStatsTab ? statsTabRef : null}
             onPress={onPress}
             style={{ flex: 1, alignItems: 'center', paddingVertical: 8 }}
           >

@@ -27,7 +27,8 @@ interface WalkthroughStep {
     width: number;
     height: number;
   };
-  measureElement?: 'startButton' | 'lapHistory' | 'driverTabs' | 'settingsTab';
+  measureElement?: 'startButton' | 'lapHistory' | 'driverTabs' | 'driversTabBottom' | 'statsTab' | 'settingsTab';
+  measureElement2?: 'startButton' | 'lapHistory' | 'driverTabs' | 'driversTabBottom' | 'statsTab' | 'settingsTab';
   icon?: keyof typeof Ionicons.glyphMap;
 }
 
@@ -101,9 +102,10 @@ const WALKTHROUGH_STEPS: WalkthroughStep[] = [
   },
   {
     title: 'Driver Management',
-    description: 'Switch between drivers using the tabs at the top. Each driver has their own target time and lap history.',
+    description: 'Switch between drivers using the tabs at the top. Each driver has their own target time and lap history. You can set their name from the Drivers tab',
     position: 'bottom',
     measureElement: 'driverTabs',
+    measureElement2: 'driversTabBottom',
     icon: 'people',
   },
   {
@@ -116,6 +118,7 @@ const WALKTHROUGH_STEPS: WalkthroughStep[] = [
     title: 'View Statistics',
     description: 'Check the Stats tab to see detailed performance metrics, export PDFs, and view session history.',
     position: 'center',
+    measureElement: 'statsTab',
     icon: 'stats-chart',
   },
   {
@@ -294,6 +297,10 @@ export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, nav
     ? getHighlightArea(step.measureElement, elementPositions)
     : undefined;
 
+  const highlightArea2 = step.measureElement2
+    ? getHighlightArea(step.measureElement2, elementPositions)
+    : undefined;
+
   return (
     <Modal
       visible={visible}
@@ -313,6 +320,16 @@ export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, nav
                   y={highlightArea.y}
                   width={highlightArea.width}
                   height={highlightArea.height}
+                  rx={12}
+                  fill="#000"
+                />
+              )}
+              {highlightArea2 && (
+                <Rect
+                  x={highlightArea2.x}
+                  y={highlightArea2.y}
+                  width={highlightArea2.width}
+                  height={highlightArea2.height}
                   rx={12}
                   fill="#000"
                 />
@@ -337,6 +354,23 @@ export default function GuidedWalkthrough({ visible, onComplete, isDarkMode, nav
                 top: highlightArea.y,
                 width: highlightArea.width,
                 height: highlightArea.height,
+                transform: [{ scale: pulseAnim }],
+              },
+            ]}
+            pointerEvents="none"
+          />
+        )}
+
+        {/* Second highlight border */}
+        {highlightArea2 && (
+          <Animated.View
+            style={[
+              styles.highlightBorder,
+              {
+                left: highlightArea2.x,
+                top: highlightArea2.y,
+                width: highlightArea2.width,
+                height: highlightArea2.height,
                 transform: [{ scale: pulseAnim }],
               },
             ]}
