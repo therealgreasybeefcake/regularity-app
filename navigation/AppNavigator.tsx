@@ -3,6 +3,7 @@ import { View, TouchableOpacity, Text } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../context/AppContext';
 import { useWalkthroughContext } from '../context/WalkthroughContext';
 import { lightTheme, darkTheme } from '../constants/theme';
@@ -19,6 +20,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   const { isDarkMode } = useApp();
   const { setElementPosition } = useWalkthroughContext();
   const theme = isDarkMode ? darkTheme : lightTheme;
+  const insets = useSafeAreaInsets();
   const settingsTabRef = useRef<any>(null);
 
   // Measure Settings tab position
@@ -37,7 +39,7 @@ function CustomTabBar({ state, descriptors, navigation }: any) {
   }, []);
 
   return (
-    <View style={{ flexDirection: 'row', backgroundColor: theme.card, borderTopColor: theme.border, borderTopWidth: 1 }}>
+    <View style={{ flexDirection: 'row', backgroundColor: theme.card, borderTopColor: theme.border, borderTopWidth: 1, paddingBottom: insets.bottom }}>
       {state.routes.map((route: any, index: number) => {
         const { options } = descriptors[route.key];
         const label = route.name;
