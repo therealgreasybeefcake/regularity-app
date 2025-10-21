@@ -50,22 +50,23 @@ class VolumeButtonServiceClass {
     this.isInitializing = true; // Set flag to prevent initial volume changes from triggering
 
     try {
+      // Note: expo-audio's setAudioModeAsync should be called BEFORE this
+      // to properly configure the audio session
+
       // Set up audio session for iOS - this is REQUIRED for volume events to work
       if (Platform.OS === 'ios') {
         console.log('[VolumeButtonService] Setting up iOS audio session...');
 
-        // Enable audio in silent mode
+        // Enable audio in silent mode - this must be set for audio to work
         await VolumeManager.enableInSilenceMode(true);
         console.log('[VolumeButtonService] Enabled audio in silent mode');
 
-        // Set audio session category to ambient with mixing
-        await VolumeManager.setCategory('Ambient', true);
-        console.log('[VolumeButtonService] Set category to ambient with mixing');
+        // Set audio session category to Playback (not Ambient) with mixing
+        // Playback category is required for proper volume button detection
+        await VolumeManager.setCategory('Playback', true);
+        console.log('[VolumeButtonService] Set category to Playback with mixing');
 
-        // Enable and activate the audio session
-        await VolumeManager.enable(true, true);
-        console.log('[VolumeButtonService] Enabled audio session');
-
+        // Activate the audio session
         await VolumeManager.setActive(true, true);
         console.log('[VolumeButtonService] Activated audio session');
       }
@@ -105,18 +106,23 @@ class VolumeButtonServiceClass {
         this.lastVolumeChange = now;
         console.log('[VolumeButtonService] Processing volume button press');
 
-        // Immediately restore to middle volume to prevent UI from showing
-        VolumeManager.setVolume(0.5, { showUI: false });
-
-        // Then handle the button press
+        // Handle the button press FIRST (to capture accurate timestamp)
         this.handleVolumeButtonPress();
+
+        // Then restore to middle volume (slight delay to ensure the event is processed)
+        setTimeout(() => {
+          VolumeManager.setVolume(0.5, { showUI: false }).catch(err =>
+            console.error('[VolumeButtonService] Error resetting volume:', err)
+          );
+        }, 50);
       });
 
-      // Wait a bit before clearing the initialization flag to ensure any triggered events are ignored
+      // Wait before clearing the initialization flag to ensure setup events are ignored
+      // Increased to 800ms to account for all async operations
       setTimeout(() => {
         this.isInitializing = false;
         console.log('[VolumeButtonService] Initialization complete, volume buttons ready');
-      }, 500);
+      }, 800);
 
       console.log('[VolumeButtonService] Volume button service enabled successfully');
 
@@ -173,12 +179,25 @@ class VolumeButtonServiceClass {
   private async handleVolumeButtonPress() {
     console.log('[VolumeButtonService] Handling volume button press, listeners:', this.listeners.length);
 
-    // Trigger haptic feedback
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (this.listeners.length === 0) {
+      console.warn('[VolumeButtonService] No listeners registered!');
+      return;
+    }
+
+    // Trigger haptic feedback FIRST for immediate user feedback
+    try {
+      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    } catch (error) {
+      console.error('[VolumeButtonService] Haptic feedback error:', error);
+    }
 
     // Notify listeners (which will record the lap)
-    const result = this.notifyListeners();
-    console.log('[VolumeButtonService] Lap recording result:', result);
+    try {
+      const result = this.notifyListeners();
+      console.log('[VolumeButtonService] Lap recording result:', result);
+    } catch (error) {
+      console.error('[VolumeButtonService] Error in listener callback:', error);
+    }
   }
 
   isVolumeButtonsEnabled(): boolean {

@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer, AudioSource } from 'expo-audio';
+import { useAudioPlayer, AudioSource, setAudioModeAsync } from 'expo-audio';
 import { Swipeable } from 'react-native-gesture-handler';
 import { VolumeManager } from 'react-native-volume-manager';
 import { useApp } from '../context/AppContext';
@@ -70,6 +70,9 @@ export default function TimerScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const initialVolumeRef = useRef<number | null>(null);
   const addLapRef = useRef<(() => void) | undefined>(undefined);
+  const teamsRef = useRef(teams);
+  const activeTeamRef = useRef(activeTeam);
+  const activeDriverRef = useRef(activeDriver);
 
   // Refs for measuring element positions
   const startButtonRef = useRef<any>(null);
@@ -204,32 +207,51 @@ export default function TimerScreen() {
       return;
     }
 
-    // Enable volume button service
-    console.log('[TimerScreen] Enabling volume button service...');
-    VolumeButtonService.enable();
+    // Configure audio mode for proper audio session handling with beep playback
+    const configureAudioMode = async () => {
+      try {
+        // Configure expo-audio to play in silent mode (for beeps)
+        // This sets up the audio session properly before VolumeButtonService takes over
+        await setAudioModeAsync({
+          playsInSilentMode: true,
+          shouldPlayInBackground: false,
+        });
+        console.log('[TimerScreen] Audio mode configured for playback');
+      } catch (error) {
+        console.error('[TimerScreen] Error configuring audio mode:', error);
+      }
+    };
 
     // Add lap recording listener that returns lap details
     const handleLapRecording = (): LapDetails | null => {
-      console.log('[TimerScreen] handleLapRecording called, driver:', driver?.name);
+      // Get current driver using refs (not stale closure)
+      const currentDriver = teamsRef.current[activeTeamRef.current]?.drivers[activeDriverRef.current];
+      console.log('[TimerScreen] handleLapRecording called, driver:', currentDriver?.name);
 
       // Store the current lap count before attempting to add a lap
-      const previousLapCount = driver?.laps.length || 0;
+      const previousLapCount = currentDriver?.laps.length || 0;
 
       if (addLapRef.current) {
         console.log('[TimerScreen] Calling addLap function');
         addLapRef.current();
       } else {
         console.log('[TimerScreen] ERROR: addLapRef.current is null!');
+        return null;
       }
 
+      // Get updated driver after addLap was called (state was updated)
+      // Note: We need to use a small delay to allow React state to update
+      // However, since addLap calls setTeams synchronously, the ref should be updated
+      const updatedDriver = teamsRef.current[activeTeamRef.current]?.drivers[activeDriverRef.current];
+
       // Check if a new lap was actually recorded (lap count increased)
-      if (!driver || driver.laps.length === 0 || driver.laps.length === previousLapCount) {
+      if (!updatedDriver || updatedDriver.laps.length === 0 || updatedDriver.laps.length === previousLapCount) {
         console.log('[TimerScreen] No lap recorded - validation failed or no change');
         return null; // No new lap was recorded (validation failed or other issue)
       }
 
       // Get the latest lap details after recording
-      const lastLap = driver.laps[driver.laps.length - 1];
+      const lastLap = updatedDriver.laps[updatedDriver.laps.length - 1];
       console.log('[TimerScreen] Lap recorded successfully:', lastLap);
       return {
         time: lastLap.time,
@@ -239,15 +261,25 @@ export default function TimerScreen() {
       };
     };
 
+    // Add listener FIRST, then enable the service
     console.log('[TimerScreen] Adding lap recording listener');
     VolumeButtonService.addListener(handleLapRecording);
+
+    // Enable volume button service after audio mode is configured
+    console.log('[TimerScreen] Configuring audio and enabling volume button service...');
+    configureAudioMode().then(() => {
+      VolumeButtonService.enable();
+    });
 
     return () => {
       console.log('[TimerScreen] Cleaning up volume button listener');
       VolumeButtonService.removeListener(handleLapRecording);
       VolumeButtonService.disable();
     };
-  }, [audioSettings.volumeButtonsEnabled, driver]);
+    // Note: driver is NOT in dependencies because:
+    // 1. handleLapRecording uses addLapRef.current which is always current
+    // 2. Adding driver would cause re-initialization on every lap, breaking the service
+  }, [audioSettings.volumeButtonsEnabled]);
 
   const playBeep = (isDouble: boolean) => {
     if (!audioSettings.enabled) return;
@@ -373,9 +405,12 @@ export default function TimerScreen() {
     }
   };
 
-  // Keep addLap ref updated
+  // Keep refs updated
   useEffect(() => {
     addLapRef.current = addLap;
+    teamsRef.current = teams;
+    activeTeamRef.current = activeTeam;
+    activeDriverRef.current = activeDriver;
   });
 
   const resetTimer = () => {
