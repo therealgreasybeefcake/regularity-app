@@ -577,7 +577,7 @@ export default function TimerScreen() {
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
         <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
@@ -859,8 +859,9 @@ export default function TimerScreen() {
             animationType="slide"
             onRequestClose={() => setRaceInfoModalVisible(false)}
           >
+
             <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
               style={{ flex: 1 }}
             >
               <Pressable
