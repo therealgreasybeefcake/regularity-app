@@ -57,7 +57,7 @@ class VolumeButtonServiceClass {
         console.log('[VolumeButtonService] Enabled audio in silent mode');
 
         // Set audio session category to ambient with mixing
-        await VolumeManager.setCategory('ambient', true);
+        await VolumeManager.setCategory('ambient' as any, true);
         console.log('[VolumeButtonService] Set category to ambient with mixing');
 
         // Enable and activate the audio session

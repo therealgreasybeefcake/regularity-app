@@ -19,6 +19,7 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useApp, ThemeMode } from '../context/AppContext';
 import { lightTheme, darkTheme } from '../constants/theme';
+import { Picker } from '@react-native-picker/picker';
 
 export default function SettingsScreen() {
   const {
@@ -37,6 +38,7 @@ export default function SettingsScreen() {
   const theme = isDarkMode ? darkTheme : lightTheme;
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showThemeModal, setShowThemeModal] = useState(false);
 
   const convertToCSV = (teams: any[]) => {
     const rows: string[] = [];
@@ -248,494 +250,527 @@ export default function SettingsScreen() {
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <ScrollView style={styles.scrollView}>
         <View style={styles.content}>
-        {/* Theme */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Appearance</Text>
+          {/* Theme */}
+          {/* Theme */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: 4 }]}>Appearance</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  {themeMode === 'light' ? 'Light Mode' : themeMode === 'dark' ? 'Dark Mode' : 'System Default'}
+                </Text>
+              </View>
+              <TouchableOpacity
+                style={[styles.valueButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => setShowThemeModal(true)}
+              >
+                <Text style={[styles.valueButtonText, { color: theme.text }]}>
+                  {themeMode === 'light' ? 'Light' : themeMode === 'dark' ? 'Dark' : 'Auto'}
+                </Text>
+                <Ionicons name="chevron-down" size={16} color={theme.textSecondary} />
+              </TouchableOpacity>
+            </View>
+          </View>
 
-          <View style={styles.themeOptions}>
-            <TouchableOpacity
-              style={[
-                styles.themeButton,
-                themeMode === 'light' && { backgroundColor: theme.primary },
-                { borderColor: theme.border }
-              ]}
-              onPress={() => setThemeMode('light')}
-            >
-              <Ionicons
-                name="sunny"
-                size={24}
-                color={themeMode === 'light' ? '#fff' : theme.text}
+          {/* Lap Recording Controls */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Controls</Text>
+
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Volume Button Recording</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  Use volume buttons to record laps while the Timer screen is visible. Works best when app stays in foreground.
+                </Text>
+              </View>
+              <Switch
+                value={audioSettings.volumeButtonsEnabled}
+                onValueChange={(value) =>
+                  setAudioSettings({ ...audioSettings, volumeButtonsEnabled: value })
+                }
+                trackColor={{ false: theme.border, true: theme.primary }}
               />
-              <Text style={[
-                styles.themeButtonText,
-                { color: themeMode === 'light' ? '#fff' : theme.text }
-              ]}>
-                Light
-              </Text>
-            </TouchableOpacity>
+            </View>
+          </View>
 
-            <TouchableOpacity
-              style={[
-                styles.themeButton,
-                themeMode === 'dark' && { backgroundColor: theme.primary },
-                { borderColor: theme.border }
-              ]}
-              onPress={() => setThemeMode('dark')}
-            >
-              <Ionicons
-                name="moon"
-                size={24}
-                color={themeMode === 'dark' ? '#fff' : theme.text}
+          {/* Audio Settings */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Audio Warnings</Text>
+
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Enable Audio</Text>
+              <Switch
+                value={audioSettings.enabled}
+                onValueChange={(value) => setAudioSettings({ ...audioSettings, enabled: value })}
+                trackColor={{ false: theme.border, true: theme.primary }}
               />
-              <Text style={[
-                styles.themeButtonText,
-                { color: themeMode === 'dark' ? '#fff' : theme.text }
-              ]}>
-                Dark
-              </Text>
-            </TouchableOpacity>
+            </View>
 
-            <TouchableOpacity
-              style={[
-                styles.themeButton,
-                themeMode === 'auto' && { backgroundColor: theme.primary },
-                { borderColor: theme.border }
-              ]}
-              onPress={() => setThemeMode('auto')}
-            >
-              <Ionicons
-                name="phone-portrait"
-                size={24}
-                color={themeMode === 'auto' ? '#fff' : theme.text}
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Before Target (Single Beep)</Text>
+              <Switch
+                value={audioSettings.beforeTargetEnabled}
+                onValueChange={(value) =>
+                  setAudioSettings({ ...audioSettings, beforeTargetEnabled: value })
+                }
+                trackColor={{ false: theme.border, true: theme.primary }}
               />
-              <Text style={[
-                styles.themeButtonText,
-                { color: themeMode === 'auto' ? '#fff' : theme.text }
-              ]}>
-                Auto
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        {/* Lap Recording Controls */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Controls</Text>
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Volume Button Recording</Text>
-              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                Use volume buttons to record laps while the Timer screen is visible. Works best when app stays in foreground.
-              </Text>
             </View>
-            <Switch
-              value={audioSettings.volumeButtonsEnabled}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, volumeButtonsEnabled: value })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-        </View>
 
-        {/* Audio Settings */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Audio Warnings</Text>
-
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>Enable Audio</Text>
-            <Switch
-              value={audioSettings.enabled}
-              onValueChange={(value) => setAudioSettings({ ...audioSettings, enabled: value })}
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>Before Target (Single Beep)</Text>
-            <Switch
-              value={audioSettings.beforeTargetEnabled}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, beforeTargetEnabled: value })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-
-          <View style={styles.inputRow}>
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
-              Seconds before target
-            </Text>
-            <TextInput
-              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-              value={audioSettings.beforeTargetTime.toString()}
-              onChangeText={(text) =>
-                setAudioSettings({
-                  ...audioSettings,
-                  beforeTargetTime: parseInt(text) || 10,
-                })
-              }
-              keyboardType="number-pad"
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>After Lap-Start (Double Beep)</Text>
-            <Switch
-              value={audioSettings.afterLapStartEnabled}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, afterLapStartEnabled: value })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-
-          <View style={styles.inputRow}>
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
-              Seconds after lap start
-            </Text>
-            <TextInput
-              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-              value={audioSettings.afterLapStart.toString()}
-              onChangeText={(text) =>
-                setAudioSettings({
-                  ...audioSettings,
-                  afterLapStart: parseInt(text) || 15,
-                })
-              }
-              keyboardType="number-pad"
-            />
-          </View>
-        </View>
-
-        {/* Driver Display Settings */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Driver Display Settings</Text>
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Show Penalty Laps</Text>
-              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                Display penalty laps field in driver screen
-              </Text>
-            </View>
-            <Switch
-              value={audioSettings.showPenaltyLaps}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, showPenaltyLaps: value })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-        </View>
-
-        {/* Time Display Format */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Time Display Format</Text>
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>Seconds</Text>
-              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                Display as: 105s
-              </Text>
-            </View>
-            <Switch
-              value={audioSettings.timeFormat === 'seconds'}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, timeFormat: value ? 'seconds' : 'mmssmmm' })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-
-          <View style={styles.settingRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.settingLabel, { color: theme.text }]}>MM:SS.mmm</Text>
-              <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
-                Display as: 1:45.000
-              </Text>
-            </View>
-            <Switch
-              value={audioSettings.timeFormat === 'mmssmmm'}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, timeFormat: value ? 'mmssmmm' : 'seconds' })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-        </View>
-
-        {/* Lap Recording Guard */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Guard</Text>
-          <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: 12 }]}>
-            Prevent accidental lap recording outside target time range
-          </Text>
-
-          <View style={styles.settingRow}>
-            <Text style={[styles.settingLabel, { color: theme.text }]}>Enable Guard</Text>
-            <Switch
-              value={audioSettings.lapGuardEnabled}
-              onValueChange={(value) =>
-                setAudioSettings({ ...audioSettings, lapGuardEnabled: value })
-              }
-              trackColor={{ false: theme.border, true: theme.primary }}
-            />
-          </View>
-
-          <View style={styles.inputRow}>
-            <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
-              +/- seconds from target
-            </Text>
-            <TextInput
-              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-              value={audioSettings.lapGuardRange.toString()}
-              onChangeText={(text) =>
-                setAudioSettings({
-                  ...audioSettings,
-                  lapGuardRange: parseInt(text) || 10,
-                })
-              }
-              keyboardType="number-pad"
-            />
-          </View>
-
-          <View style={styles.inputRow}>
-            <View style={{ flex: 1, marginRight: 12 }}>
+            <View style={styles.inputRow}>
               <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
-                Safety car threshold{'\n'}(seconds over target)
-              </Text>
-            </View>
-            <TextInput
-              style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-              value={audioSettings.lapGuardSafetyCarThreshold.toString()}
-              onChangeText={(text) =>
-                setAudioSettings({
-                  ...audioSettings,
-                  lapGuardSafetyCarThreshold: parseInt(text) || 30,
-                })
-              }
-              keyboardType="number-pad"
-            />
-          </View>
-
-          {audioSettings.lapGuardEnabled && (
-            <Text style={[styles.settingDescription, { color: theme.textSecondary, marginTop: 8 }]}>
-              Normal laps: within ±{audioSettings.lapGuardRange}s of target{'\n'}
-              Safety car: automatically allowed if {audioSettings.lapGuardSafetyCarThreshold}s+ over target
-            </Text>
-          )}
-        </View>
-
-        {/* Lap Type Values */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Type Values</Text>
-
-          {Object.entries(lapTypeValues).map(([key, value]) => (
-            <View key={key} style={styles.inputRow}>
-              <Text style={[styles.inputLabel, { color: theme.text }]}>
-                {key.charAt(0).toUpperCase() + key.slice(1)}
+                Seconds before target
               </Text>
               <TextInput
                 style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-                value={value.toString()}
+                value={audioSettings.beforeTargetTime.toString()}
                 onChangeText={(text) =>
-                  setLapTypeValues({
-                    ...lapTypeValues,
-                    [key]: parseFloat(text) || 0,
+                  setAudioSettings({
+                    ...audioSettings,
+                    beforeTargetTime: parseInt(text) || 10,
                   })
                 }
-                keyboardType="decimal-pad"
+                keyboardType="number-pad"
               />
             </View>
-          ))}
-        </View>
 
-        {/* Data Management */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Data Management</Text>
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>After Lap-Start (Double Beep)</Text>
+              <Switch
+                value={audioSettings.afterLapStartEnabled}
+                onValueChange={(value) =>
+                  setAudioSettings({ ...audioSettings, afterLapStartEnabled: value })
+                }
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
 
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => setShowExportModal(true)}
-          >
-            <Ionicons name="download-outline" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Export Data</Text>
-          </TouchableOpacity>
+            <View style={styles.inputRow}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                Seconds after lap start
+              </Text>
+              <TextInput
+                style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                value={audioSettings.afterLapStart.toString()}
+                onChangeText={(text) =>
+                  setAudioSettings({
+                    ...audioSettings,
+                    afterLapStart: parseInt(text) || 15,
+                  })
+                }
+                keyboardType="number-pad"
+              />
+            </View>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => setShowImportModal(true)}
-          >
-            <Ionicons name="cloud-upload-outline" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Import Data</Text>
-          </TouchableOpacity>
+          {/* Driver Display Settings */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Driver Display Settings</Text>
 
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.broken }]}
-            onPress={clearAllData}
-          >
-            <Ionicons name="trash-outline" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Clear All Data</Text>
-          </TouchableOpacity>
-        </View>
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Show Penalty Laps</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  Display penalty laps field in driver screen
+                </Text>
+              </View>
+              <Switch
+                value={audioSettings.showPenaltyLaps}
+                onValueChange={(value) =>
+                  setAudioSettings({ ...audioSettings, showPenaltyLaps: value })
+                }
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+          </View>
 
-        {/* Support Development */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>Support Development</Text>
-          <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: 12 }]}>
-            This app is free to use. If you find it helpful, consider supporting its development!
-          </Text>
+          {/* Time Display Format */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Time Display Format</Text>
 
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: '#FFDD00' }]}
-            onPress={() => Linking.openURL('https://buymeacoffee.com/greasybeefcake')}
-          >
-            <Ionicons name="cafe" size={20} color="#000" />
-            <Text style={[styles.buttonText, { color: '#000' }]}>Buy Me a Coffee</Text>
-          </TouchableOpacity>
-        </View>
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>Seconds</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  Display as: 105s
+                </Text>
+              </View>
+              <Switch
+                value={audioSettings.timeFormat === 'seconds'}
+                onValueChange={(value) =>
+                  setAudioSettings({ ...audioSettings, timeFormat: value ? 'seconds' : 'mmssmmm' })
+                }
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
 
-        {/* App Info */}
-        <View style={[styles.section, { backgroundColor: theme.card }]}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>MM:SS.mmm</Text>
+                <Text style={[styles.settingDescription, { color: theme.textSecondary }]}>
+                  Display as: 1:45.000
+                </Text>
+              </View>
+              <Switch
+                value={audioSettings.timeFormat === 'mmssmmm'}
+                onValueChange={(value) =>
+                  setAudioSettings({ ...audioSettings, timeFormat: value ? 'mmssmmm' : 'seconds' })
+                }
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
+          </View>
 
-          <TouchableOpacity
-            style={[styles.button, { backgroundColor: theme.primary }]}
-            onPress={() => setHasSeenWelcome(false)}
-          >
-            <Ionicons name="help-circle-outline" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Show Welcome Guide</Text>
-          </TouchableOpacity>
+          {/* Lap Recording Guard */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Guard</Text>
+            <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: 12 }]}>
+              Prevent accidental lap recording outside target time range
+            </Text>
 
-          <Text style={[styles.infoText, { color: theme.textSecondary }]}>
-            Regularity Race Timer
-          </Text>
-          <Text style={[styles.infoText, { color: theme.textSecondary }]}>Version 1.0.0</Text>
-        </View>
-      </View>
+            <View style={styles.settingRow}>
+              <Text style={[styles.settingLabel, { color: theme.text }]}>Enable Guard</Text>
+              <Switch
+                value={audioSettings.lapGuardEnabled}
+                onValueChange={(value) =>
+                  setAudioSettings({ ...audioSettings, lapGuardEnabled: value })
+                }
+                trackColor={{ false: theme.border, true: theme.primary }}
+              />
+            </View>
 
-      {/* Export Format Modal */}
-      <Modal
-        visible={showExportModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowExportModal(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowExportModal(false)}
-        >
-          <Pressable
-            style={[styles.modalContent, { backgroundColor: theme.card }]}
-            onPress={(e) => e.stopPropagation()}
-          >
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Export Format</Text>
-            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-              Choose the format for your data export
+            <View style={styles.inputRow}>
+              <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                +/- seconds from target
+              </Text>
+              <TextInput
+                style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                value={audioSettings.lapGuardRange.toString()}
+                onChangeText={(text) =>
+                  setAudioSettings({
+                    ...audioSettings,
+                    lapGuardRange: parseInt(text) || 10,
+                  })
+                }
+                keyboardType="number-pad"
+              />
+            </View>
+
+            <View style={styles.inputRow}>
+              <View style={{ flex: 1, marginRight: 12 }}>
+                <Text style={[styles.inputLabel, { color: theme.textSecondary }]}>
+                  Safety car threshold{'\n'}(seconds over target)
+                </Text>
+              </View>
+              <TextInput
+                style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                value={audioSettings.lapGuardSafetyCarThreshold.toString()}
+                onChangeText={(text) =>
+                  setAudioSettings({
+                    ...audioSettings,
+                    lapGuardSafetyCarThreshold: parseInt(text) || 30,
+                  })
+                }
+                keyboardType="number-pad"
+              />
+            </View>
+
+            {audioSettings.lapGuardEnabled && (
+              <Text style={[styles.settingDescription, { color: theme.textSecondary, marginTop: 8 }]}>
+                Normal laps: within ±{audioSettings.lapGuardRange}s of target{'\n'}
+                Safety car: automatically allowed if {audioSettings.lapGuardSafetyCarThreshold}s+ over target
+              </Text>
+            )}
+          </View>
+
+          {/* Lap Type Values */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Type Values</Text>
+
+            {Object.entries(lapTypeValues).map(([key, value]) => (
+              <View key={key} style={styles.inputRow}>
+                <Text style={[styles.inputLabel, { color: theme.text }]}>
+                  {key.charAt(0).toUpperCase() + key.slice(1)}
+                </Text>
+                <TextInput
+                  style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                  value={value.toString()}
+                  onChangeText={(text) =>
+                    setLapTypeValues({
+                      ...lapTypeValues,
+                      [key]: parseFloat(text) || 0,
+                    })
+                  }
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            ))}
+          </View>
+
+          {/* Data Management */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Data Management</Text>
+
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: theme.primary }]}
+              onPress={() => setShowExportModal(true)}
+            >
+              <Ionicons name="download-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Export Data</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: theme.primary }]}
+              onPress={() => setShowImportModal(true)}
+            >
+              <Ionicons name="cloud-upload-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Import Data</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: theme.broken }]}
+              onPress={clearAllData}
+            >
+              <Ionicons name="trash-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Clear All Data</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Support Development */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Support Development</Text>
+            <Text style={[styles.settingDescription, { color: theme.textSecondary, marginBottom: 12 }]}>
+              This app is free to use. If you find it helpful, consider supporting its development!
             </Text>
 
             <TouchableOpacity
-              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-              onPress={() => exportData('json')}
+              style={[styles.button, { backgroundColor: '#FFDD00' }]}
+              onPress={() => Linking.openURL('https://buymeacoffee.com/greasybeefcake')}
             >
-              <View style={styles.formatButtonContent}>
-                <Ionicons name="code-outline" size={32} color={theme.primary} />
-                <View style={styles.formatButtonText}>
-                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>JSON</Text>
-                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
-                    Complete data structure for backup and import
-                  </Text>
-                </View>
-              </View>
+              <Ionicons name="cafe" size={20} color="#000" />
+              <Text style={[styles.buttonText, { color: '#000' }]}>Buy Me a Coffee</Text>
             </TouchableOpacity>
+          </View>
+
+          {/* App Info */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>About</Text>
 
             <TouchableOpacity
-              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-              onPress={() => exportData('csv')}
+              style={[styles.button, { backgroundColor: theme.primary }]}
+              onPress={() => setHasSeenWelcome(false)}
             >
-              <View style={styles.formatButtonContent}>
-                <Ionicons name="grid-outline" size={32} color={theme.primary} />
-                <View style={styles.formatButtonText}>
-                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>CSV</Text>
-                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
-                    Spreadsheet format for analysis
-                  </Text>
-                </View>
-              </View>
+              <Ionicons name="help-circle-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Show Welcome Guide</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary }]}
-              onPress={() => setShowExportModal(false)}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
-          </Pressable>
-        </Pressable>
-      </Modal>
+            <Text style={[styles.infoText, { color: theme.textSecondary }]}>
+              Regularity Race Timer
+            </Text>
+            <Text style={[styles.infoText, { color: theme.textSecondary }]}>Version 1.0.0</Text>
+          </View>
+        </View>
 
-      {/* Import Format Modal */}
-      <Modal
-        visible={showImportModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowImportModal(false)}
-      >
-        <Pressable
-          style={styles.modalOverlay}
-          onPress={() => setShowImportModal(false)}
+        {/* Export Format Modal */}
+        <Modal
+          visible={showExportModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowExportModal(false)}
         >
           <Pressable
-            style={[styles.modalContent, { backgroundColor: theme.card }]}
-            onPress={(e) => e.stopPropagation()}
+            style={styles.modalOverlay}
+            onPress={() => setShowExportModal(false)}
           >
-            <Text style={[styles.modalTitle, { color: theme.text }]}>Import Format</Text>
-            <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-              Choose the format of your data file
-            </Text>
-
-            <TouchableOpacity
-              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-              onPress={() => importData('json')}
+            <Pressable
+              style={[styles.modalContent, { backgroundColor: theme.card }]}
+              onPress={(e) => e.stopPropagation()}
             >
-              <View style={styles.formatButtonContent}>
-                <Ionicons name="code-outline" size={32} color={theme.primary} />
-                <View style={styles.formatButtonText}>
-                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>JSON</Text>
-                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
-                    Import from JSON backup file
-                  </Text>
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Export Format</Text>
+              <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+                Choose the format for your data export
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => exportData('json')}
+              >
+                <View style={styles.formatButtonContent}>
+                  <Ionicons name="code-outline" size={32} color={theme.primary} />
+                  <View style={styles.formatButtonText}>
+                    <Text style={[styles.formatButtonTitle, { color: theme.text }]}>JSON</Text>
+                    <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                      Complete data structure for backup and import
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
-              onPress={() => importData('csv')}
-            >
-              <View style={styles.formatButtonContent}>
-                <Ionicons name="grid-outline" size={32} color={theme.primary} />
-                <View style={styles.formatButtonText}>
-                  <Text style={[styles.formatButtonTitle, { color: theme.text }]}>CSV</Text>
-                  <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
-                    Import from CSV spreadsheet
-                  </Text>
+              <TouchableOpacity
+                style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => exportData('csv')}
+              >
+                <View style={styles.formatButtonContent}>
+                  <Ionicons name="grid-outline" size={32} color={theme.primary} />
+                  <View style={styles.formatButtonText}>
+                    <Text style={[styles.formatButtonTitle, { color: theme.text }]}>CSV</Text>
+                    <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                      Spreadsheet format for analysis
+                    </Text>
+                  </View>
                 </View>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
 
-            <TouchableOpacity
-              style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary }]}
-              onPress={() => setShowImportModal(false)}
-            >
-              <Text style={styles.modalCancelText}>Cancel</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary }]}
+                onPress={() => setShowExportModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </Pressable>
           </Pressable>
-        </Pressable>
-      </Modal>
+        </Modal>
+
+        {/* Import Format Modal */}
+        <Modal
+          visible={showImportModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowImportModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowImportModal(false)}
+          >
+            <Pressable
+              style={[styles.modalContent, { backgroundColor: theme.card }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Import Format</Text>
+              <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
+                Choose the format of your data file
+              </Text>
+
+              <TouchableOpacity
+                style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => importData('json')}
+              >
+                <View style={styles.formatButtonContent}>
+                  <Ionicons name="code-outline" size={32} color={theme.primary} />
+                  <View style={styles.formatButtonText}>
+                    <Text style={[styles.formatButtonTitle, { color: theme.text }]}>JSON</Text>
+                    <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                      Import from JSON backup file
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.formatButton, { backgroundColor: theme.background, borderColor: theme.border }]}
+                onPress={() => importData('csv')}
+              >
+                <View style={styles.formatButtonContent}>
+                  <Ionicons name="grid-outline" size={32} color={theme.primary} />
+                  <View style={styles.formatButtonText}>
+                    <Text style={[styles.formatButtonTitle, { color: theme.text }]}>CSV</Text>
+                    <Text style={[styles.formatButtonDescription, { color: theme.textSecondary }]}>
+                      Import from CSV spreadsheet
+                    </Text>
+                  </View>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary }]}
+                onPress={() => setShowImportModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
+
+        {/* Theme Selection Modal */}
+        <Modal
+          visible={showThemeModal}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setShowThemeModal(false)}
+        >
+          <Pressable
+            style={styles.modalOverlay}
+            onPress={() => setShowThemeModal(false)}
+          >
+            <Pressable
+              style={[styles.modalContent, { backgroundColor: theme.card }]}
+              onPress={(e) => e.stopPropagation()}
+            >
+              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Appearance</Text>
+
+              <TouchableOpacity
+                style={[
+                  styles.formatButton,
+                  { backgroundColor: theme.background, borderColor: themeMode === 'light' ? theme.primary : theme.border },
+                  themeMode === 'light' && { borderWidth: 2 }
+                ]}
+                onPress={() => {
+                  setThemeMode('light');
+                  setShowThemeModal(false);
+                }}
+              >
+                {themeMode === 'light' && <Ionicons name="checkmark" size={24} color={theme.primary} />}
+                <View style={styles.formatButtonContent}>
+                  <Ionicons name="sunny-outline" size={24} color={themeMode === 'light' ? theme.primary : theme.text} />
+                  <Text style={[styles.formatButtonTitle, { color: theme.text, fontSize: 16 }]}>Light Mode</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.formatButton,
+                  { backgroundColor: theme.background, borderColor: themeMode === 'dark' ? theme.primary : theme.border },
+                  themeMode === 'dark' && { borderWidth: 2 }
+                ]}
+                onPress={() => {
+                  setThemeMode('dark');
+                  setShowThemeModal(false);
+                }}
+              >
+                {themeMode === 'dark' && <Ionicons name="checkmark" size={24} color={theme.primary} />}
+                <View style={styles.formatButtonContent}>
+                  <Ionicons name="moon-outline" size={24} color={themeMode === 'dark' ? theme.primary : theme.text} />
+                  <Text style={[styles.formatButtonTitle, { color: theme.text, fontSize: 16 }]}>Dark Mode</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[
+                  styles.formatButton,
+                  { backgroundColor: theme.background, borderColor: themeMode === 'auto' ? theme.primary : theme.border },
+                  themeMode === 'auto' && { borderWidth: 2 }
+                ]}
+                onPress={() => {
+                  setThemeMode('auto');
+                  setShowThemeModal(false);
+                }}
+              >
+                {themeMode === 'auto' && <Ionicons name="checkmark" size={24} color={theme.primary} />}
+                <View style={styles.formatButtonContent}>
+                  <Ionicons name="phone-portrait-outline" size={24} color={themeMode === 'auto' ? theme.primary : theme.text} />
+                  <Text style={[styles.formatButtonTitle, { color: theme.text, fontSize: 16 }]}>System Default</Text>
+                </View>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.modalCancelButton, { backgroundColor: theme.textSecondary, marginTop: 12 }]}
+                onPress={() => setShowThemeModal(false)}
+              >
+                <Text style={styles.modalCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </Pressable>
+          </Pressable>
+        </Modal>
       </ScrollView>
     </SafeAreaView>
   );
@@ -761,21 +796,10 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginBottom: 16,
   },
-  themeOptions: {
-    flexDirection: 'row',
-    gap: 12,
-  },
-  themeButton: {
-    flex: 1,
-    alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    borderWidth: 2,
-    gap: 8,
-  },
-  themeButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+  pickerContainer: {
+    borderWidth: 1,
+    borderRadius: 8,
+    overflow: 'hidden',
   },
   settingRow: {
     flexDirection: 'row',
@@ -789,6 +813,19 @@ const styles = StyleSheet.create({
   settingDescription: {
     fontSize: 12,
     marginTop: 4,
+  },
+  valueButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    borderWidth: 1,
+    gap: 8,
+  },
+  valueButtonText: {
+    fontSize: 14,
+    fontWeight: '600',
   },
   inputRow: {
     flexDirection: 'row',
@@ -852,10 +889,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
   formatButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
     borderWidth: 2,
+    gap: 12,
   },
   formatButtonContent: {
     flexDirection: 'row',

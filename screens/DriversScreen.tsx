@@ -154,120 +154,129 @@ export default function DriversScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        keyboardShouldPersistTaps="handled"
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={{ flex: 1 }}
       >
-        <View style={styles.content}>
-          {team?.drivers.map((driver, index) => (
-          <View
-            key={driver.id}
-            style={[styles.driverCard, { backgroundColor: theme.card }]}
-          >
-            <View style={styles.driverHeader}>
-              {editingDriver === index ? (
-                <TextInput
-                  style={[styles.nameInput, { color: theme.text, borderColor: theme.border }]}
-                  value={editValue}
-                  onChangeText={setEditValue}
-                  onBlur={() => {
-                    updateDriverField(index, 'name', editValue);
-                    setEditingDriver(null);
-                  }}
-                  autoFocus
-                />
-              ) : (
-                <TouchableOpacity
-                  onPress={() => {
-                    setEditingDriver(index);
-                    setEditValue(driver.name);
-                  }}
-                >
-                  <Text style={[styles.driverName, { color: theme.text }]}>{driver.name}</Text>
-                </TouchableOpacity>
-              )}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          keyboardShouldPersistTaps="handled"
+        >
+          <View style={styles.content}>
+            {team?.drivers.map((driver, index) => (
+              <View
+                key={driver.id}
+                style={[styles.driverCard, { backgroundColor: theme.card }]}
+              >
+                <View style={styles.driverHeader}>
+                  {editingDriver === index ? (
+                    <TextInput
+                      style={[styles.nameInput, { color: theme.text, borderColor: theme.border }]}
+                      value={editValue}
+                      onChangeText={setEditValue}
+                      keyboardType="default"
+                      onBlur={() => {
+                        updateDriverField(index, 'name', editValue);
+                        setEditingDriver(null);
+                      }}
+                      autoFocus
+                      autoCapitalize="words"
+                    />
+                  ) : (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditingDriver(index);
+                        setEditValue(driver.name);
+                      }}
+                      style={[styles.nameInput, { borderColor: theme.border, justifyContent: 'center' }]}
+                    >
+                      <Text style={[styles.driverName, { color: theme.text, fontSize: 20 }]}>{driver.name}</Text>
+                    </TouchableOpacity>
+                  )}
 
-              <TouchableOpacity onPress={() => removeDriver(index)}>
-                <Ionicons name="trash-outline" size={24} color={theme.broken} />
-              </TouchableOpacity>
-            </View>
-
-            <View style={styles.driverInfo}>
-              <View style={styles.infoRow}>
-                <Text style={[styles.label, { color: theme.textSecondary }]}>Target Time</Text>
-                {editingTargetTime === index ? (
-                  <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.border, minWidth: 120 }]}
-                    value={editTargetValue}
-                    onChangeText={setEditTargetValue}
-                    onBlur={() => {
-                      updateDriverField(index, 'targetTime', parseTimeInput(editTargetValue));
-                      setEditingTargetTime(null);
-                    }}
-                    placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
-                    placeholderTextColor={theme.textSecondary}
-                    autoFocus
-                  />
-                ) : (
-                  <TouchableOpacity
-                    onPress={() => {
-                      setEditingTargetTime(index);
-                      setEditTargetValue(getDisplayValue(driver.targetTime));
-                    }}
-                  >
-                    <Text style={[styles.targetTimeText, { color: theme.text }]}>
-                      {formatTargetTime(driver.targetTime)}
-                    </Text>
+                  <TouchableOpacity onPress={() => removeDriver(index)}>
+                    <Ionicons name="trash-outline" size={24} color={theme.broken} />
                   </TouchableOpacity>
-                )}
+                </View>
+
+                <View style={styles.driverInfo}>
+                  <View style={styles.infoRow}>
+                    <Text style={[styles.label, { color: theme.textSecondary }]}>Target Time</Text>
+                    {editingTargetTime === index ? (
+                      <TextInput
+                        style={[styles.input, { color: theme.text, borderColor: theme.border, minWidth: 120 }]}
+                        value={editTargetValue}
+                        onChangeText={setEditTargetValue}
+                        onBlur={() => {
+                          updateDriverField(index, 'targetTime', parseTimeInput(editTargetValue));
+                          setEditingTargetTime(null);
+                        }}
+                        placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
+                        placeholderTextColor={theme.textSecondary}
+                        autoFocus
+                        keyboardType="number-pad"
+                      />
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setEditingTargetTime(index);
+                          setEditTargetValue(getDisplayValue(driver.targetTime));
+                        }}
+                      >
+                        <Text style={[styles.targetTimeText, { color: theme.text }]}>
+                          {formatTargetTime(driver.targetTime)}
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+
+                  {audioSettings.showPenaltyLaps && (
+                    <View style={styles.infoRow}>
+                      <Text style={[styles.label, { color: theme.textSecondary }]}>Penalty Laps</Text>
+                      <TextInput
+                        style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                        value={driver.penaltyLaps.toString()}
+                        onChangeText={(text) => updateDriverField(index, 'penaltyLaps', parseInt(text) || 0)}
+                        keyboardType="number-pad"
+                      />
+                    </View>
+                  )}
+
+                  <View style={styles.statsRow}>
+                    <View style={styles.stat}>
+                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Laps</Text>
+                      <Text style={[styles.statValue, { color: theme.text }]}>{driver.laps.length}</Text>
+                    </View>
+                    <View style={styles.stat}>
+                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Bonus</Text>
+                      <Text style={[styles.statValue, { color: theme.bonus }]}>
+                        {driver.laps.filter(l => l.lapType === 'bonus').length}
+                      </Text>
+                    </View>
+                    <View style={styles.stat}>
+                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Broken</Text>
+                      <Text style={[styles.statValue, { color: theme.broken }]}>
+                        {driver.laps.filter(l => l.lapType === 'broken').length}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {driver.laps.length > 0 && (
+                    <TouchableOpacity
+                      style={[styles.clearButton, { borderColor: theme.broken }]}
+                      onPress={() => clearDriverLaps(index)}
+                    >
+                      <Ionicons name="trash-outline" size={16} color={theme.broken} />
+                      <Text style={[styles.clearButtonText, { color: theme.broken }]}>Clear Laps</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               </View>
-
-              {audioSettings.showPenaltyLaps && (
-                <View style={styles.infoRow}>
-                  <Text style={[styles.label, { color: theme.textSecondary }]}>Penalty Laps</Text>
-                  <TextInput
-                    style={[styles.input, { color: theme.text, borderColor: theme.border }]}
-                    value={driver.penaltyLaps.toString()}
-                    onChangeText={(text) => updateDriverField(index, 'penaltyLaps', parseInt(text) || 0)}
-                    keyboardType="number-pad"
-                  />
-                </View>
-              )}
-
-              <View style={styles.statsRow}>
-                <View style={styles.stat}>
-                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Laps</Text>
-                  <Text style={[styles.statValue, { color: theme.text }]}>{driver.laps.length}</Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Bonus</Text>
-                  <Text style={[styles.statValue, { color: theme.bonus }]}>
-                    {driver.laps.filter(l => l.lapType === 'bonus').length}
-                  </Text>
-                </View>
-                <View style={styles.stat}>
-                  <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Broken</Text>
-                  <Text style={[styles.statValue, { color: theme.broken }]}>
-                    {driver.laps.filter(l => l.lapType === 'broken').length}
-                  </Text>
-                </View>
-              </View>
-
-              {driver.laps.length > 0 && (
-                <TouchableOpacity
-                  style={[styles.clearButton, { borderColor: theme.broken }]}
-                  onPress={() => clearDriverLaps(index)}
-                >
-                  <Ionicons name="trash-outline" size={16} color={theme.broken} />
-                  <Text style={[styles.clearButtonText, { color: theme.broken }]}>Clear Laps</Text>
-                </TouchableOpacity>
-              )}
-            </View>
+            ))}
           </View>
-        ))}
-        </View>
-      </ScrollView>
+        </ScrollView>
+      </KeyboardAvoidingView>
 
       {/* Floating Add Button */}
       <TouchableOpacity
@@ -303,9 +312,11 @@ export default function DriversScreen() {
                 style={[styles.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
                 value={newDriverName}
                 onChangeText={setNewDriverName}
+                keyboardType="default"
                 placeholder="Enter driver name"
                 placeholderTextColor={theme.textSecondary}
                 autoFocus
+                autoCapitalize="words"
               />
 
               <Text style={[styles.modalLabel, { color: theme.textSecondary, marginTop: 16 }]}>
@@ -317,6 +328,7 @@ export default function DriversScreen() {
                 onChangeText={setNewDriverTargetTime}
                 placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
                 placeholderTextColor={theme.textSecondary}
+                keyboardType="numbers-and-punctuation"
               />
 
               <View style={styles.modalButtons}>
@@ -338,7 +350,7 @@ export default function DriversScreen() {
           </Pressable>
         </KeyboardAvoidingView>
       </Modal>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 }
 
@@ -388,8 +400,11 @@ const styles = StyleSheet.create({
   nameInput: {
     fontSize: 20,
     fontWeight: '600',
-    borderBottomWidth: 1,
-    paddingBottom: 4,
+    borderWidth: 1,
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 4,
+    minWidth: 150,
   },
   driverInfo: {
     gap: 12,
@@ -475,13 +490,13 @@ const styles = StyleSheet.create({
   },
   modalLabel: {
     fontSize: 14,
-    fontWeight: '500',
+    fontWeight: '600',
     marginBottom: 8,
   },
   modalInput: {
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 10,
+    padding: 14,
     fontSize: 16,
   },
   modalButtons: {
