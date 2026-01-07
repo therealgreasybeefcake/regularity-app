@@ -124,7 +124,8 @@ export default function TimerScreen() {
         if (
           audioSettings.afterLapStartEnabled &&
           elapsed >= audioSettings.afterLapStart &&
-          !afterStartBeepPlayedRef.current
+          !afterStartBeepPlayedRef.current &&
+          driver?.laps.length > 0
         ) {
           playBeep(true);
           afterStartBeepPlayedRef.current = true;
