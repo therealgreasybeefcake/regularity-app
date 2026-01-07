@@ -39,3 +39,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Google Play API Key
+regularity-app-96196786d674.json
