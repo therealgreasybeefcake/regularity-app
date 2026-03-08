@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Alert } from 'react-native';
 import { Team, AudioSettings, LapTypeValues, SyncStatus } from '../types';
 import { useAuth } from './AuthContext';
 import { S3SyncService } from '../services/S3SyncService';
@@ -203,14 +203,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           try {
             setSyncStatus('syncing');
             const creds = await getCredentials();
-            if (!creds) { setSyncStatus('offline'); return; }
+            if (!creds) {
+              console.warn('[S3Sync] No credentials available');
+              setSyncStatus('offline');
+              return;
+            }
+            console.log('[S3Sync] Saving teams to S3...');
             await S3SyncService.saveTeams(creds, teams);
+            console.log('[S3Sync] Save successful');
             setSyncStatus('synced');
-          } catch (error) {
-            console.error('S3 sync error:', error);
+          } catch (error: any) {
+            console.error('[S3Sync] Error:', error);
+            Alert.alert('S3 Sync Error', error?.message || String(error));
             setSyncStatus('error');
           }
         }, 2000);
+      } else {
+        console.log('[S3Sync] Not authenticated, skipping sync');
       }
 
       return () => {
