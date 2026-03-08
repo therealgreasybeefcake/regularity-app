@@ -1,5 +1,51 @@
 # Session Log
 
+## 2026-03-08 — expo-router Migration + S3 Sync Restructure
+
+### S3 Sync Fix & Restructure
+- Fixed `unsupported source type Blob in ChecksumStream` error by adding `requestChecksumCalculation: 'WHEN_REQUIRED'` and `responseChecksumValidation: 'WHEN_REQUIRED'` to S3Client config
+- Restructured S3 data: `teams.json` → `team.json` (no sessionHistory) + `sessions/{id}.json`
+- New methods: `saveTeam`, `loadTeam`, `saveSession`, `loadSessions`, `migrateFromLegacy`
+- Legacy `teams.json` auto-migrates to new format on first load
+- Sessions loaded lazily via `loadSessionsFromS3()` — not fetched on initial load
+- `saveSessionToS3()` and `loadSessionsFromS3()` exposed in AppContext
+- StatsScreen session picker fetches S3 sessions on open, merges with local history
+- Note: IAM role needs `s3:ListBucket` added for `ListObjectsV2Command` to work
+
+### expo-router Migration
+- Installed `expo-router`, `expo-linking`; removed `@react-navigation/bottom-tabs`, `@react-navigation/native`, `@react-navigation/native-stack`
+- Entry point: `"main": "expo-router/entry"` in package.json
+- Config: `"scheme": "regularity"` and `"expo-router"` plugin in app.json; `"baseUrl": "."` in tsconfig
+- Created `app/` directory with file-based routing:
+  - `app/_layout.tsx` — root layout with providers + NavigationGuard
+  - `app/index.tsx` — loading spinner (routing handled by guard)
+  - `app/(auth)/_layout.tsx` + `login.tsx`
+  - `app/(app)/_layout.tsx` + `(tabs)/_layout.tsx` + tab screens
+  - `app/welcome.tsx` — at root level (not inside `(app)/` to avoid redirect loops)
+- Auth guard uses `useSegments` + `useRouter` in `useEffect` — NOT `<Redirect>` components (which cause infinite render loops)
+- Tab layout: native `<Tabs>` on mobile, custom sidebar with `useRouter`/`usePathname` on web
+- WelcomeScreen: removed `onComplete` prop, uses `useRouter` from expo-router
+
+### expo-blur → expo-glass-effect
+- Removed `expo-blur` (caused JitPack BlurView dependency failures on Android)
+- Replaced with `expo-glass-effect`: native iOS 26+ liquid glass via `GlassView`
+- Falls back to semi-transparent View on older iOS and Android
+- `isGlassEffectAPIAvailable()` check at module level
+
+### Color API
+- `constants/theme.ts`: Changed `const Color: any = null` to `require('expo-router').Color` with try/catch fallback
+
+### Deleted Files
+- `App.tsx` (replaced by `app/_layout.tsx`)
+- `index.ts` (replaced by `expo-router/entry`)
+- `navigation/AppNavigator.tsx` (replaced by `app/(app)/(tabs)/_layout.tsx`)
+- `components/WebContainer.tsx` (web layout integrated into tab layout)
+
+### Commit
+- `7723001` on `upgrade/expo-55-08032026`
+
+---
+
 ## 2026-03-08 — Expo SDK 55 Upgrade, Design Overhaul, Bug Fixes
 
 ### Expo SDK 55 Upgrade
