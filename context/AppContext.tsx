@@ -197,7 +197,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }, 300);
 
       // Debounced S3 sync (2 seconds)
-      if (isAuthenticated && initialLoadDoneRef.current) {
+      if (isAuthenticated) {
         if (s3SyncTimeoutRef.current) clearTimeout(s3SyncTimeoutRef.current);
         s3SyncTimeoutRef.current = setTimeout(async () => {
           try {
@@ -206,7 +206,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             if (!creds) { setSyncStatus('offline'); return; }
             await S3SyncService.saveTeams(creds, teams);
             setSyncStatus('synced');
-          } catch {
+          } catch (error) {
+            console.error('S3 sync error:', error);
             setSyncStatus('error');
           }
         }, 2000);
@@ -217,7 +218,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (s3SyncTimeoutRef.current) clearTimeout(s3SyncTimeoutRef.current);
       };
     }
-  }, [teams, isLoading]);
+  }, [teams, isLoading, isAuthenticated]);
 
   // Save active indices
   useEffect(() => {
