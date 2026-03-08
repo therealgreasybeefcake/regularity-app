@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Pressable, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
@@ -8,12 +8,14 @@ import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/c
 import { Session } from '../types';
 import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
 import { generatePDF } from '../utils/pdfExport';
+import { useAlert } from '../components/CustomAlert';
 
 const isWeb = Platform.OS === 'web';
 const SIDEBAR_WIDTH = 340;
 
 export default function StatsScreen() {
   const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues, loadSessionsFromS3 } = useApp();
+  const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
   const { width: windowWidth } = useWindowDimensions();
@@ -91,7 +93,7 @@ export default function StatsScreen() {
         driver,
       });
     } catch (error) {
-      Alert.alert('Error', 'Failed to generate PDF. Please try again.');
+      showAlert({ title: 'Error', message: 'Failed to generate PDF. Please try again.' });
       console.error('PDF generation error:', error);
     } finally {
       setIsGeneratingPDF(false);

@@ -6,7 +6,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
+
   Animated,
   Modal,
   Pressable,
@@ -18,9 +18,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
 import { Driver } from '../types';
+import { useAlert } from '../components/CustomAlert';
 
 export default function DriversScreen() {
   const { teams, setTeams, activeTeam, isDarkMode, audioSettings } = useApp();
+  const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
 
@@ -75,13 +77,13 @@ export default function DriversScreen() {
 
   const confirmAddDriver = () => {
     if (!newDriverName.trim()) {
-      Alert.alert('Error', 'Driver name cannot be empty');
+      showAlert({ title: 'Error', message: 'Driver name cannot be empty' });
       return;
     }
 
     const targetTime = parseTimeInput(newDriverTargetTime);
     if (isNaN(targetTime) || targetTime <= 0) {
-      Alert.alert('Error', 'Please enter a valid target time');
+      showAlert({ title: 'Error', message: 'Please enter a valid target time' });
       return;
     }
 
@@ -108,10 +110,10 @@ export default function DriversScreen() {
       ? `Delete ${driver.name}? This will remove ${driver.laps.length} laps.`
       : `Delete ${driver.name}?`;
 
-    Alert.alert(
-      'Confirm Delete',
+    showAlert({
+      title: 'Confirm Delete',
       message,
-      [
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
@@ -122,8 +124,8 @@ export default function DriversScreen() {
             setTeams(updatedTeams);
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   const updateDriverField = (index: number, field: keyof Driver, value: any) => {
@@ -134,10 +136,10 @@ export default function DriversScreen() {
 
   const clearDriverLaps = (index: number) => {
     const driver = team.drivers[index];
-    Alert.alert(
-      'Clear Laps',
-      `Clear all ${driver.laps.length} laps for ${driver.name}?`,
-      [
+    showAlert({
+      title: 'Clear Laps',
+      message: `Clear all ${driver.laps.length} laps for ${driver.name}?`,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear',
@@ -148,8 +150,8 @@ export default function DriversScreen() {
             setTeams(updatedTeams);
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   return (

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   ScrollView,
-  Alert,
   Animated,
   Modal,
   Pressable,
@@ -35,6 +34,7 @@ import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
+import { useAlert } from '../components/CustomAlert';
 
 export default function TimerScreen() {
   const {
@@ -48,6 +48,7 @@ export default function TimerScreen() {
     lapTypeValues,
   } = useApp();
 
+  const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
   const driver = team?.drivers[activeDriver];
@@ -239,10 +240,7 @@ export default function TimerScreen() {
     const listener = VolumeManager.addVolumeListener((result: any) => {
       if (!volumeAlertShownRef.current) {
         volumeAlertShownRef.current = true;
-        Alert.alert(
-          'Volume Buttons',
-          'Volume button recording is disabled. Enable it in Settings > Lap Recording Controls.'
-        );
+        showAlert({ title: 'Volume Buttons', message: 'Volume button recording is disabled. Enable it in Settings > Lap Recording Controls.' });
       }
     });
 
@@ -402,10 +400,10 @@ export default function TimerScreen() {
 
   const deleteLap = (lapIndex: number) => {
     const actualIndex = driver!.laps.length - 1 - lapIndex;
-    Alert.alert(
-      'Delete Lap',
-      `Delete lap #${driver!.laps[actualIndex].number}?`,
-      [
+    showAlert({
+      title: 'Delete Lap',
+      message: `Delete lap #${driver!.laps[actualIndex].number}?`,
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
@@ -420,8 +418,8 @@ export default function TimerScreen() {
             setTeams(updatedTeams);
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   const openEditModal = (lapIndex: number) => {
@@ -434,19 +432,19 @@ export default function TimerScreen() {
   const saveRaceInfo = () => {
     // Validate all required fields
     if (!tempTeamName.trim()) {
-      Alert.alert('Missing Information', 'Please enter Team Name');
+      showAlert({ title: 'Missing Information', message: 'Please enter Team Name' });
       return;
     }
     if (!tempDriverName.trim()) {
-      Alert.alert('Missing Information', 'Please enter Driver Name');
+      showAlert({ title: 'Missing Information', message: 'Please enter Driver Name' });
       return;
     }
     if (!tempRaceName.trim()) {
-      Alert.alert('Missing Information', 'Please enter Race Name');
+      showAlert({ title: 'Missing Information', message: 'Please enter Race Name' });
       return;
     }
     if (!tempSessionNumber.trim()) {
-      Alert.alert('Missing Information', 'Please enter Session Number');
+      showAlert({ title: 'Missing Information', message: 'Please enter Session Number' });
       return;
     }
 
@@ -469,7 +467,7 @@ export default function TimerScreen() {
 
     const newTime = parseFloat(editLapValue);
     if (isNaN(newTime) || newTime <= 0) {
-      Alert.alert('Invalid Time', 'Please enter a valid lap time');
+      showAlert({ title: 'Invalid Time', message: 'Please enter a valid lap time' });
       return;
     }
 
@@ -507,10 +505,10 @@ export default function TimerScreen() {
     const actualIndex = driver!.laps.length - 1 - lapIndex;
     const lap = driver!.laps[actualIndex];
 
-    Alert.alert(
-      `Lap #${lap.number} Options`,
-      `Time: ${formatTime(lap.time)}`,
-      [
+    showAlert({
+      title: `Lap #${lap.number} Options`,
+      message: `Time: ${formatTime(lap.time)}`,
+      buttons: [
         {
           text: 'Edit Time',
           onPress: () => openEditModal(lapIndex),
@@ -531,23 +529,21 @@ export default function TimerScreen() {
         {
           text: 'Cancel',
           style: 'cancel',
-          onPress: () => { },
         },
       ],
-      { cancelable: true }
-    );
+    });
   };
 
   const endSession = () => {
     if (!team || team.drivers.every(d => d.laps.length === 0)) {
-      Alert.alert('No Data', 'Cannot end session with no laps recorded');
+      showAlert({ title: 'No Data', message: 'Cannot end session with no laps recorded' });
       return;
     }
 
-    Alert.alert(
-      'End Session',
-      'This will save the current session to history and clear all laps. Continue?',
-      [
+    showAlert({
+      title: 'End Session',
+      message: 'This will save the current session to history and clear all laps. Continue?',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'End Session',
@@ -580,11 +576,11 @@ export default function TimerScreen() {
 
             setTeams(updatedTeams);
             resetTimer();
-            Alert.alert('Session Ended', 'Session saved to history');
+            showAlert({ title: 'Session Ended', message: 'Session saved to history' });
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   const getStatusColor = () => {
@@ -725,7 +721,7 @@ export default function TimerScreen() {
                     borderColor: theme.border,
                   },
                 ]}
-                placeholder="Manually enter lap time (MM:SS.mmm)"
+                placeholder="Lap time (MM:SS.mmm)"
                 placeholderTextColor={theme.textSecondary}
                 value={lapInput}
                 onChangeText={setLapInput}

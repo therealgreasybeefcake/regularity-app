@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Switch,
   TextInput,
-  Alert,
   Modal,
   Pressable,
   Linking,
@@ -20,6 +19,7 @@ import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useApp, ThemeMode } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
+import { useAlert } from '../components/CustomAlert';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows, brandColors } from '../constants/theme';
 import { Picker } from '@react-native-picker/picker';
 
@@ -38,6 +38,7 @@ export default function SettingsScreen() {
     syncStatus,
   } = useApp();
   const { user, signOut } = useAuth();
+  const { showAlert } = useAlert();
 
   const theme = isDarkMode ? darkTheme : lightTheme;
 
@@ -185,14 +186,14 @@ export default function SettingsScreen() {
             UTI: format === 'json' ? 'public.json' : 'public.comma-separated-values-text',
           });
         } else {
-          Alert.alert('Success', `Data exported to: ${fileName}`);
+          showAlert({ title: 'Success', message: `Data exported to: ${fileName}` });
         }
       }
 
       setShowExportModal(false);
     } catch (error) {
       console.error('Export error:', error);
-      Alert.alert('Error', 'Failed to export data: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      showAlert({ title: 'Error', message: 'Failed to export data: ' + (error instanceof Error ? error.message : 'Unknown error') });
     }
   };
 
@@ -210,19 +211,19 @@ export default function SettingsScreen() {
       if (format === 'json') {
         const data = JSON.parse(fileContent);
         if (!data.teams || !Array.isArray(data.teams)) {
-          Alert.alert('Error', 'Invalid JSON format - missing teams array');
+          showAlert({ title: 'Error', message: 'Invalid JSON format - missing teams array' });
           return;
         }
 
         // Validate structure of each team and its drivers
         for (const team of data.teams) {
           if (!team.id || !team.name || !Array.isArray(team.drivers) || team.sessionDuration === undefined) {
-            Alert.alert('Error', 'Invalid team data: each team must have id, name, drivers (array), and sessionDuration');
+            showAlert({ title: 'Error', message: 'Invalid team data: each team must have id, name, drivers (array), and sessionDuration' });
             return;
           }
           for (const driver of team.drivers) {
             if (!driver.id || !driver.name || driver.targetTime === undefined || !Array.isArray(driver.laps)) {
-              Alert.alert('Error', `Invalid driver data in team "${team.name}": each driver must have id, name, targetTime, and laps (array)`);
+              showAlert({ title: 'Error', message: `Invalid driver data in team "${team.name}": each driver must have id, name, targetTime, and laps (array)` });
               return;
             }
           }
@@ -234,32 +235,32 @@ export default function SettingsScreen() {
         importedTeams = parseCSV(fileContent);
       }
 
-      Alert.alert(
-        'Import Data',
-        'This will replace all current data. Continue?',
-        [
+      showAlert({
+        title: 'Import Data',
+        message: 'This will replace all current data. Continue?',
+        buttons: [
           { text: 'Cancel', style: 'cancel' },
           {
             text: 'Import',
             onPress: () => {
               setTeams(importedTeams);
               setShowImportModal(false);
-              Alert.alert('Success', 'Data imported successfully');
+              showAlert({ title: 'Success', message: 'Data imported successfully' });
             },
           },
-        ]
-      );
+        ],
+      });
     } catch (error) {
       console.error('Import error:', error);
-      Alert.alert('Error', 'Failed to import data: ' + (error instanceof Error ? error.message : 'Unknown error'));
+      showAlert({ title: 'Error', message: 'Failed to import data: ' + (error instanceof Error ? error.message : 'Unknown error') });
     }
   };
 
   const clearAllData = () => {
-    Alert.alert(
-      'Clear All Data',
-      'This will delete all teams, drivers, and laps. This cannot be undone.',
-      [
+    showAlert({
+      title: 'Clear All Data',
+      message: 'This will delete all teams, drivers, and laps. This cannot be undone.',
+      buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
           text: 'Clear All',
@@ -281,11 +282,11 @@ export default function SettingsScreen() {
                 sessionHistory: [],
               },
             ]);
-            Alert.alert('Success', 'All data cleared');
+            showAlert({ title: 'Success', message: 'All data cleared' });
           },
         },
-      ]
-    );
+      ],
+    });
   };
 
   return (
@@ -613,10 +614,14 @@ export default function SettingsScreen() {
             <TouchableOpacity
               style={[styles.button, { backgroundColor: theme.broken }]}
               onPress={() => {
-                Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-                  { text: 'Cancel', style: 'cancel' },
-                  { text: 'Sign Out', style: 'destructive', onPress: signOut },
-                ]);
+                showAlert({
+                  title: 'Sign Out',
+                  message: 'Are you sure you want to sign out?',
+                  buttons: [
+                    { text: 'Cancel', style: 'cancel' },
+                    { text: 'Sign Out', style: 'destructive', onPress: signOut },
+                  ],
+                });
               }}
             >
               <Ionicons name="log-out-outline" size={20} color="#fff" />

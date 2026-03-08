@@ -8,6 +8,7 @@ import { useFonts } from 'expo-font';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { AppProvider, useApp } from '../context/AppContext';
+import { AlertProvider } from '../components/CustomAlert';
 import ErrorBoundary from '../components/ErrorBoundary';
 
 LogBox.ignoreLogs([
@@ -74,14 +75,16 @@ export default function RootLayout() {
         <ErrorBoundary>
           <AuthProvider>
             <AppProvider>
-              <NavigationGuard>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="index" />
-                  <Stack.Screen name="(auth)" />
-                  <Stack.Screen name="welcome" />
-                  <Stack.Screen name="(app)" />
-                </Stack>
-              </NavigationGuard>
+              <AlertProvider>
+                <NavigationGuard>
+                  <Stack screenOptions={{ headerShown: false }}>
+                    <Stack.Screen name="index" />
+                    <Stack.Screen name="(auth)" />
+                    <Stack.Screen name="welcome" />
+                    <Stack.Screen name="(app)" />
+                  </Stack>
+                </NavigationGuard>
+              </AlertProvider>
             </AppProvider>
           </AuthProvider>
         </ErrorBoundary>
