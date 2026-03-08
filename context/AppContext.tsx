@@ -176,13 +176,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         try {
           setSyncStatus('syncing');
           const creds = await getCredentials();
-          if (!creds) { setSyncStatus('offline'); return; }
+          if (!creds) {
+            console.warn('[S3Sync] No credentials on initial load');
+            setSyncStatus('offline');
+            return;
+          }
+          console.log('[S3Sync] Loading teams from S3...');
           const s3Teams = await S3SyncService.loadTeams(creds);
           if (s3Teams && s3Teams.length > 0) {
             setTeams(s3Teams);
           }
           setSyncStatus('synced');
-        } catch {
+        } catch (error: any) {
+          console.error('[S3Sync] Load error:', error);
           setSyncStatus('error');
         }
       })();
@@ -224,7 +230,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
       return () => {
         clearTimeout(timeout);
-        if (s3SyncTimeoutRef.current) clearTimeout(s3SyncTimeoutRef.current);
       };
     }
   }, [teams, isLoading, isAuthenticated]);

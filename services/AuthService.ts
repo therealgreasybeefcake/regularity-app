@@ -12,9 +12,50 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AWS_CONFIG } from '../constants/aws-config';
 
+// In-memory storage with AsyncStorage persistence for amazon-cognito-identity-js
+// The library expects synchronous getItem, so we can't use AsyncStorage directly
+const memoryStore: Record<string, string> = {};
+
+const cognitoStorage = {
+  getItem(key: string): string | null {
+    return memoryStore[key] ?? null;
+  },
+  setItem(key: string, value: string) {
+    memoryStore[key] = value;
+    AsyncStorage.setItem(`cognito_${key}`, value);
+  },
+  removeItem(key: string) {
+    delete memoryStore[key];
+    AsyncStorage.removeItem(`cognito_${key}`);
+  },
+  clear() {
+    Object.keys(memoryStore).forEach(key => {
+      AsyncStorage.removeItem(`cognito_${key}`);
+      delete memoryStore[key];
+    });
+  },
+};
+
+// Hydrate in-memory store from AsyncStorage on import
+export async function hydrateCognitoStorage() {
+  try {
+    const keys = await AsyncStorage.getAllKeys();
+    const cognitoKeys = keys.filter(k => k.startsWith('cognito_'));
+    const pairs = await AsyncStorage.multiGet(cognitoKeys);
+    for (const [key, value] of pairs) {
+      if (value != null) {
+        memoryStore[key.replace('cognito_', '')] = value;
+      }
+    }
+  } catch (e) {
+    console.error('[AuthService] Failed to hydrate cognito storage:', e);
+  }
+}
+
 const userPool = new CognitoUserPool({
   UserPoolId: AWS_CONFIG.userPoolId,
   ClientId: AWS_CONFIG.appClientId,
+  Storage: cognitoStorage,
 });
 
 export interface AWSCredentials {
@@ -34,6 +75,7 @@ export const AuthService = {
       const user = new CognitoUser({
         Username: email,
         Pool: userPool,
+        Storage: cognitoStorage,
       });
 
       const authDetails = new AuthenticationDetails({
@@ -105,6 +147,7 @@ export const AuthService = {
       const user = new CognitoUser({
         Username: username,
         Pool: userPool,
+        Storage: cognitoStorage,
       });
 
       return new Promise((resolve) => {
@@ -125,10 +168,14 @@ export const AuthService = {
   async getAWSCredentials(): Promise<AWSCredentials | null> {
     try {
       const sessionResult = await this.getSession();
-      if (!sessionResult) return null;
+      if (!sessionResult) {
+        console.warn('[AuthService] No valid session for credentials');
+        return null;
+      }
 
       const { session } = sessionResult;
       const idToken = session.getIdToken().getJwtToken();
+      console.log('[AuthService] Got ID token, exchanging for AWS credentials...');
 
       const identityClient = new CognitoIdentityClient({ region: AWS_CONFIG.region });
 
@@ -136,12 +183,14 @@ export const AuthService = {
         [`cognito-idp.${AWS_CONFIG.region}.amazonaws.com/${AWS_CONFIG.userPoolId}`]: idToken,
       };
 
+      console.log('[AuthService] Getting Identity ID...');
       const idResponse = await identityClient.send(
         new GetIdCommand({
           IdentityPoolId: AWS_CONFIG.identityPoolId,
           Logins: logins,
         })
       );
+      console.log('[AuthService] Identity ID:', idResponse.IdentityId);
 
       const credResponse = await identityClient.send(
         new GetCredentialsForIdentityCommand({

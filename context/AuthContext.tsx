@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { AuthService, AWSCredentials } from '../services/AuthService';
+import { AuthService, AWSCredentials, hydrateCognitoStorage } from '../services/AuthService';
 
 interface AuthContextType {
   user: string | null;
@@ -21,6 +21,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   useEffect(() => {
     const checkSession = async () => {
       try {
+        await hydrateCognitoStorage();
         const session = await AuthService.getSession();
         if (session) {
           setUser(session.email);

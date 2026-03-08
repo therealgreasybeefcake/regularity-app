@@ -10,9 +10,10 @@ const cs = (color: ColorValue): string => color as string;
 interface DriverChartsProps {
   driver: Driver;
   theme: ThemeColors;
+  chartWidth?: number;
 }
 
-export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
+export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme, chartWidth = 300 }) => {
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
 
   if (driver.laps.length === 0) {
@@ -75,6 +76,8 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
     };
   });
 
+  const chartHeight = chartWidth > 400 ? 240 : 180;
+
   return (
     <View style={styles.chartContainer}>
       <View style={styles.chartHeader}>
@@ -98,8 +101,8 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
 
       <LineChart
         data={lineData}
-        height={180}
-        width={300}
+        height={chartHeight}
+        width={chartWidth}
         initialSpacing={10}
         spacing={lineData.length > 10 ? 20 : 30}
         thickness={2.5}
@@ -160,7 +163,7 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
   );
 };
 
-export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
+export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme, chartWidth = 300 }) => {
   const [selectedLap, setSelectedLap] = useState<number | null>(null);
 
   // Filter out changeover and safety laps for delta chart
@@ -182,6 +185,8 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
   const brokenCount = nonChangeoverLaps.filter(l => l.lapType === 'broken').length;
   const maxDelta = Math.max(...deltas, 0);
   const minDelta = Math.min(...deltas, 0);
+
+  const barChartHeight = chartWidth > 400 ? 110 : 90;
 
   // Prepare data for bar chart
   const positiveData = nonChangeoverLaps.map((lap, index) => {
@@ -249,8 +254,8 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
         {/* Positive deltas */}
         <BarChart
           data={positiveData}
-          height={90}
-          width={300}
+          height={barChartHeight}
+          width={chartWidth}
           barWidth={positiveData.length > 15 ? 12 : 18}
           initialSpacing={10}
           spacing={positiveData.length > 10 ? 12 : 18}
@@ -274,7 +279,7 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
         />
 
         {/* Zero line with indicators for zero deltas */}
-        <View style={{ width: 300, height: 2, backgroundColor: theme.textSecondary, marginVertical: -2, flexDirection: 'row', position: 'relative' }}>
+        <View style={{ width: chartWidth, height: 2, backgroundColor: theme.textSecondary, marginVertical: -2, flexDirection: 'row', position: 'relative' }}>
           {nonChangeoverLaps.map((lap, index) => {
             if (Math.abs(lap.delta) < 0.01) {
               const barWidth = positiveData.length > 15 ? 12 : 18;
@@ -302,8 +307,8 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
         {/* Negative deltas (inverted) */}
         <BarChart
           data={negativeData}
-          height={90}
-          width={300}
+          height={barChartHeight}
+          width={chartWidth}
           barWidth={negativeData.length > 15 ? 12 : 18}
           initialSpacing={10}
           spacing={negativeData.length > 10 ? 12 : 18}
