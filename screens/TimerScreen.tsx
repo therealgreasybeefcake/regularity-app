@@ -15,13 +15,24 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { Ionicons } from '@expo/vector-icons';
-import { useAudioPlayer, AudioSource } from 'expo-audio';
 import { Swipeable } from 'react-native-gesture-handler';
-import { VolumeManager } from 'react-native-volume-manager';
+
+// Web-safe imports
+const isWeb = Platform.OS === 'web';
+let activateKeepAwakeAsync: () => Promise<void> = async () => {};
+let deactivateKeepAwake: () => void = () => {};
+let useAudioPlayerImport: any = null;
+let VolumeManager: any = null;
+if (!isWeb) {
+  const keepAwake = require('expo-keep-awake');
+  activateKeepAwakeAsync = keepAwake.activateKeepAwakeAsync;
+  deactivateKeepAwake = keepAwake.deactivateKeepAwake;
+  useAudioPlayerImport = require('expo-audio').useAudioPlayer;
+  VolumeManager = require('react-native-volume-manager').VolumeManager;
+}
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
 
@@ -68,9 +79,12 @@ export default function TimerScreen() {
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const initialVolumeRef = useRef<number | null>(null);
   const addLapRef = useRef<(() => void) | undefined>(undefined);
+  const volumeAlertShownRef = useRef(false);
 
-  // Audio player for beeps
-  const beepPlayer = useAudioPlayer('https://www.soundjay.com/buttons/sounds/beep-07a.mp3');
+  // Audio player for beeps (no-op on web)
+  const beepPlayer = useAudioPlayerImport
+    ? useAudioPlayerImport('https://www.soundjay.com/buttons/sounds/beep-07a.mp3')
+    : { seekTo: () => {}, play: () => {} };
 
   // Initialize VolumeButtonService
   useEffect(() => {
@@ -218,6 +232,25 @@ export default function TimerScreen() {
     };
   }, [audioSettings.volumeButtonsEnabled, driver]);
 
+  // Volume button UX - show hint when disabled (native only)
+  useEffect(() => {
+    if (isWeb || audioSettings.volumeButtonsEnabled || !VolumeManager) return;
+
+    const listener = VolumeManager.addVolumeListener((result: any) => {
+      if (!volumeAlertShownRef.current) {
+        volumeAlertShownRef.current = true;
+        Alert.alert(
+          'Volume Buttons',
+          'Volume button recording is disabled. Enable it in Settings > Lap Recording Controls.'
+        );
+      }
+    });
+
+    return () => {
+      listener.remove();
+    };
+  }, [audioSettings.volumeButtonsEnabled]);
+
   const playBeep = (isDouble: boolean) => {
     if (!audioSettings.enabled) return;
 
@@ -225,14 +258,14 @@ export default function TimerScreen() {
       // Play the beep sound and vibrate
       beepPlayer.seekTo(0);
       beepPlayer.play();
-      Vibration.vibrate(100);
+      if (!isWeb) Vibration.vibrate(100);
 
       if (isDouble) {
         // Wait 200ms then play again for double beep
         setTimeout(() => {
           beepPlayer.seekTo(0);
           beepPlayer.play();
-          Vibration.vibrate(100);
+          if (!isWeb) Vibration.vibrate(100);
         }, 200);
       }
     } catch (error) {
@@ -293,7 +326,7 @@ export default function TimerScreen() {
       setTeams(updatedTeams);
       setLapInput('');
       lastLapTimeRef.current = Date.now();
-      Vibration.vibrate(500); // Vibrate for half a second
+      if (!isWeb) Vibration.vibrate(500);
       return;
     }
 
@@ -315,7 +348,7 @@ export default function TimerScreen() {
 
         if (!isInNormalRange && !isSafetyCar) {
           // Outside allowed range and not a safety car - reject
-          Vibration.vibrate([0, 100, 100, 100]);
+          if (!isWeb) Vibration.vibrate([0, 100, 100, 100]);
           setRejectedMessage(`Lap rejected: ${lapTime.toFixed(2)}s outside range (${minTime.toFixed(1)}-${maxTime.toFixed(1)}s, or ${safetyCarThreshold.toFixed(1)}s+ for safety car)`);
           setTimeout(() => setRejectedMessage(null), 3000);
           return;
@@ -337,7 +370,7 @@ export default function TimerScreen() {
 
       setTeams(updatedTeams);
       lastLapTimeRef.current = Date.now();
-      Vibration.vibrate(500); // Vibrate for half a second
+      if (!isWeb) Vibration.vibrate(500);
       startStopwatch();
     }
   };
@@ -617,8 +650,7 @@ export default function TimerScreen() {
                   style={[
                     styles.driverTab,
                     {
-                      backgroundColor: activeDriver === index ? theme.primary : theme.card,
-                      borderColor: theme.border,
+                      backgroundColor: activeDriver === index ? theme.primary : theme.surfaceMuted,
                     },
                   ]}
                   onPress={() => setActiveDriver(index)}
@@ -644,7 +676,7 @@ export default function TimerScreen() {
             </ScrollView>
 
             {/* Timer Display */}
-            <View style={[styles.timerCard, { backgroundColor: theme.card }]}>
+            <View style={[styles.timerCard, { backgroundColor: theme.surfaceElevated }]}>
               <Text style={[styles.timerText, { color: theme.text }]}>
                 {elapsedTime.toFixed(2)}s
               </Text>
@@ -655,7 +687,7 @@ export default function TimerScreen() {
 
             {/* Controls */}
             <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: theme.primary }]}
+              style={[styles.primaryButton, { backgroundColor: isRunning ? theme.broken : theme.bonus }]}
               onPress={addLap}
             >
               <Ionicons name={isRunning ? 'flag' : 'play'} size={32} color="#fff" />
@@ -666,7 +698,7 @@ export default function TimerScreen() {
 
             <View style={styles.secondaryControls}>
               <TouchableOpacity
-                style={[styles.halfButton, { borderColor: theme.border, backgroundColor: theme.card }]}
+                style={[styles.halfButton, { backgroundColor: theme.surfaceElevated }]}
                 onPress={() => setIsRunning(false)}
               >
                 <Ionicons name="stop" size={20} color={theme.text} />
@@ -674,7 +706,7 @@ export default function TimerScreen() {
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[styles.halfButton, { borderColor: theme.border, backgroundColor: theme.card }]}
+                style={[styles.halfButton, { backgroundColor: theme.surfaceElevated }]}
                 onPress={resetTimer}
               >
                 <Ionicons name="refresh" size={20} color={theme.text} />
@@ -688,13 +720,9 @@ export default function TimerScreen() {
                 style={[
                   styles.input,
                   {
-                    backgroundColor: theme.card,
+                    backgroundColor: theme.surfaceElevated,
                     color: theme.text,
                     borderColor: theme.border,
-                    borderWidth: 1, // Explicit border width
-                    borderRadius: 8, // Rounded corners matching standard
-                    padding: 12, // More comfortable padding
-                    fontSize: 16, // Larger font size
                   },
                 ]}
                 placeholder="Manually enter lap time (MM:SS.mmm)"
@@ -712,7 +740,7 @@ export default function TimerScreen() {
             </View>
 
             {/* Lap History */}
-            <View style={[styles.lapHistory, { backgroundColor: theme.card }]}>
+            <View style={styles.lapHistory}>
               <View style={styles.historyHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap History</Text>
                 {driver?.laps.length > 0 && (
@@ -754,7 +782,7 @@ export default function TimerScreen() {
                         overshootRight={false}
                       >
                         <Pressable
-                          style={[styles.lapItem, { borderBottomColor: theme.border, backgroundColor: theme.card }]}
+                          style={[styles.lapItem, { backgroundColor: theme.surfaceElevated }]}
                           onLongPress={() => showLapOptions(index)}
                           delayLongPress={500}
                         >
@@ -880,15 +908,7 @@ export default function TimerScreen() {
                   <TextInput
                     style={[
                       styles.modalInput,
-                      {
-                        backgroundColor: theme.background,
-                        color: theme.text,
-                        borderColor: theme.border,
-                        borderWidth: 1,
-                        borderRadius: 8,
-                        padding: 12,
-                        fontSize: 16
-                      },
+                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
                     ]}
                     value={tempTeamName}
                     onChangeText={setTempTeamName}
@@ -900,15 +920,7 @@ export default function TimerScreen() {
                   <TextInput
                     style={[
                       styles.modalInput,
-                      {
-                        backgroundColor: theme.background,
-                        color: theme.text,
-                        borderColor: theme.border,
-                        borderWidth: 1,
-                        borderRadius: 8,
-                        padding: 12,
-                        fontSize: 16
-                      },
+                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
                     ]}
                     value={tempDriverName}
                     onChangeText={setTempDriverName}
@@ -919,15 +931,7 @@ export default function TimerScreen() {
                   <TextInput
                     style={[
                       styles.modalInput,
-                      {
-                        backgroundColor: theme.background,
-                        color: theme.text,
-                        borderColor: theme.border,
-                        borderWidth: 1,
-                        borderRadius: 8,
-                        padding: 12,
-                        fontSize: 16
-                      },
+                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
                     ]}
                     value={tempRaceName}
                     onChangeText={setTempRaceName}
@@ -938,15 +942,7 @@ export default function TimerScreen() {
                   <TextInput
                     style={[
                       styles.modalInput,
-                      {
-                        backgroundColor: theme.background,
-                        color: theme.text,
-                        borderColor: theme.border,
-                        borderWidth: 1,
-                        borderRadius: 8,
-                        padding: 12,
-                        fontSize: 16
-                      },
+                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
                     ]}
                     value={tempSessionNumber}
                     onChangeText={setTempSessionNumber}
@@ -1085,178 +1081,180 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: spacing.lg,
+    paddingBottom: 90,
   },
   titleContainer: {
-    marginBottom: 20,
+    marginBottom: spacing.xl,
   },
   titleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
-    marginBottom: 8,
+    gap: spacing.md,
+    marginBottom: spacing.sm,
   },
   screenTitle: {
-    fontSize: 22,
-    fontWeight: '700',
+    fontSize: typography.heading,
+    fontWeight: fontWeights.bold,
     letterSpacing: 0.3,
   },
   titleUnderline: {
     height: 3,
     width: 60,
-    borderRadius: 2,
+    borderRadius: radius.sm,
     marginLeft: 40,
   },
   rejectedCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
-    gap: 12,
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    marginBottom: spacing.lg,
+    gap: spacing.md,
   },
   rejectedText: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
     color: '#fff',
   },
   statusCard: {
-    padding: 24,
-    borderRadius: 12,
+    padding: spacing.xl,
+    borderRadius: radius.md,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   statusText: {
-    fontSize: 24,
-    fontWeight: 'bold',
+    fontSize: typography.heading,
+    fontWeight: fontWeights.bold,
     color: '#fff',
   },
   driverTabs: {
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   driverTab: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-    borderRadius: 8,
-    marginRight: 8,
-    borderWidth: 1,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.full,
+    marginRight: spacing.sm,
   },
   driverTabText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   driverTabLaps: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: typography.caption,
+    marginTop: spacing.xs,
   },
   timerCard: {
-    padding: 24,
-    borderRadius: 12,
+    padding: spacing.xl,
+    borderRadius: radius.lg,
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
+    ...shadows.card,
   },
   timerText: {
-    fontSize: 48,
-    fontWeight: 'bold',
+    fontSize: typography.display,
+    fontWeight: fontWeights.bold,
   },
   timerSubtext: {
-    fontSize: 14,
-    marginTop: 8,
+    fontSize: typography.body,
+    marginTop: spacing.sm,
   },
   primaryButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     padding: 28,
-    borderRadius: 16,
-    marginBottom: 12,
-    gap: 12,
+    borderRadius: radius.lg,
+    marginBottom: spacing.md,
+    gap: spacing.md,
   },
   primaryButtonText: {
     color: '#fff',
     fontSize: 28,
-    fontWeight: 'bold',
+    fontWeight: fontWeights.bold,
   },
   secondaryControls: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   halfButton: {
     flex: 1,
     flexDirection: 'row',
-    padding: 14,
-    borderRadius: 12,
-    borderWidth: 1,
+    padding: spacing.md,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 6,
+    gap: spacing.xs,
+    ...shadows.subtle,
   },
   halfButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   manualInput: {
     flexDirection: 'row',
-    gap: 12,
-    marginBottom: 16,
+    gap: spacing.md,
+    marginBottom: spacing.lg,
   },
   input: {
     flex: 1,
-    padding: 12,
-    borderRadius: 8,
+    padding: spacing.md,
+    borderRadius: radius.md,
     borderWidth: 1,
-    fontSize: 16,
+    fontSize: typography.bodyLg,
   },
   addButton: {
-    padding: 12,
-    borderRadius: 8,
+    padding: spacing.md,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
   },
   lapHistory: {
-    borderRadius: 12,
-    padding: 16,
+    borderRadius: radius.lg,
   },
   historyHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 12,
+    marginBottom: spacing.md,
   },
   sectionTitle: {
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: typography.title,
+    fontWeight: fontWeights.semibold,
   },
   endSessionButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 6,
-    gap: 6,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
+    gap: spacing.xs,
   },
   endSessionText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   emptyText: {
-    fontSize: 14,
+    fontSize: typography.body,
     textAlign: 'center',
-    padding: 20,
+    padding: spacing.xl,
   },
   lapItem: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    borderBottomWidth: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
   },
   swipeActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingLeft: 12,
+    paddingLeft: spacing.md,
   },
   deleteAction: {
     backgroundColor: '#dc2626',
@@ -1264,12 +1262,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: 85,
     height: 85,
-    borderRadius: 16,
-    shadowColor: '#dc2626',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.4,
-    shadowRadius: 4,
-    elevation: 5,
+    borderRadius: radius.lg,
+    ...shadows.card,
   },
   deleteIconContainer: {
     marginBottom: 2,
@@ -1282,8 +1276,8 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   lapNumber: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
     width: 50,
   },
   lapDetails: {
@@ -1292,21 +1286,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   lapTime: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.medium,
   },
   lapDelta: {
-    fontSize: 14,
+    fontSize: typography.body,
   },
   lapTypeBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 4,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+    borderRadius: radius.full,
   },
   lapTypeBadgeText: {
     color: '#fff',
     fontSize: 10,
-    fontWeight: '600',
+    fontWeight: fontWeights.semibold,
   },
   modalOverlay: {
     flex: 1,
@@ -1316,46 +1310,42 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '80%',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    ...shadows.modal,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 16,
+    fontSize: typography.heading,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.lg,
     textAlign: 'center',
   },
   modalSubtitle: {
-    fontSize: 14,
-    marginBottom: 16,
+    fontSize: typography.body,
+    marginBottom: spacing.lg,
     textAlign: 'center',
   },
   modalInput: {
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 12,
-    fontSize: 16,
-    marginBottom: 20,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: typography.bodyLg,
+    marginBottom: spacing.xl,
   },
   modalButtons: {
     flexDirection: 'row',
-    gap: 12,
+    gap: spacing.md,
   },
   modalButton: {
     flex: 1,
-    padding: 14,
-    borderRadius: 8,
+    padding: spacing.md,
+    borderRadius: radius.md,
     alignItems: 'center',
   },
   modalButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
   sessionSetupOverlay: {
     flex: 1,
@@ -1366,66 +1356,62 @@ const styles = StyleSheet.create({
   sessionSetupContent: {
     width: '90%',
     maxWidth: 500,
-    borderRadius: 20,
-    padding: 28,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 10,
+    borderRadius: radius.xl,
+    padding: spacing.xxl,
+    ...shadows.modal,
   },
   sessionSetupHeader: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: spacing.xxl,
   },
   sessionSetupTitle: {
     fontSize: 26,
-    fontWeight: 'bold',
-    marginTop: 12,
-    marginBottom: 8,
+    fontWeight: fontWeights.bold,
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
   },
   sessionSetupSubtitle: {
-    fontSize: 15,
+    fontSize: typography.body,
     textAlign: 'center',
   },
   sessionSetupFields: {
-    gap: 20,
-    marginBottom: 24,
+    gap: spacing.xl,
+    marginBottom: spacing.xl,
   },
   sessionField: {
-    gap: 8,
+    gap: spacing.sm,
   },
   sessionFieldLabel: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   sessionInput: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 16,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    fontSize: typography.bodyLg,
   },
   sessionStartButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    gap: 10,
-    marginBottom: 12,
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
   sessionStartButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: typography.title,
+    fontWeight: fontWeights.bold,
   },
   sessionSkipButton: {
-    padding: 12,
+    padding: spacing.md,
     alignItems: 'center',
   },
   sessionSkipButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   sheetOverlay: {
     flex: 1,
@@ -1434,13 +1420,9 @@ const styles = StyleSheet.create({
   },
   sheetContent: {
     width: '100%',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: -2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    borderTopLeftRadius: radius.xl,
+    borderTopRightRadius: radius.xl,
+    padding: spacing.xl,
+    ...shadows.modal,
   },
 });

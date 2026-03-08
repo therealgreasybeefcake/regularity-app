@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme } from '../constants/theme';
+import { lightTheme, darkTheme, glass } from '../constants/theme';
 
 import TimerScreen from '../screens/TimerScreen';
 import DriversScreen from '../screens/DriversScreen';
@@ -44,11 +46,35 @@ export default function AppNavigator() {
 
             return <Ionicons name={iconName} size={size} color={color} />;
           },
-          tabBarActiveTintColor: theme.primary,
-          tabBarInactiveTintColor: theme.textSecondary,
+          tabBarActiveTintColor: theme.primary as string,
+          tabBarInactiveTintColor: theme.textSecondary as string,
+          tabBarBackground: () =>
+            Platform.OS === 'ios' ? (
+              <BlurView
+                tint={isDarkMode ? 'dark' : 'light'}
+                intensity={glass.blurIntensity}
+                style={StyleSheet.absoluteFill}
+              />
+            ) : (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  {
+                    backgroundColor: isDarkMode
+                      ? 'rgba(12,18,32,0.92)'
+                      : 'rgba(248,250,252,0.92)',
+                  },
+                ]}
+              />
+            ),
           tabBarStyle: {
-            backgroundColor: theme.card,
-            borderTopColor: theme.border,
+            position: 'absolute',
+            backgroundColor: 'transparent',
+            borderTopColor: 'transparent',
+            elevation: 0,
+          },
+          tabBarLabelStyle: {
+            fontSize: 10,
           },
           headerShown: false,
         })}

@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Linki
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows, brandColors } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
 
@@ -134,8 +134,8 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
       {/* Content */}
       <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.iconContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: theme.primary + '20' }]}>
-            <Ionicons name={page.icon} size={80} color={theme.primary} />
+          <View style={[styles.iconCircle, { backgroundColor: `${String(theme.primary)}20` }]}>
+            <Ionicons name={page.icon} size={80} color={theme.primary as string} />
           </View>
         </View>
 
@@ -144,7 +144,7 @@ export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
           {page.description}
         </Text>
 
-        <View style={styles.featuresContainer}>
+        <View style={[styles.featuresContainer, { backgroundColor: theme.surfaceElevated }]}>
           {page.features.map((feature, index) => (
             <View key={index} style={styles.featureRow}>
               <Ionicons name="checkmark-circle" size={24} color={theme.primary} />
@@ -211,25 +211,25 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
+    padding: spacing.xl,
     paddingTop: 60,
   },
   pageIndicator: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   skipButton: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
   backButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
+    gap: spacing.xs,
   },
   backButtonText: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
   backButtonPlaceholder: {
     width: 70,
@@ -239,93 +239,91 @@ const styles = StyleSheet.create({
   },
   content: {
     flex: 1,
-    paddingHorizontal: 24,
+    paddingHorizontal: spacing.xl,
   },
   iconContainer: {
     alignItems: 'center',
-    marginVertical: 40,
+    marginVertical: spacing.xxl,
   },
   iconCircle: {
     width: 160,
     height: 160,
-    borderRadius: 80,
+    borderRadius: radius.full,
     alignItems: 'center',
     justifyContent: 'center',
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: typography.heading + 8,
+    fontWeight: fontWeights.bold,
     textAlign: 'center',
-    marginBottom: 16,
-    paddingHorizontal: 20,
+    marginBottom: spacing.lg,
+    paddingHorizontal: spacing.xl,
   },
   description: {
-    fontSize: 16,
+    fontSize: typography.bodyLg,
     textAlign: 'center',
     lineHeight: 24,
-    marginBottom: 32,
-    paddingHorizontal: 10,
+    marginBottom: spacing.xxl,
+    paddingHorizontal: spacing.sm,
   },
   featuresContainer: {
-    gap: 16,
-    paddingBottom: 40,
+    gap: spacing.lg,
+    paddingBottom: spacing.xxl,
+    padding: spacing.lg,
+    borderRadius: radius.md,
   },
   featureRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: spacing.md,
   },
   featureText: {
-    fontSize: 16,
+    fontSize: typography.bodyLg,
     flex: 1,
   },
   footer: {
-    padding: 24,
+    padding: spacing.xl,
     paddingBottom: 40,
   },
   dotsContainer: {
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    gap: 8,
-    marginBottom: 24,
+    gap: spacing.sm,
+    marginBottom: spacing.xl,
   },
   dot: {
-    height: 8,
-    borderRadius: 4,
+    height: 10,
+    borderRadius: radius.full,
   },
   nextButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
+    padding: spacing.lg,
+    borderRadius: radius.lg,
+    gap: spacing.sm,
   },
   nextButtonText: {
     color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
+    fontSize: typography.title,
+    fontWeight: fontWeights.semibold,
   },
   coffeeButton: {
-    backgroundColor: '#FFDD00',
+    backgroundColor: brandColors.coffee,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 12,
-    gap: 8,
-    marginTop: 8,
-    marginBottom: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
+    ...shadows.card,
   },
   coffeeButtonText: {
     color: '#000',
-    fontSize: 18,
-    fontWeight: '700',
+    fontSize: typography.title,
+    fontWeight: fontWeights.bold,
   },
 });

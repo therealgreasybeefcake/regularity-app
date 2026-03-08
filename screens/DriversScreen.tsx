@@ -16,7 +16,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
 import { Driver } from '../types';
 
 export default function DriversScreen() {
@@ -167,7 +167,7 @@ export default function DriversScreen() {
             {team?.drivers.map((driver, index) => (
               <View
                 key={driver.id}
-                style={[styles.driverCard, { backgroundColor: theme.card }]}
+                style={[styles.driverCard, { backgroundColor: theme.card }, shadows.card]}
               >
                 <View style={styles.driverHeader}>
                   {editingDriver === index ? (
@@ -191,11 +191,14 @@ export default function DriversScreen() {
                       }}
                       style={[styles.nameInput, { borderColor: theme.border, justifyContent: 'center' }]}
                     >
-                      <Text style={[styles.driverName, { color: theme.text, fontSize: 20 }]}>{driver.name}</Text>
+                      <Text style={[styles.driverName, { color: theme.text }]}>{driver.name}</Text>
                     </TouchableOpacity>
                   )}
 
-                  <TouchableOpacity onPress={() => removeDriver(index)}>
+                  <TouchableOpacity
+                    style={styles.deleteButton}
+                    onPress={() => removeDriver(index)}
+                  >
                     <Ionicons name="trash-outline" size={24} color={theme.broken} />
                   </TouchableOpacity>
                 </View>
@@ -223,6 +226,7 @@ export default function DriversScreen() {
                           setEditingTargetTime(index);
                           setEditTargetValue(getDisplayValue(driver.targetTime));
                         }}
+                        style={styles.targetTimeTouchable}
                       >
                         <Text style={[styles.targetTimeText, { color: theme.text }]}>
                           {formatTargetTime(driver.targetTime)}
@@ -244,17 +248,17 @@ export default function DriversScreen() {
                   )}
 
                   <View style={styles.statsRow}>
-                    <View style={styles.stat}>
+                    <View style={[styles.stat, { backgroundColor: theme.surface }]}>
                       <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Laps</Text>
                       <Text style={[styles.statValue, { color: theme.text }]}>{driver.laps.length}</Text>
                     </View>
-                    <View style={styles.stat}>
+                    <View style={[styles.stat, { backgroundColor: theme.surface }]}>
                       <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Bonus</Text>
                       <Text style={[styles.statValue, { color: theme.bonus }]}>
                         {driver.laps.filter(l => l.lapType === 'bonus').length}
                       </Text>
                     </View>
-                    <View style={styles.stat}>
+                    <View style={[styles.stat, { backgroundColor: theme.surface }]}>
                       <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Broken</Text>
                       <Text style={[styles.statValue, { color: theme.broken }]}>
                         {driver.laps.filter(l => l.lapType === 'broken').length}
@@ -280,10 +284,10 @@ export default function DriversScreen() {
 
       {/* Floating Add Button */}
       <TouchableOpacity
-        style={[styles.addButton, { backgroundColor: theme.primary }]}
+        style={[styles.addButton, { backgroundColor: theme.primary }, shadows.card]}
         onPress={openAddDriverModal}
       >
-        <Ionicons name="add" size={24} color="#fff" />
+        <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
       {/* Add Driver Modal */}
@@ -302,7 +306,7 @@ export default function DriversScreen() {
             onPress={() => setAddModalVisible(false)}
           >
             <Pressable
-              style={[styles.modalContent, { backgroundColor: theme.card }]}
+              style={[styles.modalContent, { backgroundColor: theme.card }, shadows.modal]}
               onPress={(e) => e.stopPropagation()}
             >
               <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Driver</Text>
@@ -319,7 +323,7 @@ export default function DriversScreen() {
                 autoCapitalize="words"
               />
 
-              <Text style={[styles.modalLabel, { color: theme.textSecondary, marginTop: 16 }]}>
+              <Text style={[styles.modalLabel, { color: theme.textSecondary, marginTop: spacing.lg }]}>
                 Target Time {audioSettings.timeFormat === 'seconds' ? '(seconds)' : '(MM:SS.mmm)'}
               </Text>
               <TextInput
@@ -362,109 +366,120 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 80,
+    paddingBottom: 90,
   },
   content: {
-    padding: 16,
+    padding: spacing.lg,
+    gap: spacing.lg,
   },
   addButton: {
     position: 'absolute',
-    bottom: 24,
-    right: 24,
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    bottom: spacing.xl,
+    right: spacing.xl,
+    width: 60,
+    height: 60,
+    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
   },
   driverCard: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
   },
   driverHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   driverName: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: typography.heading,
+    fontWeight: fontWeights.semibold,
   },
   nameInput: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: typography.heading,
+    fontWeight: fontWeights.semibold,
     borderWidth: 1,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 4,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    minHeight: 48,
     minWidth: 150,
   },
+  deleteButton: {
+    minWidth: 48,
+    minHeight: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   driverInfo: {
-    gap: 12,
+    gap: spacing.md,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    minHeight: 48,
   },
   label: {
-    fontSize: 14,
+    fontSize: typography.body,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 6,
-    padding: 8,
+    borderRadius: radius.md,
+    padding: spacing.md,
     minWidth: 80,
+    minHeight: 48,
     textAlign: 'right',
   },
   formatHint: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: typography.caption,
+    marginTop: spacing.xs,
+  },
+  targetTimeTouchable: {
+    minHeight: 48,
+    justifyContent: 'center',
   },
   targetTimeText: {
-    fontSize: 16,
-    fontWeight: '600',
-    padding: 8,
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
+    padding: spacing.sm,
   },
   statsRow: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    marginTop: 8,
-    paddingTop: 12,
-    borderTopWidth: 1,
-    borderTopColor: '#e5e7eb',
+    marginTop: spacing.lg,
+    gap: spacing.sm,
   },
   stat: {
     alignItems: 'center',
+    flex: 1,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.md,
   },
   statLabel: {
-    fontSize: 12,
+    fontSize: typography.caption,
   },
   statValue: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 4,
+    fontSize: typography.title,
+    fontWeight: fontWeights.semibold,
+    marginTop: spacing.xs,
   },
   clearButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 8,
-    borderRadius: 6,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.md,
     borderWidth: 1,
-    gap: 6,
-    marginTop: 8,
+    gap: spacing.sm,
+    marginTop: spacing.sm,
+    minHeight: 48,
   },
   clearButtonText: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: typography.body,
+    fontWeight: fontWeights.medium,
   },
   modalOverlay: {
     flex: 1,
@@ -473,46 +488,44 @@ const styles = StyleSheet.create({
     alignItems: 'stretch',
   },
   modalContent: {
-    marginHorizontal: 0,
-    borderRadius: 0,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    marginHorizontal: spacing.lg,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: '600',
-    marginBottom: 20,
+    fontSize: typography.heading,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.xl,
     textAlign: 'center',
   },
   modalLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.sm,
   },
   modalInput: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 14,
-    fontSize: 16,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    fontSize: typography.bodyLg,
+    minHeight: 48,
   },
   modalButtons: {
     flexDirection: 'row',
-    gap: 12,
-    marginTop: 24,
+    gap: spacing.md,
+    marginTop: spacing.xl,
   },
   modalButton: {
     flex: 1,
-    padding: 14,
-    borderRadius: 8,
+    padding: spacing.lg,
+    borderRadius: radius.md,
     alignItems: 'center',
+    minHeight: 48,
+    justifyContent: 'center',
   },
   modalButtonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
 });

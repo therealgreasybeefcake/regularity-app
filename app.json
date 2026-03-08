@@ -6,7 +6,6 @@
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "description": "Professional regularity race timing app with lap tracking, statistics, and PDF export",
     "primaryColor": "#1e40af",
     "owner": "greasybeefcake",
@@ -33,12 +32,14 @@
         "WAKE_LOCK",
         "MODIFY_AUDIO_SETTINGS"
       ],
-      "versionCode": 2,
-      "enableProguardInReleaseBuilds": true,
-      "enableShrinkResourcesInReleaseBuilds": true
+      "versionCode": 2
     },
     "plugins": [
-      "expo-dev-client"
+      "expo-audio",
+      "expo-sharing",
+      "expo-font",
+      "expo-asset",
+      "expo-router"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

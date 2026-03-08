@@ -32,7 +32,7 @@ export const calculateLapType = (
   if (isSafety) return 'safety';
 
   if (delta < 0) return 'broken';
-  if (delta >= 0 && delta <= 0.99) return 'bonus';
+  if (delta >= 0 && delta < 1.0) return 'bonus';
   return 'base';
 };
 
@@ -54,7 +54,7 @@ export const calculateDriverStats = (
   // Lap counts
   const bonusLaps = laps.filter(l => l.lapType === 'bonus').length;
   const brokenLaps = laps.filter(l => l.lapType === 'broken').length;
-  const baseLaps = laps.length;
+  const baseLaps = laps.filter(l => l.lapType === 'base').length;
   const changeoverLaps = laps.filter(l => l.lapType === 'changeover').length;
   const safetyLaps = laps.filter(l => l.lapType === 'safety').length;
 
@@ -148,7 +148,10 @@ export const calculateTrendLine = (laps: Lap[]): number[] => {
     sumX2 += i * i;
   });
 
-  const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+  const denominator = n * sumX2 - sumX * sumX;
+  if (denominator === 0) return laps.map(l => l.time);
+
+  const slope = (n * sumXY - sumX * sumY) / denominator;
   const intercept = (sumY - slope * sumX) / n;
 
   return laps.map((_, i) => slope * i + intercept);

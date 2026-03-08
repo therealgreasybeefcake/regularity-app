@@ -1,7 +1,9 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme } from 'react-native';
-import { Team, AudioSettings, LapTypeValues } from '../types';
+import { Team, AudioSettings, LapTypeValues, SyncStatus } from '../types';
+import { useAuth } from './AuthContext';
+import { S3SyncService } from '../services/S3SyncService';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -22,6 +24,7 @@ interface AppContextType {
   isLoading: boolean;
   hasSeenWelcome: boolean;
   setHasSeenWelcome: (value: boolean) => void;
+  syncStatus: SyncStatus;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -66,6 +69,7 @@ const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { isAuthenticated, getCredentials } = useAuth();
   const systemColorScheme = useColorScheme();
   const [teams, setTeams] = useState<Team[]>(DEFAULT_TEAMS);
   const [activeTeam, setActiveTeam] = useState(0);
@@ -75,6 +79,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
+  const s3SyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initialLoadDoneRef = useRef(false);
 
   // Calculate isDarkMode based on theme mode and system preference
   const isDarkMode = themeMode === 'auto'
@@ -161,10 +168,54 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [isLoading]);
 
-  // Save teams to AsyncStorage
+  // S3 sync: load from S3 after local data is ready
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && !initialLoadDoneRef.current) {
+      initialLoadDoneRef.current = true;
+      (async () => {
+        try {
+          setSyncStatus('syncing');
+          const creds = await getCredentials();
+          if (!creds) { setSyncStatus('offline'); return; }
+          const s3Teams = await S3SyncService.loadTeams(creds);
+          if (s3Teams && s3Teams.length > 0) {
+            setTeams(s3Teams);
+          }
+          setSyncStatus('synced');
+        } catch {
+          setSyncStatus('error');
+        }
+      })();
+    }
+  }, [isLoading, isAuthenticated]);
+
+  // Save teams to AsyncStorage + debounced S3 sync
   useEffect(() => {
     if (!isLoading) {
-      AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
+      const timeout = setTimeout(() => {
+        AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
+      }, 300);
+
+      // Debounced S3 sync (2 seconds)
+      if (isAuthenticated && initialLoadDoneRef.current) {
+        if (s3SyncTimeoutRef.current) clearTimeout(s3SyncTimeoutRef.current);
+        s3SyncTimeoutRef.current = setTimeout(async () => {
+          try {
+            setSyncStatus('syncing');
+            const creds = await getCredentials();
+            if (!creds) { setSyncStatus('offline'); return; }
+            await S3SyncService.saveTeams(creds, teams);
+            setSyncStatus('synced');
+          } catch {
+            setSyncStatus('error');
+          }
+        }, 2000);
+      }
+
+      return () => {
+        clearTimeout(timeout);
+        if (s3SyncTimeoutRef.current) clearTimeout(s3SyncTimeoutRef.current);
+      };
     }
   }, [teams, isLoading]);
 
@@ -220,6 +271,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         isLoading,
         hasSeenWelcome,
         setHasSeenWelcome,
+        syncStatus,
       }}
     >
       {children}

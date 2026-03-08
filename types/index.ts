@@ -78,17 +78,22 @@ export interface TeamStats {
   percentageFactor: number;
 }
 
+export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline';
+
 export interface ThemeColors {
-  background: string;
-  card: string;
-  text: string;
-  textSecondary: string;
-  border: string;
-  primary: string;
-  bonus: string;
-  base: string;
-  broken: string;
-  changeover: string;
-  safety: string;
-  warning: string;
+  background: import('react-native').ColorValue;
+  card: import('react-native').ColorValue;
+  text: import('react-native').ColorValue;
+  textSecondary: import('react-native').ColorValue;
+  border: import('react-native').ColorValue;
+  primary: import('react-native').ColorValue;
+  bonus: import('react-native').ColorValue;
+  base: import('react-native').ColorValue;
+  broken: import('react-native').ColorValue;
+  changeover: import('react-native').ColorValue;
+  safety: import('react-native').ColorValue;
+  warning: import('react-native').ColorValue;
+  surface: import('react-native').ColorValue;
+  surfaceElevated: import('react-native').ColorValue;
+  surfaceMuted: import('react-native').ColorValue;
 }

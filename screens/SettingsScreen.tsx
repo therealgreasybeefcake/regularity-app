@@ -11,6 +11,7 @@ import {
   Modal,
   Pressable,
   Linking,
+  Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +19,8 @@ import { Paths, File } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
 import { useApp, ThemeMode } from '../context/AppContext';
-import { lightTheme, darkTheme } from '../constants/theme';
+import { useAuth } from '../context/AuthContext';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows, brandColors } from '../constants/theme';
 import { Picker } from '@react-native-picker/picker';
 
 export default function SettingsScreen() {
@@ -33,9 +35,20 @@ export default function SettingsScreen() {
     lapTypeValues,
     setLapTypeValues,
     setHasSeenWelcome,
+    syncStatus,
   } = useApp();
+  const { user, signOut } = useAuth();
 
   const theme = isDarkMode ? darkTheme : lightTheme;
+
+  const syncIcon = syncStatus === 'synced' ? 'cloud-done-outline' as const
+    : syncStatus === 'syncing' ? 'cloud-upload-outline' as const
+    : syncStatus === 'error' ? 'cloud-offline-outline' as const
+    : 'cloud-offline-outline' as const;
+  const syncLabel = syncStatus === 'synced' ? 'Synced'
+    : syncStatus === 'syncing' ? 'Syncing...'
+    : syncStatus === 'error' ? 'Sync error'
+    : 'Offline';
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
@@ -133,7 +146,6 @@ export default function SettingsScreen() {
 
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
       const fileName = `regularity-race-data-${timestamp}.${format}`;
-      const file = new File(Paths.cache, fileName);
 
       let content: string;
       let mimeType: string;
@@ -146,20 +158,35 @@ export default function SettingsScreen() {
         mimeType = 'text/csv';
       }
 
-      // Write content to file using writable stream
-      const writer = file.writableStream().getWriter();
-      const encoder = new TextEncoder();
-      await writer.write(encoder.encode(content));
-      await writer.close();
-
-      if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(file.uri, {
-          mimeType,
-          dialogTitle: 'Export Race Data',
-          UTI: format === 'json' ? 'public.json' : 'public.comma-separated-values-text',
-        });
+      if (Platform.OS === 'web') {
+        // Web: use Blob + anchor download
+        const blob = new Blob([content], { type: mimeType });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
       } else {
-        Alert.alert('Success', `Data exported to: ${fileName}`);
+        const file = new File(Paths.cache, fileName);
+
+        // Write content to file using writable stream
+        const writer = file.writableStream().getWriter();
+        const encoder = new TextEncoder();
+        await writer.write(encoder.encode(content));
+        await writer.close();
+
+        if (await Sharing.isAvailableAsync()) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType,
+            dialogTitle: 'Export Race Data',
+            UTI: format === 'json' ? 'public.json' : 'public.comma-separated-values-text',
+          });
+        } else {
+          Alert.alert('Success', `Data exported to: ${fileName}`);
+        }
       }
 
       setShowExportModal(false);
@@ -186,6 +213,21 @@ export default function SettingsScreen() {
           Alert.alert('Error', 'Invalid JSON format - missing teams array');
           return;
         }
+
+        // Validate structure of each team and its drivers
+        for (const team of data.teams) {
+          if (!team.id || !team.name || !Array.isArray(team.drivers) || team.sessionDuration === undefined) {
+            Alert.alert('Error', 'Invalid team data: each team must have id, name, drivers (array), and sessionDuration');
+            return;
+          }
+          for (const driver of team.drivers) {
+            if (!driver.id || !driver.name || driver.targetTime === undefined || !Array.isArray(driver.laps)) {
+              Alert.alert('Error', `Invalid driver data in team "${team.name}": each driver must have id, name, targetTime, and laps (array)`);
+              return;
+            }
+          }
+        }
+
         importedTeams = data.teams;
       } else {
         // CSV format
@@ -273,6 +315,7 @@ export default function SettingsScreen() {
           </View>
 
           {/* Lap Recording Controls */}
+          {Platform.OS !== 'web' && (
           <View style={[styles.section, { backgroundColor: theme.card }]}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap Recording Controls</Text>
 
@@ -292,6 +335,7 @@ export default function SettingsScreen() {
               />
             </View>
           </View>
+          )}
 
           {/* Audio Settings */}
           <View style={[styles.section, { backgroundColor: theme.card }]}>
@@ -544,11 +588,39 @@ export default function SettingsScreen() {
             </Text>
 
             <TouchableOpacity
-              style={[styles.button, { backgroundColor: '#FFDD00' }]}
+              style={[styles.button, { backgroundColor: brandColors.coffee }]}
               onPress={() => Linking.openURL('https://buymeacoffee.com/greasybeefcake')}
             >
               <Ionicons name="cafe" size={20} color="#000" />
               <Text style={[styles.buttonText, { color: '#000' }]}>Buy Me a Coffee</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Account */}
+          <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>Account</Text>
+
+            <View style={styles.settingRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.settingLabel, { color: theme.text }]}>{user}</Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: spacing.xs, gap: spacing.xs }}>
+                  <Ionicons name={syncIcon} size={14} color={theme.textSecondary} />
+                  <Text style={[styles.settingDescription, { color: theme.textSecondary, marginTop: 0 }]}>{syncLabel}</Text>
+                </View>
+              </View>
+            </View>
+
+            <TouchableOpacity
+              style={[styles.button, { backgroundColor: theme.broken }]}
+              onPress={() => {
+                Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
+                  { text: 'Cancel', style: 'cancel' },
+                  { text: 'Sign Out', style: 'destructive', onPress: signOut },
+                ]);
+              }}
+            >
+              <Ionicons name="log-out-outline" size={20} color="#fff" />
+              <Text style={styles.buttonText}>Sign Out</Text>
             </TouchableOpacity>
           </View>
 
@@ -784,62 +856,64 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: spacing.lg,
+    paddingBottom: 90,
   },
   section: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
+    ...shadows.card,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 16,
+    fontSize: typography.heading,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.lg,
   },
   pickerContainer: {
     borderWidth: 1,
-    borderRadius: 8,
+    borderRadius: radius.sm,
     overflow: 'hidden',
   },
   settingRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 12,
+    paddingVertical: spacing.lg,
   },
   settingLabel: {
-    fontSize: 16,
+    fontSize: typography.bodyLg,
   },
   settingDescription: {
-    fontSize: 12,
-    marginTop: 4,
+    fontSize: typography.caption,
+    marginTop: spacing.xs,
   },
   valueButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
     borderWidth: 1,
-    gap: 8,
+    gap: spacing.sm,
   },
   valueButtonText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   inputRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   inputLabel: {
-    fontSize: 14,
+    fontSize: typography.body,
   },
   input: {
     borderWidth: 1,
-    borderRadius: 6,
-    padding: 8,
+    borderRadius: radius.sm,
+    padding: spacing.sm,
     width: 80,
     textAlign: 'right',
   },
@@ -847,19 +921,19 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
-    gap: 8,
+    padding: spacing.lg,
+    borderRadius: radius.md,
+    marginBottom: spacing.md,
+    gap: spacing.sm,
   },
   buttonText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
   infoText: {
-    fontSize: 14,
-    marginBottom: 8,
+    fontSize: typography.body,
+    marginBottom: spacing.sm,
   },
   modalOverlay: {
     flex: 1,
@@ -869,59 +943,55 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     width: '85%',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
+    ...shadows.modal,
   },
   modalTitle: {
     fontSize: 22,
-    fontWeight: '600',
-    marginBottom: 8,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.sm,
     textAlign: 'center',
   },
   modalSubtitle: {
-    fontSize: 14,
-    marginBottom: 24,
+    fontSize: typography.body,
+    marginBottom: spacing.xl,
     textAlign: 'center',
   },
   formatButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginBottom: spacing.md,
     borderWidth: 2,
-    gap: 12,
+    gap: spacing.md,
   },
   formatButtonContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 16,
+    gap: spacing.lg,
   },
   formatButtonText: {
     flex: 1,
   },
   formatButtonTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: typography.title,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.xs,
   },
   formatButtonDescription: {
     fontSize: 13,
   },
   modalCancelButton: {
-    borderRadius: 12,
+    borderRadius: radius.md,
     padding: 14,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
   modalCancelText: {
     color: '#fff',
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
 });

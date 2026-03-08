@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal,
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows, brandColors } from '../constants/theme';
 import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/calculations';
 import { Session } from '../types';
 import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
@@ -101,10 +101,10 @@ export default function StatsScreen() {
           <View style={styles.content}>
             {/* Session Selector */}
             {team.sessionHistory.length > 0 && (
-              <View style={[styles.section, { backgroundColor: theme.card }]}>
+              <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>View Session</Text>
                 <TouchableOpacity
-                  style={[styles.sessionSelector, { borderColor: theme.border, backgroundColor: theme.background }]}
+                  style={[styles.sessionSelector, { borderColor: theme.border, backgroundColor: theme.surface }]}
                   onPress={() => setShowSessionPicker(true)}
                 >
                   <View style={styles.sessionSelectorContent}>
@@ -131,7 +131,7 @@ export default function StatsScreen() {
             )}
 
             {/* Team Info */}
-            <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Team Information</Text>
                 {!selectedSession && !isEditing ? (
@@ -159,12 +159,7 @@ export default function StatsScreen() {
                       {
                         color: theme.text,
                         borderColor: theme.border,
-                        backgroundColor: theme.background,
-                        borderWidth: 1,
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 6,
-                        minWidth: 160
+                        backgroundColor: theme.surface,
                       }
                     ]}
                     value={editedTeamName}
@@ -186,12 +181,7 @@ export default function StatsScreen() {
                       {
                         color: theme.text,
                         borderColor: theme.border,
-                        backgroundColor: theme.background,
-                        borderWidth: 1,
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 6,
-                        minWidth: 160
+                        backgroundColor: theme.surface,
                       }
                     ]}
                     value={editedRaceName}
@@ -215,12 +205,7 @@ export default function StatsScreen() {
                       {
                         color: theme.text,
                         borderColor: theme.border,
-                        backgroundColor: theme.background,
-                        borderWidth: 1,
-                        borderRadius: 6,
-                        paddingHorizontal: 8,
-                        paddingVertical: 6,
-                        minWidth: 160
+                        backgroundColor: theme.surface,
                       }
                     ]}
                     value={editedSessionNumber}
@@ -240,14 +225,14 @@ export default function StatsScreen() {
                 {isEditing && !selectedSession ? (
                   <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TextInput
-                      style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background, minWidth: 80 }]}
+                      style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface, minWidth: 80 }]}
                       value={editedSessionDuration}
                       onChangeText={setEditedSessionDuration}
                       placeholder="120"
                       placeholderTextColor={theme.textSecondary}
                       keyboardType="number-pad"
                     />
-                    <Text style={[styles.value, { color: theme.textSecondary, marginLeft: 8 }]}>min</Text>
+                    <Text style={[styles.value, { color: theme.textSecondary, marginLeft: spacing.sm }]}>min</Text>
                   </View>
                 ) : (
                   <Text style={[styles.value, { color: theme.text }]}>
@@ -258,7 +243,7 @@ export default function StatsScreen() {
             </View>
 
             {/* Team Stats */}
-            <View style={[styles.section, { backgroundColor: theme.card }]}>
+            <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
               <View style={styles.sectionHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Team</Text>
                 <View style={styles.buttonGroup}>
@@ -267,7 +252,7 @@ export default function StatsScreen() {
                       setSelectedDriverForCharts(null);
                       setShowChartsModal(true);
                     }}
-                    style={[styles.chartButton, { backgroundColor: '#9333ea' }]}
+                    style={[styles.chartButton, { backgroundColor: brandColors.chartPurple }]}
                   >
                     <Ionicons name="bar-chart-outline" size={18} color="#fff" />
                     <Text style={styles.buttonText}>Charts</Text>
@@ -312,7 +297,7 @@ export default function StatsScreen() {
             {displayData.drivers.map((driver, index) => {
               const stats = calculateDriverStats(driver, lapTypeValues, displayData.drivers, displayData.sessionDuration);
               return (
-                <View key={driver.id} style={[styles.section, { backgroundColor: theme.card }]}>
+                <View key={driver.id} style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
                   <View style={styles.sectionHeader}>
                     <Text style={[styles.sectionTitle, { color: theme.text }]}>{driver.name}</Text>
                     <View style={styles.buttonGroup}>
@@ -321,7 +306,7 @@ export default function StatsScreen() {
                           setSelectedDriverForCharts(driver.id);
                           setShowChartsModal(true);
                         }}
-                        style={[styles.chartButton, { backgroundColor: '#9333ea' }]}
+                        style={[styles.chartButton, { backgroundColor: brandColors.chartPurple }]}
                       >
                         <Ionicons name="bar-chart-outline" size={18} color="#fff" />
                         <Text style={styles.buttonText}>Charts</Text>
@@ -338,88 +323,88 @@ export default function StatsScreen() {
                   </View>
 
                   <View style={styles.statsGrid}>
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Achieved Laps</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Achieved Laps</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {stats.achievedLaps.toFixed(1)}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Goal Laps</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Goal Laps</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {stats.goalLaps.toFixed(1)}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Net Score</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Net Score</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {stats.netScore > 0 ? '+' : ''}{stats.netScore}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Base Laps</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Base Laps</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {stats.baseLaps}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.bonus }]}>Bonus Laps</Text>
-                      <Text style={[styles.statValue, { color: theme.bonus }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.bonus }]}>Bonus Laps</Text>
+                      <Text style={[styles.gridValue, { color: theme.bonus }]}>
                         {stats.bonusLaps}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.broken }]}>Broken Laps</Text>
-                      <Text style={[styles.statValue, { color: theme.broken }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.broken }]}>Broken Laps</Text>
+                      <Text style={[styles.gridValue, { color: theme.broken }]}>
                         {stats.brokenLaps}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Changeover</Text>
-                      <Text style={[styles.statValue, { color: theme.changeover }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Changeover</Text>
+                      <Text style={[styles.gridValue, { color: theme.changeover }]}>
                         {stats.changeoverLaps}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Safety Car</Text>
-                      <Text style={[styles.statValue, { color: theme.safety }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Safety Car</Text>
+                      <Text style={[styles.gridValue, { color: theme.safety }]}>
                         {stats.safetyLaps}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Avg Delta</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Avg Delta</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {stats.averageDelta >= 0 ? '+' : ''}{stats.averageDelta.toFixed(3)}s
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>3-Lap Avg</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>3-Lap Avg</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {stats.threelapAvg !== null
                           ? `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(3)}s`
                           : 'N/A'}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Avg Lap Time</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Avg Lap Time</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {formatTime(stats.averageLapTime)}
                       </Text>
                     </View>
 
-                    <View style={[styles.gridItem, { backgroundColor: theme.background }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Penalty Laps</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>
+                    <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
+                      <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Penalty Laps</Text>
+                      <Text style={[styles.gridValue, { color: theme.text }]}>
                         {driver.penaltyLaps}
                       </Text>
                     </View>
@@ -445,7 +430,7 @@ export default function StatsScreen() {
               onPress={() => setShowChartsModal(false)}
             >
               <Pressable
-                style={[styles.chartsModalContent, { backgroundColor: theme.card }]}
+                style={[styles.chartsModalContent, { backgroundColor: theme.card }, shadows.modal]}
                 onPress={(e) => e.stopPropagation()}
               >
                 <View style={styles.chartsModalHeader}>
@@ -497,7 +482,7 @@ export default function StatsScreen() {
               onPress={() => setShowSessionPicker(false)}
             >
               <Pressable
-                style={[styles.modalContent, { backgroundColor: theme.card }]}
+                style={[styles.modalContent, { backgroundColor: theme.card }, shadows.modal]}
                 onPress={(e) => e.stopPropagation()}
               >
                 <Text style={[styles.modalTitle, { color: theme.text }]}>Select Session</Text>
@@ -506,7 +491,7 @@ export default function StatsScreen() {
                     style={[
                       styles.sessionItem,
                       { borderBottomColor: theme.border },
-                      !selectedSession && { backgroundColor: theme.background },
+                      !selectedSession && { backgroundColor: theme.surface },
                     ]}
                     onPress={() => {
                       setSelectedSession(null);
@@ -530,7 +515,7 @@ export default function StatsScreen() {
                         style={[
                           styles.sessionItem,
                           { borderBottomColor: theme.border },
-                          selectedSession?.id === session.id && { backgroundColor: theme.background },
+                          selectedSession?.id === session.id && { backgroundColor: theme.surface },
                         ]}
                         onPress={() => {
                           setSelectedSession(session);
@@ -565,154 +550,163 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    padding: 16,
+    padding: spacing.lg,
+    paddingBottom: 90,
   },
   buttonGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   chartButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    gap: 6,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    gap: spacing.xs + 2,
   },
   buttonText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   teamExportButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    gap: 6,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    gap: spacing.xs + 2,
   },
   teamExportText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   driverExportButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 8,
-    paddingHorizontal: 12,
-    borderRadius: 8,
-    gap: 4,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    borderRadius: radius.sm,
+    gap: spacing.xs,
   },
   driverExportText: {
     color: '#fff',
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   section: {
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    marginBottom: spacing.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
+    marginBottom: spacing.lg,
   },
   sectionTitle: {
-    fontSize: 20,
-    fontWeight: '600',
+    fontSize: typography.heading,
+    fontWeight: fontWeights.semibold,
   },
   editButton: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
   editActions: {
     flexDirection: 'row',
-    gap: 16,
+    gap: spacing.lg,
   },
   actionButton: {
-    paddingHorizontal: 4,
+    paddingHorizontal: spacing.xs,
   },
   cancelButton: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
   saveButton: {
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 8,
+    paddingVertical: spacing.sm,
   },
   label: {
-    fontSize: 14,
+    fontSize: typography.body,
   },
   value: {
-    fontSize: 14,
-    fontWeight: '500',
+    fontSize: typography.body,
+    fontWeight: fontWeights.medium,
   },
   input: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.medium,
     borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    minWidth: 150,
+    borderRadius: radius.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm + 2,
+    minWidth: 160,
   },
   statCard: {
-    paddingVertical: 12,
+    paddingVertical: spacing.md,
     borderBottomWidth: 1,
   },
   statLabel: {
-    fontSize: 14,
-    marginBottom: 4,
+    fontSize: typography.body,
+    marginBottom: spacing.xs,
   },
   statValue: {
-    fontSize: 24,
-    fontWeight: '600',
+    fontSize: 28,
+    fontWeight: fontWeights.semibold,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: spacing.md,
   },
   gridItem: {
-    width: '48%',
-    padding: 12,
-    borderRadius: 8,
+    width: '47%',
+    padding: spacing.md,
+    borderRadius: radius.md,
+  },
+  gridLabel: {
+    fontSize: typography.caption,
+    marginBottom: spacing.xs,
+  },
+  gridValue: {
+    fontSize: 28,
+    fontWeight: fontWeights.semibold,
   },
   sessionSelector: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 12,
-    borderRadius: 8,
+    padding: spacing.md,
+    borderRadius: radius.sm,
     borderWidth: 1,
   },
   sessionSelectorContent: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: spacing.sm,
   },
   sessionSelectorText: {
-    fontSize: 16,
-    fontWeight: '500',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.medium,
   },
   clearSelectionButton: {
-    marginTop: 8,
+    marginTop: spacing.sm,
     alignItems: 'center',
   },
   clearSelectionText: {
-    fontSize: 14,
-    fontWeight: '600',
+    fontSize: typography.body,
+    fontWeight: fontWeights.semibold,
   },
   modalOverlay: {
     flex: 1,
@@ -723,31 +717,21 @@ const styles = StyleSheet.create({
   modalContent: {
     width: '85%',
     maxHeight: '70%',
-    borderRadius: 16,
-    padding: 24,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
   },
   chartsModalContent: {
     width: '95%',
     maxHeight: '85%',
-    borderRadius: 16,
-    padding: 20,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    borderRadius: radius.xl,
+    padding: spacing.xl,
   },
   chartsModalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 16,
-    paddingBottom: 12,
+    marginBottom: spacing.lg,
+    paddingBottom: spacing.md,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(128, 128, 128, 0.2)',
   },
@@ -755,36 +739,36 @@ const styles = StyleSheet.create({
     maxHeight: '100%',
   },
   driverChartSection: {
-    marginBottom: 24,
-    paddingBottom: 16,
+    marginBottom: spacing.xl,
+    paddingBottom: spacing.lg,
     borderBottomWidth: 1,
     borderBottomColor: 'rgba(128, 128, 128, 0.1)',
   },
   driverChartTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 12,
+    fontSize: typography.title,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.md,
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '600',
-    marginBottom: 16,
+    fontSize: typography.heading,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.lg,
     textAlign: 'center',
   },
   sessionList: {
     maxHeight: 400,
   },
   sessionItem: {
-    padding: 16,
+    padding: spacing.lg,
     borderBottomWidth: 1,
-    borderRadius: 8,
+    borderRadius: radius.sm,
   },
   sessionItemTitle: {
-    fontSize: 16,
-    fontWeight: '600',
-    marginBottom: 4,
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
+    marginBottom: spacing.xs,
   },
   sessionItemSubtitle: {
-    fontSize: 14,
+    fontSize: typography.body,
   },
 });

@@ -1,8 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ColorValue } from 'react-native';
 import { LineChart, BarChart } from 'react-native-gifted-charts';
 import { Driver } from '../types';
 import { ThemeColors } from '../types';
+
+// Helper to cast ColorValue to string for third-party chart libraries
+const cs = (color: ColorValue): string => color as string;
 
 interface DriverChartsProps {
   driver: Driver;
@@ -27,24 +30,24 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
 
   // Prepare data for line chart
   const lineData = driver.laps.map((lap, index) => {
-    let dataPointColor = theme.primary;
+    let dataPointColor = cs(theme.primary);
     let dataPointRadius = 5;
 
     switch (lap.lapType) {
       case 'bonus':
-        dataPointColor = theme.bonus;
+        dataPointColor = cs(theme.bonus);
         dataPointRadius = 7;
         break;
       case 'broken':
-        dataPointColor = theme.broken;
+        dataPointColor = cs(theme.broken);
         dataPointRadius = 7;
         break;
       case 'changeover':
-        dataPointColor = theme.changeover;
+        dataPointColor = cs(theme.changeover);
         dataPointRadius = 6;
         break;
       case 'safety':
-        dataPointColor = theme.safety;
+        dataPointColor = cs(theme.safety);
         dataPointRadius = 6;
         break;
     }
@@ -100,17 +103,17 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
         initialSpacing={10}
         spacing={lineData.length > 10 ? 20 : 30}
         thickness={2.5}
-        color={theme.primary}
+        color={cs(theme.primary)}
         hideDataPoints={false}
-        dataPointsColor={theme.primary}
+        dataPointsColor={cs(theme.primary)}
         dataPointsRadius={5}
-        textColor={theme.textSecondary}
+        textColor={cs(theme.textSecondary)}
         textFontSize={10}
-        yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
-        xAxisLabelTextStyle={{ color: theme.textSecondary, fontSize: 9 }}
-        yAxisColor={theme.border}
-        xAxisColor={theme.border}
-        rulesColor={theme.border}
+        yAxisTextStyle={{ color: cs(theme.textSecondary), fontSize: 10 }}
+        xAxisLabelTextStyle={{ color: cs(theme.textSecondary), fontSize: 9 }}
+        yAxisColor={cs(theme.border)}
+        xAxisColor={cs(theme.border)}
+        rulesColor={cs(theme.border)}
         rulesType="solid"
         yAxisThickness={1}
         xAxisThickness={1}
@@ -118,7 +121,7 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
         maxValue={maxTime + (maxTime - minTime) * 0.1}
         formatYLabel={(value) => `${parseFloat(value).toFixed(1)}s`}
         showVerticalLines
-        verticalLinesColor={theme.border}
+        verticalLinesColor={cs(theme.border)}
         verticalLinesThickness={0.5}
         curved={false}
         animateOnDataChange
@@ -127,7 +130,7 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme }) =>
         showDataPointOnFocus
         showStripOnFocus
         showTextOnFocus
-        stripColor={theme.primary}
+        stripColor={cs(theme.primary)}
         stripOpacity={0.3}
         stripWidth={2}
         unFocusOnPressOut={false}
@@ -182,14 +185,14 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
 
   // Prepare data for bar chart
   const positiveData = nonChangeoverLaps.map((lap, index) => {
-    let frontColor = theme.primary;
+    let frontColor = cs(theme.primary);
 
     if (lap.lapType === 'bonus') {
-      frontColor = theme.bonus;
+      frontColor = cs(theme.bonus);
     } else if (lap.lapType === 'broken') {
-      frontColor = theme.broken;
+      frontColor = cs(theme.broken);
     } else if (lap.delta >= 0) {
-      frontColor = theme.warning;
+      frontColor = cs(theme.warning);
     }
 
     return {
@@ -202,12 +205,12 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
   });
 
   const negativeData = nonChangeoverLaps.map((lap, index) => {
-    let frontColor = theme.primary;
+    let frontColor = cs(theme.primary);
 
     if (lap.lapType === 'bonus') {
-      frontColor = theme.bonus;
+      frontColor = cs(theme.bonus);
     } else if (lap.lapType === 'broken') {
-      frontColor = theme.broken;
+      frontColor = cs(theme.broken);
     }
 
     return {
@@ -254,11 +257,11 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
           noOfSections={3}
           stepValue={Math.max(maxDelta * 1.1, 0.1) / 3}
           maxValue={Math.max(maxDelta * 1.1, 0.1)}
-          yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
+          yAxisTextStyle={{ color: cs(theme.textSecondary), fontSize: 10 }}
           xAxisLabelTextStyle={{ color: 'transparent', fontSize: 1 }}
-          yAxisColor={theme.border}
+          yAxisColor={cs(theme.border)}
           xAxisColor="transparent"
-          rulesColor={theme.border}
+          rulesColor={cs(theme.border)}
           rulesType="solid"
           yAxisThickness={1}
           xAxisThickness={0}
@@ -266,7 +269,7 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
           hideAxesAndRules={false}
           roundedTop
           showVerticalLines
-          verticalLinesColor={theme.border}
+          verticalLinesColor={cs(theme.border)}
           verticalLinesThickness={0.5}
         />
 
@@ -307,11 +310,11 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
           noOfSections={3}
           stepValue={Math.max(Math.abs(minDelta) * 1.1, 0.1) / 3}
           maxValue={Math.max(Math.abs(minDelta) * 1.1, 0.1)}
-          yAxisTextStyle={{ color: theme.textSecondary, fontSize: 10 }}
-          xAxisLabelTextStyle={{ color: theme.textSecondary, fontSize: 9 }}
-          yAxisColor={theme.border}
-          xAxisColor={theme.border}
-          rulesColor={theme.border}
+          yAxisTextStyle={{ color: cs(theme.textSecondary), fontSize: 10 }}
+          xAxisLabelTextStyle={{ color: cs(theme.textSecondary), fontSize: 9 }}
+          yAxisColor={cs(theme.border)}
+          xAxisColor={cs(theme.border)}
+          rulesColor={cs(theme.border)}
           rulesType="solid"
           yAxisThickness={1}
           xAxisThickness={1}
@@ -321,7 +324,7 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme }) => {
           isAnimated={false}
           rotateLabel
           showVerticalLines
-          verticalLinesColor={theme.border}
+          verticalLinesColor={cs(theme.border)}
           verticalLinesThickness={0.5}
         />
       </View>

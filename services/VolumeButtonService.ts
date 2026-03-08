@@ -42,6 +42,7 @@ class VolumeButtonServiceClass {
   }
 
   async enable(backgroundEnabled: boolean = false) {
+    if (Platform.OS === 'web') return;
     if (this.isEnabled) return;
 
     this.isEnabled = true;
@@ -116,6 +117,7 @@ class VolumeButtonServiceClass {
   }
 
   async disable() {
+    if (Platform.OS === 'web') return;
     if (!this.isEnabled) return;
 
     console.log('[VolumeButtonService] Disabling volume button service...');
@@ -155,6 +157,7 @@ class VolumeButtonServiceClass {
   }
 
   private async handleVolumeButtonPress() {
+    if (Platform.OS === 'web') return;
     console.log('[VolumeButtonService] Handling volume button press, listeners:', this.listeners.length);
 
     // Trigger haptic feedback
