@@ -583,6 +583,51 @@ export default function TimerScreen() {
     });
   };
 
+  const clearSession = () => {
+    showAlert({
+      title: 'Clear Session',
+      message: 'This will clear all laps for every driver without saving. This cannot be undone.',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            const updatedTeams = [...teams];
+            const currentTeam = { ...updatedTeams[activeTeam] };
+            updatedTeams[activeTeam] = currentTeam;
+            currentTeam.drivers = currentTeam.drivers.map(d => ({
+              ...d,
+              laps: [],
+              penaltyLaps: 0,
+            }));
+            setTeams(updatedTeams);
+            resetTimer();
+          },
+        },
+      ],
+    });
+  };
+
+  const showSessionActions = () => {
+    showAlert({
+      title: 'Session Actions',
+      buttons: [
+        {
+          text: 'End Session',
+          style: 'default',
+          onPress: endSession,
+        },
+        {
+          text: 'Clear Session',
+          style: 'destructive',
+          onPress: clearSession,
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    });
+  };
+
   const getStatusColor = () => {
     if (!driver || driver.laps.length === 0) return theme.textSecondary;
     const lastLap = driver.laps[driver.laps.length - 1];
@@ -740,13 +785,21 @@ export default function TimerScreen() {
               <View style={styles.historyHeader}>
                 <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap History</Text>
                 {driver?.laps.length > 0 && (
-                  <TouchableOpacity
-                    style={[styles.endSessionButton, { backgroundColor: theme.warning }]}
-                    onPress={endSession}
-                  >
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                    <Text style={styles.endSessionText}>End Session</Text>
-                  </TouchableOpacity>
+                  <View style={styles.sessionActionsRow}>
+                    <TouchableOpacity
+                      style={[styles.endSessionButton, { backgroundColor: theme.warning }]}
+                      onPress={endSession}
+                    >
+                      <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
+                      <Text style={styles.endSessionText}>End Session</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.moreButton, { backgroundColor: theme.surfaceMuted }]}
+                      onPress={showSessionActions}
+                    >
+                      <Ionicons name="ellipsis-horizontal" size={18} color={theme.text as string} />
+                    </TouchableOpacity>
+                  </View>
                 )}
               </View>
               {driver?.laps.length === 0 ? (
@@ -1221,6 +1274,11 @@ const styles = StyleSheet.create({
     fontSize: typography.title,
     fontWeight: fontWeights.semibold,
   },
+  sessionActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs,
+  },
   endSessionButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1228,6 +1286,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.xs,
     borderRadius: radius.full,
     gap: spacing.xs,
+  },
+  moreButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   endSessionText: {
     color: '#fff',

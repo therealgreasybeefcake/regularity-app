@@ -133,7 +133,7 @@ function AlertDialog({
   const buttons = config.buttons || [{ text: 'OK', style: 'default' as const }];
   const cancelButton = buttons.find(b => b.style === 'cancel');
   const actionButtons = buttons.filter(b => b.style !== 'cancel');
-  const isActionSheet = buttons.length > 3;
+  const isActionSheet = buttons.length >= 3;
 
   return (
     <Modal transparent animationType="none" statusBarTranslucent>
@@ -157,6 +157,21 @@ function AlertDialog({
             ) : null}
 
             <View style={isActionSheet ? alertStyles.actionSheetButtons : alertStyles.buttonRow}>
+              {cancelButton && !isActionSheet && (
+                <TouchableOpacity
+                  style={[
+                    alertStyles.button,
+                    { backgroundColor: theme.surfaceMuted as string, borderWidth: 1, borderColor: theme.border as string },
+                  ]}
+                  onPress={() => onPress(cancelButton)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[alertStyles.buttonText, { color: theme.textSecondary as string }]}>
+                    {cancelButton.text}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               {actionButtons.map((button, i) => {
                 const isDestructive = button.style === 'destructive';
                 const bgColor = isDestructive
@@ -176,7 +191,8 @@ function AlertDialog({
                     style={[
                       isActionSheet ? alertStyles.actionSheetButton : alertStyles.button,
                       { backgroundColor: bgColor },
-                      isActionSheet && i < actionButtons.length - 1 && { borderBottomWidth: 1, borderBottomColor: theme.border as string },
+                      isActionSheet && !isDestructive && { borderWidth: 1, borderColor: theme.border as string },
+                      isActionSheet && i < actionButtons.length - 1 && { marginBottom: spacing.sm },
                     ]}
                     onPress={() => onPress(button)}
                     activeOpacity={0.7}
@@ -194,12 +210,12 @@ function AlertDialog({
                 );
               })}
 
-              {cancelButton && (
+              {cancelButton && isActionSheet && (
                 <TouchableOpacity
                   style={[
-                    isActionSheet ? alertStyles.cancelButton : alertStyles.button,
+                    alertStyles.cancelButton,
                     { backgroundColor: theme.surfaceMuted as string, borderWidth: 1, borderColor: theme.border as string },
-                    isActionSheet && { marginTop: spacing.sm },
+                    { marginTop: spacing.sm },
                   ]}
                   onPress={() => onPress(cancelButton)}
                   activeOpacity={0.7}
@@ -267,14 +283,13 @@ const alertStyles = StyleSheet.create({
   },
   actionSheetButtons: {
     marginTop: spacing.sm,
-    borderRadius: radius.md,
-    overflow: 'hidden',
   },
   actionSheetButton: {
     paddingVertical: 14,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 48,
+    borderRadius: radius.md,
   },
   cancelButton: {
     paddingVertical: 14,
