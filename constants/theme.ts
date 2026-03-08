@@ -1,13 +1,12 @@
 import { Platform } from 'react-native';
 import { ThemeColors } from '../types';
 
-// --- Platform Native Colors ---
-// Uses expo-router Color API for native system colors on iOS/Android
-// Falls back to manual colors on web or when Color is unavailable
 let Color: any = null;
 try {
   Color = require('expo-router').Color;
-} catch {}
+} catch {
+  // Color not available (web or older expo-router)
+}
 
 // --- Design Tokens ---
 

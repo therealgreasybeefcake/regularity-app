@@ -34,12 +34,13 @@
       ],
       "versionCode": 2
     },
+    "scheme": "regularity",
     "plugins": [
+      "expo-router",
       "expo-audio",
       "expo-sharing",
       "expo-font",
-      "expo-asset",
-      "expo-router"
+      "expo-asset"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

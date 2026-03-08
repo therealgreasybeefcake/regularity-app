@@ -1,7 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme, Alert } from 'react-native';
-import { Team, AudioSettings, LapTypeValues, SyncStatus } from '../types';
+import { Team, AudioSettings, LapTypeValues, Session, SyncStatus } from '../types';
 import { useAuth } from './AuthContext';
 import { S3SyncService } from '../services/S3SyncService';
 
@@ -25,6 +25,8 @@ interface AppContextType {
   hasSeenWelcome: boolean;
   setHasSeenWelcome: (value: boolean) => void;
   syncStatus: SyncStatus;
+  saveSessionToS3: (session: Session) => Promise<void>;
+  loadSessionsFromS3: () => Promise<Session[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -181,10 +183,30 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             setSyncStatus('offline');
             return;
           }
-          console.log('[S3Sync] Loading teams from S3...');
-          const s3Teams = await S3SyncService.loadTeams(creds);
-          if (s3Teams && s3Teams.length > 0) {
-            setTeams(s3Teams);
+
+          // Try new format first
+          console.log('[S3Sync] Loading team from S3...');
+          let s3Team = await S3SyncService.loadTeam(creds);
+
+          if (!s3Team) {
+            // Fall back to legacy migration
+            console.log('[S3Sync] No team.json found, trying legacy migration...');
+            const migratedTeam = await S3SyncService.migrateFromLegacy(creds);
+            if (migratedTeam) {
+              setTeams([migratedTeam]);
+              setSyncStatus('synced');
+              return;
+            }
+          }
+
+          if (s3Team) {
+            // Merge with local sessionHistory — sessions are loaded lazily from S3 via loadSessionsFromS3
+            const localTeam = teams[0];
+            const fullTeam: Team = {
+              ...s3Team,
+              sessionHistory: localTeam?.sessionHistory || [],
+            };
+            setTeams([fullTeam]);
           }
           setSyncStatus('synced');
         } catch (error: any) {
@@ -202,7 +224,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
       }, 300);
 
-      // Debounced S3 sync (2 seconds)
+      // Debounced S3 sync (2 seconds) — saves team data only (no sessionHistory)
       if (isAuthenticated) {
         if (s3SyncTimeoutRef.current) clearTimeout(s3SyncTimeoutRef.current);
         s3SyncTimeoutRef.current = setTimeout(async () => {
@@ -214,9 +236,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               setSyncStatus('offline');
               return;
             }
-            console.log('[S3Sync] Saving teams to S3...');
-            await S3SyncService.saveTeams(creds, teams);
-            console.log('[S3Sync] Save successful');
+            const team = teams[0]; // Single-team app
+            if (team) {
+              console.log('[S3Sync] Saving team to S3...');
+              await S3SyncService.saveTeam(creds, team);
+              console.log('[S3Sync] Save successful');
+            }
             setSyncStatus('synced');
           } catch (error: any) {
             console.error('[S3Sync] Error:', error);
@@ -233,6 +258,33 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       };
     }
   }, [teams, isLoading, isAuthenticated]);
+
+  // Save a single session to S3
+  const saveSessionToS3 = useCallback(async (session: Session) => {
+    if (!isAuthenticated) return;
+    try {
+      const creds = await getCredentials();
+      if (!creds) return;
+      await S3SyncService.saveSession(creds, session);
+      console.log('[S3Sync] Session saved:', session.id);
+    } catch (error: any) {
+      console.error('[S3Sync] Error saving session:', error);
+      Alert.alert('S3 Sync Error', `Failed to save session: ${error?.message || String(error)}`);
+    }
+  }, [isAuthenticated, getCredentials]);
+
+  // Load all sessions from S3
+  const loadSessionsFromS3 = useCallback(async (): Promise<Session[]> => {
+    if (!isAuthenticated) return [];
+    try {
+      const creds = await getCredentials();
+      if (!creds) return [];
+      return await S3SyncService.loadSessions(creds);
+    } catch (error: any) {
+      console.error('[S3Sync] Error loading sessions:', error);
+      return [];
+    }
+  }, [isAuthenticated, getCredentials]);
 
   // Save active indices
   useEffect(() => {
@@ -287,6 +339,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         hasSeenWelcome,
         setHasSeenWelcome,
         syncStatus,
+        saveSessionToS3,
+        loadSessionsFromS3,
       }}
     >
       {children}

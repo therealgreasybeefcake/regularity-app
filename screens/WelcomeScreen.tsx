@@ -2,14 +2,11 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows, brandColors } from '../constants/theme';
 
 const { width } = Dimensions.get('window');
-
-interface WelcomeScreenProps {
-  onComplete: () => void;
-}
 
 const PAGES = [
   {
@@ -78,21 +75,27 @@ const PAGES = [
   },
 ];
 
-export default function WelcomeScreen({ onComplete }: WelcomeScreenProps) {
-  const { isDarkMode } = useApp();
+export default function WelcomeScreen() {
+  const { isDarkMode, setHasSeenWelcome } = useApp();
+  const router = useRouter();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const [currentPage, setCurrentPage] = useState(0);
+
+  const handleComplete = () => {
+    setHasSeenWelcome(true);
+    router.replace('/(app)/(tabs)');
+  };
 
   const handleNext = () => {
     if (currentPage < PAGES.length - 1) {
       setCurrentPage(currentPage + 1);
     } else {
-      onComplete();
+      handleComplete();
     }
   };
 
   const handleSkip = () => {
-    onComplete();
+    handleComplete();
   };
 
   const handleBack = () => {

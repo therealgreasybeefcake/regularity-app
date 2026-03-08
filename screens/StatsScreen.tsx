@@ -13,13 +13,15 @@ const isWeb = Platform.OS === 'web';
 const SIDEBAR_WIDTH = 340;
 
 export default function StatsScreen() {
-  const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues } = useApp();
+  const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues, loadSessionsFromS3 } = useApp();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
   const { width: windowWidth } = useWindowDimensions();
 
   const [selectedSession, setSelectedSession] = useState<Session | null>(null);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
+  const [s3Sessions, setS3Sessions] = useState<Session[]>([]);
+  const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
   const [showChartsModal, setShowChartsModal] = useState(false);
   const [selectedDriverForCharts, setSelectedDriverForCharts] = useState<number | null>(null);
@@ -96,16 +98,39 @@ export default function StatsScreen() {
     }
   };
 
+  // Merge local sessionHistory with S3 sessions, deduplicating by id
+  const allSessions = React.useMemo(() => {
+    const map = new Map<string, Session>();
+    for (const s of team.sessionHistory) map.set(s.id, s);
+    for (const s of s3Sessions) map.set(s.id, s);
+    return Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+  }, [team.sessionHistory, s3Sessions]);
+
+  const handleOpenSessionPicker = async () => {
+    setShowSessionPicker(true);
+    if (s3Sessions.length === 0 && !isLoadingSessions) {
+      setIsLoadingSessions(true);
+      try {
+        const sessions = await loadSessionsFromS3();
+        setS3Sessions(sessions);
+      } catch (err) {
+        console.warn('Failed to load S3 sessions:', err);
+      } finally {
+        setIsLoadingSessions(false);
+      }
+    }
+  };
+
   // --- Shared sub-components ---
 
   const SessionSelector = () => {
-    if (team.sessionHistory.length === 0) return null;
+    if (team.sessionHistory.length === 0 && s3Sessions.length === 0) return null;
     return (
       <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
         <Text style={[styles.sectionTitle, { color: theme.text }]}>View Session</Text>
         <TouchableOpacity
           style={[styles.sessionSelector, { borderColor: theme.border, backgroundColor: theme.surface }]}
-          onPress={() => setShowSessionPicker(true)}
+          onPress={handleOpenSessionPicker}
         >
           <View style={styles.sessionSelectorContent}>
             <Ionicons name="calendar-outline" size={20} color={theme.primary} />
@@ -484,7 +509,12 @@ export default function StatsScreen() {
                     </Text>
                   </View>
                 </TouchableOpacity>
-                {team.sessionHistory.slice().reverse().map((session) => (
+                {isLoadingSessions && (
+                  <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" />
+                  </View>
+                )}
+                {allSessions.map((session) => (
                   <TouchableOpacity
                     key={session.id}
                     style={[styles.sessionItem, { borderBottomColor: theme.border }, selectedSession?.id === session.id && { backgroundColor: theme.surface }]}
@@ -595,7 +625,12 @@ export default function StatsScreen() {
                       </Text>
                     </View>
                   </TouchableOpacity>
-                  {team.sessionHistory.slice().reverse().map((session) => (
+                  {isLoadingSessions && (
+                  <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+                    <ActivityIndicator size="small" />
+                  </View>
+                )}
+                {allSessions.map((session) => (
                     <TouchableOpacity
                       key={session.id}
                       style={[styles.sessionItem, { borderBottomColor: theme.border }, selectedSession?.id === session.id && { backgroundColor: theme.surface }]}
