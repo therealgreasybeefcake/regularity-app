@@ -48,6 +48,7 @@ export default function TimerScreen() {
     audioSettings,
     lapTypeValues,
     discardLiveSession,
+    endLiveSession,
   } = useApp();
 
   const { showAlert } = useAlert();
@@ -578,6 +579,8 @@ export default function TimerScreen() {
 
             setTeams(updatedTeams);
             resetTimer();
+            // Mark the live session ended server-side (kept as history).
+            void endLiveSession();
             showAlert({ title: 'Session Ended', message: 'Session saved to history' });
           },
         },

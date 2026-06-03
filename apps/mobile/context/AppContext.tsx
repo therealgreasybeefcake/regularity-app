@@ -156,7 +156,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const lapTypeValuesRef = useRef(lapTypeValues);
   const liveSessionRef = useRef<LiveSessionState | null>(null);
   const streamedKeysRef = useRef<Set<string>>(new Set());
-  const prevLapTotalRef = useRef(0);
   teamsRef.current = teams;
   lapTypeValuesRef.current = lapTypeValues;
 
@@ -459,7 +458,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     liveSessionRef.current = null;
     setLiveSession(null);
     streamedKeysRef.current.clear();
-    prevLapTotalRef.current = 0;
     await AsyncStorage.removeItem('liveSessionState');
     await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
   }, []);
@@ -472,7 +470,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     liveSessionRef.current = null;
     setLiveSession(null);
     streamedKeysRef.current.clear();
-    prevLapTotalRef.current = 0;
     await AsyncStorage.removeItem('liveSessionState');
     if (live) await syncQueue.enqueue({ kind: 'deleteSession', sessionId: live.id });
   }, []);
@@ -503,22 +500,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     [startLiveSessionInternal],
   );
 
-  // Watch local laps and stream new ones to the live session. Auto-ends when all
-  // laps clear (session ended/reset). Deliberately diff-based so the timer screen
-  // needs no changes.
+  // Stream newly-recorded laps to the live session (started lazily on the first
+  // lap). The session is ONLY ended/discarded by explicit user action
+  // (End Session / Clear Session) — never auto-ended — so a transient local lap
+  // clear (re-sync flicker, reset, etc.) can't kill a running live session.
   useEffect(() => {
     if (isLoading || !serverTeamIdRef.current) return;
     const team = teams[0];
     if (!team) return;
-    const total = team.drivers.reduce((sum, d) => sum + d.laps.length, 0);
-
-    if (prevLapTotalRef.current > 0 && total === 0) {
-      if (liveSessionRef.current) void endLiveSession();
-      return;
-    }
-    prevLapTotalRef.current = total;
-    if (total === 0) return;
-
     (async () => {
       for (let i = 0; i < team.drivers.length; i++) {
         for (const lap of team.drivers[i].laps) {
@@ -529,7 +518,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         }
       }
     })();
-  }, [teams, isLoading, endLiveSession, streamLap]);
+  }, [teams, isLoading, streamLap]);
 
   const liveShareUrl = liveSession ? `${WEB_URL}/live/${liveSession.publicToken}` : null;
 
