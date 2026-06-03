@@ -1,20 +1,29 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Share, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useRouter } from 'expo-router';
 import { useApp } from '../context/AppContext';
-import { useAlert } from './CustomAlert';
 import { spacing, radius, fontWeights, typography } from '../constants/theme';
 
 /**
- * Appears while a live session is active. Lets the recorder share the public
- * live-view link (spectators watch laps in real time) and stop broadcasting.
+ * Appears while a live session is active. Tap to open the live-view, Share to
+ * send the public link, or X to dismiss (the session keeps streaming — dismiss
+ * only hides the banner until the next session).
  */
 export default function LiveShareBanner() {
-  const { liveShareUrl, endLiveSession } = useApp();
-  const { showAlert } = useAlert();
+  const { liveShareUrl, liveSession } = useApp();
+  const router = useRouter();
+  const [dismissed, setDismissed] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  if (!liveShareUrl) return null;
+  // Re-show whenever a new live session starts.
+  useEffect(() => {
+    setDismissed(false);
+  }, [liveSession?.publicToken]);
+
+  if (!liveShareUrl || !liveSession || dismissed) return null;
+
+  const openLive = () => router.push(`/live/${liveSession.publicToken}` as any);
 
   const onShare = async () => {
     try {
@@ -35,31 +44,23 @@ export default function LiveShareBanner() {
     }
   };
 
-  const onStop = () => {
-    showAlert({
-      title: 'Stop live sharing?',
-      message: 'Spectators will no longer see new laps. Your session data is unaffected.',
-      buttons: [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Stop', style: 'destructive', onPress: () => { void endLiveSession(); } },
-      ],
-    });
-  };
-
   return (
     <View style={styles.banner}>
-      <View style={styles.live}>
-        <View style={styles.dot} />
-        <Text style={styles.liveText}>LIVE</Text>
-      </View>
-      <Text style={styles.url} numberOfLines={1}>
-        {copied ? 'Link copied!' : liveShareUrl.replace(/^https?:\/\//, '')}
-      </Text>
+      <TouchableOpacity style={styles.main} onPress={openLive} activeOpacity={0.8} accessibilityLabel="Open live view">
+        <View style={styles.live}>
+          <View style={styles.dot} />
+          <Text style={styles.liveText}>LIVE</Text>
+        </View>
+        <Text style={styles.label} numberOfLines={1}>
+          {copied ? 'Link copied!' : 'View live timing'}
+        </Text>
+        <Ionicons name="open-outline" size={15} color="rgba(255,255,255,0.85)" />
+      </TouchableOpacity>
       <TouchableOpacity style={styles.btn} onPress={onShare} accessibilityLabel="Share live link">
         <Ionicons name="share-outline" size={18} color="#fff" />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.btnGhost} onPress={onStop} accessibilityLabel="Stop live sharing">
-        <Ionicons name="stop-circle-outline" size={18} color="#fff" />
+      <TouchableOpacity style={styles.btn} onPress={() => setDismissed(true)} accessibilityLabel="Dismiss">
+        <Ionicons name="close" size={18} color="#fff" />
       </TouchableOpacity>
     </View>
   );
@@ -75,12 +76,12 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     marginHorizontal: spacing.md,
     marginTop: spacing.sm,
-    gap: spacing.sm,
+    gap: spacing.xs,
   },
+  main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   live: { flexDirection: 'row', alignItems: 'center' },
   dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff', marginRight: 4 },
   liveText: { color: '#fff', fontWeight: fontWeights.bold, fontSize: typography.caption, letterSpacing: 1 },
-  url: { color: '#fff', flex: 1, fontSize: typography.caption, opacity: 0.95 },
-  btn: { padding: 4 },
-  btnGhost: { padding: 4, opacity: 0.85 },
+  label: { color: '#fff', flex: 1, fontSize: typography.body, fontWeight: fontWeights.medium },
+  btn: { padding: 6 },
 });

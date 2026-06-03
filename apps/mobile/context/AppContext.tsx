@@ -43,6 +43,7 @@ interface AppContextType {
   liveSession: { id: string; publicToken: string } | null;
   liveShareUrl: string | null;
   endLiveSession: () => Promise<void>;
+  discardLiveSession: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -463,6 +464,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
   }, []);
 
+  // Discard (not save) the current session — deletes it server-side too, so a
+  // cleared session leaves nothing in the DB. Nulls the ref BEFORE the lap-diff
+  // effect runs so it doesn't also auto-end the (now deleted) session.
+  const discardLiveSession = useCallback(async () => {
+    const live = liveSessionRef.current;
+    liveSessionRef.current = null;
+    setLiveSession(null);
+    streamedKeysRef.current.clear();
+    prevLapTotalRef.current = 0;
+    await AsyncStorage.removeItem('liveSessionState');
+    if (live) await syncQueue.enqueue({ kind: 'deleteSession', sessionId: live.id });
+  }, []);
+
   const streamLap = useCallback(
     async (driverIndex: number, lap: Lap) => {
       if (!serverTeamIdRef.current) return;
@@ -568,6 +582,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         liveSession,
         liveShareUrl,
         endLiveSession,
+        discardLiveSession,
       }}
     >
       {children}

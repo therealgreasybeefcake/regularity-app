@@ -183,7 +183,7 @@ export default function LoginScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   keyboardView: { flex: 1 },
-  content: { flex: 1, justifyContent: 'center', padding: spacing.xl },
+  content: { flex: 1, justifyContent: 'center', padding: spacing.xl, width: '100%', maxWidth: 420, alignSelf: 'center' },
   title: { fontSize: 28, fontWeight: fontWeights.bold, textAlign: 'center', marginBottom: spacing.sm },
   subtitle: { fontSize: typography.bodyLg, textAlign: 'center', marginBottom: spacing.xxl },
   card: { borderRadius: radius.lg, padding: spacing.xl },

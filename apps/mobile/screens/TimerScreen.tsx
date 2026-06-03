@@ -47,6 +47,7 @@ export default function TimerScreen() {
     isDarkMode,
     audioSettings,
     lapTypeValues,
+    discardLiveSession,
   } = useApp();
 
   const { showAlert } = useAlert();
@@ -594,6 +595,9 @@ export default function TimerScreen() {
           text: 'Clear',
           style: 'destructive',
           onPress: () => {
+            // Discard the live session server-side too (delete, not just end),
+            // before clearing locally so the lap-diff effect doesn't re-end it.
+            void discardLiveSession();
             const updatedTeams = [...teams];
             const currentTeam = { ...updatedTeams[activeTeam] };
             updatedTeams[activeTeam] = currentTeam;

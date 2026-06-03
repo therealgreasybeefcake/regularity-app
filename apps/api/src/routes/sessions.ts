@@ -40,6 +40,18 @@ sessionRouter.post('/:id/end', async (c) => {
   return c.json({ session: ended });
 });
 
+// DELETE /api/sessions/:id — discard a session entirely (cascade-deletes laps).
+// Used by "Clear Session" so a discarded session leaves nothing in the DB.
+sessionRouter.delete('/:id', async (c) => {
+  const user = c.get('user');
+  const sessionId = c.req.param('id');
+  const owned = await getOwnedSession(sessionId, user.id);
+  if (!owned) return c.json({ error: 'not_found' }, 404);
+  rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
+  await db.delete(raceSessions).where(eq(raceSessions.id, sessionId));
+  return c.json({ ok: true });
+});
+
 // POST /api/sessions/:id/laps — the offline-sync hot path. Idempotent on clientLapId.
 sessionRouter.post('/:id/laps', async (c) => {
   const user = c.get('user');

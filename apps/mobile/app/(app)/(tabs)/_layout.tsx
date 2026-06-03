@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { Tabs, Slot, useRouter, usePathname } from 'expo-router';
 import { GlassView, isGlassEffectAPIAvailable } from 'expo-glass-effect';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../context/AppContext';
+import { api } from '../../../lib/api';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../../../constants/theme';
 
 const hasGlass = isGlassEffectAPIAvailable();
@@ -24,6 +25,27 @@ function WebSidebarLayout() {
   const theme = isDarkMode ? darkTheme : lightTheme;
   const router = useRouter();
   const pathname = usePathname();
+
+  // Poll for this account's current live session (e.g. started on mobile) so
+  // the same user can jump to it on web without sharing a link.
+  const [liveToken, setLiveToken] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    const check = async () => {
+      try {
+        const res = await api.get<{ live: { publicToken: string } | null }>('/api/teams/me/live');
+        if (active) setLiveToken(res.live?.publicToken ?? null);
+      } catch {
+        /* ignore */
+      }
+    };
+    check();
+    const t = setInterval(check, 8000);
+    return () => {
+      active = false;
+      clearInterval(t);
+    };
+  }, []);
 
   const sidebarBg = isDarkMode ? '#0a0f1a' : '#f0f2f5';
   const sidebarBorder = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
@@ -74,11 +96,39 @@ function WebSidebarLayout() {
               </TouchableOpacity>
             );
           })}
+
+          <TouchableOpacity
+            style={[webStyles.navItem, !!liveToken && { backgroundColor: 'rgba(239,68,68,0.12)' }]}
+            onPress={() => {
+              if (liveToken) router.push(`/live/${liveToken}` as any);
+            }}
+            activeOpacity={liveToken ? 0.7 : 1}
+            disabled={!liveToken}
+          >
+            <View style={webStyles.liveIcon}>
+              {liveToken ? (
+                <View style={webStyles.liveDot} />
+              ) : (
+                <Ionicons name="radio-outline" size={20} color={theme.textSecondary as string} />
+              )}
+            </View>
+            <Text
+              style={[
+                webStyles.navLabel,
+                { color: liveToken ? '#ef4444' : theme.textSecondary },
+                !!liveToken && { fontWeight: fontWeights.semibold },
+              ]}
+            >
+              {liveToken ? 'Live now' : 'No live session'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
       <View style={[webStyles.content, { backgroundColor: theme.background }]}>
-        <Slot />
+        <View style={webStyles.contentInner}>
+          <Slot />
+        </View>
       </View>
     </View>
   );
@@ -187,7 +237,15 @@ const webStyles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: fontWeights.medium,
   },
+  liveIcon: { width: 20, alignItems: 'center', justifyContent: 'center' },
+  liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444' },
   content: {
     flex: 1,
+    alignItems: 'center',
+  },
+  contentInner: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 860,
   },
 });

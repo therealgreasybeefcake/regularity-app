@@ -1,4 +1,5 @@
 import { serve } from '@hono/node-server';
+import { serveStatic } from '@hono/node-server/serve-static';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { auth } from './auth';
@@ -34,6 +35,15 @@ app.route('/api/drivers', driverRouter);
 app.route('/api/sessions', sessionRouter);
 app.route('/api/laps', lapRouter);
 app.route('/api/live', liveRouter);
+
+// Serve the Expo web build (same-origin) when present (set in the production
+// image). Static assets first, then an SPA fallback to index.html so client
+// routes like /live/<token> and /login resolve.
+const webDist = process.env.WEB_DIST;
+if (webDist) {
+  app.use('/*', serveStatic({ root: webDist }));
+  app.get('*', serveStatic({ root: webDist, path: 'index.html' }));
+}
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
   // eslint-disable-next-line no-console

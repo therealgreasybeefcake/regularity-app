@@ -127,6 +127,20 @@ teamRouter.get('/me', async (c) => {
   return c.json({ team, drivers: roster });
 });
 
+// GET /api/teams/me/live — the team's current live session (drives the web "Live" nav).
+teamRouter.get('/me/live', async (c) => {
+  const user = c.get('user');
+  const team = await getOwnedTeam(user.id);
+  if (!team) return c.json({ live: null });
+  const [s] = await db
+    .select({ id: raceSessions.id, publicToken: raceSessions.publicToken, raceName: raceSessions.raceName })
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, team.id), eq(raceSessions.status, 'live')))
+    .orderBy(desc(raceSessions.startedAt))
+    .limit(1);
+  return c.json({ live: s ?? null });
+});
+
 // PATCH /api/teams/:id
 teamRouter.patch('/:id', async (c) => {
   const user = c.get('user');

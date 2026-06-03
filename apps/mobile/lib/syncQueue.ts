@@ -15,7 +15,8 @@ export type SyncOp =
   | { kind: 'completeSession'; teamId: string; payload: unknown }
   | { kind: 'startSession'; teamId: string; payload: unknown }
   | { kind: 'appendLap'; sessionId: string; payload: unknown }
-  | { kind: 'endSession'; sessionId: string };
+  | { kind: 'endSession'; sessionId: string }
+  | { kind: 'deleteSession'; sessionId: string };
 
 interface QueueItem {
   id: string;
@@ -146,6 +147,9 @@ class SyncQueue {
         break;
       case 'endSession':
         await api.post(`/api/sessions/${op.sessionId}/end`);
+        break;
+      case 'deleteSession':
+        await api.del(`/api/sessions/${op.sessionId}`);
         break;
     }
   }
