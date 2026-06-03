@@ -1,13 +1,118 @@
 import { Hono } from 'hono';
-import { asc, desc, eq } from 'drizzle-orm';
+import { and, asc, desc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { requireAuth, type AppVariables } from '../middleware';
 import { getOrCreateTeam, getOwnedTeam } from '../lib/domain';
-import { teams, drivers, raceSessions, sessionDrivers } from '@regularity/db';
-import { updateTeamInputSchema, createDriverInputSchema } from '@regularity/schemas';
+import { teams, drivers, raceSessions, sessionDrivers, laps } from '@regularity/db';
+import {
+  updateTeamInputSchema,
+  createDriverInputSchema,
+  importTeamSchema,
+  teamStateSchema,
+  sessionSnapshotSchema,
+} from '@regularity/schemas';
 
 export const teamRouter = new Hono<{ Variables: AppVariables }>();
 teamRouter.use('*', requireAuth);
+
+// POST /api/teams/import — one-time first-login migration of the legacy local
+// Team (+ sessionHistory) into Postgres. Idempotent: only runs on an empty team.
+teamRouter.post('/import', async (c) => {
+  const user = c.get('user');
+  const team = await getOrCreateTeam(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = importTeamSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const data = parsed.data;
+
+  // Guard against double-import: only proceed if the team has no data yet.
+  const [existingDriver] = await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.teamId, team.id)).limit(1);
+  const [existingSession] = await db.select({ id: raceSessions.id }).from(raceSessions).where(eq(raceSessions.teamId, team.id)).limit(1);
+  if (existingDriver || existingSession) {
+    return c.json({ imported: false, reason: 'already_has_data' });
+  }
+
+  let importedSessions = 0;
+  let importedLaps = 0;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(teams)
+      .set({
+        name: data.name || team.name,
+        raceName: data.raceName,
+        sessionNumber: data.sessionNumber,
+        sessionDurationMin: data.sessionDuration,
+        ...(data.lapTypeValues ? { lapTypeValues: data.lapTypeValues } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(teams.id, team.id));
+
+    // Current roster
+    if (data.drivers.length) {
+      await tx.insert(drivers).values(
+        data.drivers.map((d, i) => ({
+          teamId: team.id,
+          name: d.name,
+          targetTimeSec: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        })),
+      );
+    }
+
+    // Historical sessions (immutable snapshots)
+    for (const session of data.sessionHistory) {
+      const when = new Date(session.timestamp);
+      const [createdSession] = await tx
+        .insert(raceSessions)
+        .values({
+          teamId: team.id,
+          raceName: session.raceName,
+          sessionNumber: session.sessionNumber,
+          sessionDurationMin: session.sessionDuration,
+          status: 'ended',
+          startedAt: when,
+          endedAt: when,
+        })
+        .returning();
+      importedSessions += 1;
+
+      for (let i = 0; i < session.drivers.length; i++) {
+        const d = session.drivers[i];
+        const [sd] = await tx
+          .insert(sessionDrivers)
+          .values({
+            sessionId: createdSession.id,
+            name: d.name,
+            targetTimeSec: d.targetTime,
+            penaltyLaps: d.penaltyLaps,
+            sortOrder: i,
+          })
+          .returning();
+
+        if (d.laps.length) {
+          await tx.insert(laps).values(
+            d.laps.map((lap) => ({
+              sessionDriverId: sd.id,
+              clientLapId: crypto.randomUUID(),
+              number: lap.number,
+              timeSec: lap.time,
+              delta: lap.delta,
+              lapType: lap.lapType,
+              lapValue: lap.lapValue,
+              recordedAt: new Date(lap.timestamp),
+            })),
+          );
+          importedLaps += d.laps.length;
+        }
+      }
+    }
+  });
+
+  return c.json({ imported: true, sessions: importedSessions, laps: importedLaps });
+});
 
 // GET /api/teams/me — the caller's team + current driver roster.
 teamRouter.get('/me', async (c) => {
@@ -62,6 +167,118 @@ teamRouter.post('/:id/drivers', async (c) => {
     })
     .returning();
   return c.json({ driver: created }, 201);
+});
+
+// PUT /api/teams/:id — bulk meta update + roster replace (debounced client sync).
+teamRouter.put('/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const team = await getOwnedTeam(user.id);
+  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = teamStateSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const data = parsed.data;
+
+  await db.transaction(async (tx) => {
+    const meta: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.name !== undefined) meta.name = data.name;
+    if (data.raceName !== undefined) meta.raceName = data.raceName;
+    if (data.sessionNumber !== undefined) meta.sessionNumber = data.sessionNumber;
+    if (data.sessionDuration !== undefined) meta.sessionDurationMin = data.sessionDuration;
+    if (data.lapTypeValues !== undefined) meta.lapTypeValues = data.lapTypeValues;
+    await tx.update(teams).set(meta).where(eq(teams.id, id));
+
+    if (data.drivers !== undefined) {
+      // Replace roster. session_drivers keep their snapshots (driver_id -> null).
+      await tx.delete(drivers).where(eq(drivers.teamId, id));
+      if (data.drivers.length) {
+        await tx.insert(drivers).values(
+          data.drivers.map((d, i) => ({
+            teamId: id,
+            name: d.name,
+            targetTimeSec: d.targetTime,
+            penaltyLaps: d.penaltyLaps,
+            sortOrder: i,
+          })),
+        );
+      }
+    }
+  });
+
+  const roster = await db.select().from(drivers).where(eq(drivers.teamId, id)).orderBy(asc(drivers.sortOrder));
+  const [updated] = await db.select().from(teams).where(eq(teams.id, id));
+  return c.json({ team: updated, drivers: roster });
+});
+
+// POST /api/teams/:id/sessions/complete — persist a finished session (history).
+// Idempotent on clientSessionId so re-saves/offline replays don't duplicate.
+teamRouter.post('/:id/sessions/complete', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const team = await getOwnedTeam(user.id);
+  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = sessionSnapshotSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const session = parsed.data;
+
+  const [dup] = await db
+    .select()
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, id), eq(raceSessions.clientSessionId, session.id)))
+    .limit(1);
+  if (dup) return c.json({ session: dup, deduped: true });
+
+  const when = new Date(session.timestamp);
+  const created = await db.transaction(async (tx) => {
+    const [s] = await tx
+      .insert(raceSessions)
+      .values({
+        teamId: id,
+        clientSessionId: session.id,
+        raceName: session.raceName,
+        sessionNumber: session.sessionNumber,
+        sessionDurationMin: session.sessionDuration,
+        status: 'ended',
+        startedAt: when,
+        endedAt: when,
+      })
+      .returning();
+
+    for (let i = 0; i < session.drivers.length; i++) {
+      const d = session.drivers[i];
+      const [sd] = await tx
+        .insert(sessionDrivers)
+        .values({
+          sessionId: s.id,
+          name: d.name,
+          targetTimeSec: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        })
+        .returning();
+      if (d.laps.length) {
+        await tx.insert(laps).values(
+          d.laps.map((lap) => ({
+            sessionDriverId: sd.id,
+            clientLapId: crypto.randomUUID(),
+            number: lap.number,
+            timeSec: lap.time,
+            delta: lap.delta,
+            lapType: lap.lapType,
+            lapValue: lap.lapValue,
+            recordedAt: new Date(lap.timestamp),
+          })),
+        );
+      }
+    }
+    return s;
+  });
+
+  return c.json({ session: created });
 });
 
 // GET /api/teams/:id/sessions — history (newest first).

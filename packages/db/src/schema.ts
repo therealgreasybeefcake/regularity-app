@@ -131,20 +131,32 @@ export const drivers = pgTable('drivers', {
  * A race session. status='live' is the in-progress session; 'ended' is history.
  * public_token backs the shareable, unauthenticated live-view link.
  */
-export const raceSessions = pgTable('race_sessions', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  teamId: uuid('team_id')
-    .notNull()
-    .references(() => teams.id, { onDelete: 'cascade' }),
-  raceName: text('race_name').notNull().default(''),
-  sessionNumber: text('session_number').notNull().default(''),
-  sessionDurationMin: integer('session_duration_min').notNull().default(120),
-  status: sessionStatusEnum('status').notNull().default('live'),
-  publicToken: uuid('public_token').notNull().defaultRandom().unique(),
-  startedAt: timestamp('started_at').notNull().defaultNow(),
-  endedAt: timestamp('ended_at'),
-  createdAt: timestamp('created_at').notNull().defaultNow(),
-});
+export const raceSessions = pgTable(
+  'race_sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    raceName: text('race_name').notNull().default(''),
+    sessionNumber: text('session_number').notNull().default(''),
+    sessionDurationMin: integer('session_duration_min').notNull().default(120),
+    status: sessionStatusEnum('status').notNull().default('live'),
+    publicToken: uuid('public_token').notNull().defaultRandom().unique(),
+    // Client-generated id (e.g. legacy Date.now() session id) so pushing a
+    // completed session from a device is idempotent across retries/devices.
+    clientSessionId: text('client_session_id'),
+    startedAt: timestamp('started_at').notNull().defaultNow(),
+    endedAt: timestamp('ended_at'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    clientSessionUnique: uniqueIndex('race_sessions_team_client_session_uq').on(
+      t.teamId,
+      t.clientSessionId,
+    ),
+  }),
+);
 
 /** Snapshot of a driver within a session (immutable history once ended). */
 export const sessionDrivers = pgTable('session_drivers', {

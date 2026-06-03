@@ -113,6 +113,65 @@ export const createDriverInputSchema = z.object({
 });
 export type CreateDriverInput = z.infer<typeof createDriverInputSchema>;
 
+// --- First-login migration (import legacy local Team -> Postgres) ---
+
+const importLapSchema = z.object({
+  number: z.number().int(),
+  time: lapTimeSchema,
+  delta: finiteNumber,
+  lapType: lapTypeSchema,
+  lapValue: finiteNumber,
+  timestamp: z.number().int(),
+});
+
+const importDriverSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  targetTime: targetTimeSchema,
+  penaltyLaps: z.number().int().min(0).default(0),
+  laps: z.array(importLapSchema).default([]),
+});
+
+/** A single completed session snapshot (one entry of legacy sessionHistory). */
+export const sessionSnapshotSchema = z.object({
+  id: z.string(),
+  raceName: z.string().default(''),
+  sessionNumber: z.string().default(''),
+  sessionDuration: sessionDurationSchema.default(120),
+  timestamp: z.number().int(),
+  drivers: z.array(importDriverSchema).default([]),
+});
+export type SessionSnapshotInput = z.infer<typeof sessionSnapshotSchema>;
+
+export const importTeamSchema = z.object({
+  name: z.string().trim().max(120).default(''),
+  raceName: z.string().trim().max(120).default(''),
+  sessionNumber: z.string().trim().max(40).default(''),
+  sessionDuration: sessionDurationSchema.default(120),
+  lapTypeValues: lapTypeValuesSchema.optional(),
+  drivers: z.array(importDriverSchema).default([]),
+  sessionHistory: z.array(sessionSnapshotSchema).default([]),
+});
+export type ImportTeamInput = z.infer<typeof importTeamSchema>;
+
+/** Bulk team meta + roster replace (the client's debounced "save team" call). */
+export const teamStateSchema = z.object({
+  name: z.string().trim().max(120).optional(),
+  raceName: z.string().trim().max(120).optional(),
+  sessionNumber: z.string().trim().max(40).optional(),
+  sessionDuration: sessionDurationSchema.optional(),
+  lapTypeValues: lapTypeValuesSchema.optional(),
+  drivers: z
+    .array(
+      z.object({
+        name: z.string().trim().min(1).max(80),
+        targetTime: targetTimeSchema,
+        penaltyLaps: z.number().int().min(0).default(0),
+      }),
+    )
+    .optional(),
+});
+export type TeamStateInput = z.infer<typeof teamStateSchema>;
+
 export const updateTeamInputSchema = z.object({
   name: z.string().trim().min(1).max(120).optional(),
   raceName: z.string().trim().max(120).optional(),

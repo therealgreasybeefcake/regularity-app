@@ -1,7 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme } from 'react-native';
-import { Team, AudioSettings, LapTypeValues, Session, SyncStatus } from '../types';
+import { Team, Driver, AudioSettings, LapTypeValues, Session, Lap, SyncStatus } from '../types';
+import { useAuth } from './AuthContext';
+import { api } from '../lib/api';
+import { syncQueue, type SyncState } from '../lib/syncQueue';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -23,15 +26,49 @@ interface AppContextType {
   hasSeenWelcome: boolean;
   setHasSeenWelcome: (value: boolean) => void;
   syncStatus: SyncStatus;
-  // NOTE: cloud persistence was removed with AWS. In Phase 3 these are replaced
-  // by API-backed, offline-first queries/mutations. For now sessions live in
-  // local AsyncStorage (team.sessionHistory) and these are no-op shims so the
-  // existing screens keep compiling/working.
+  // Persist a finished session to the API (durable offline queue). Kept under
+  // the original name so existing callers (StatsScreen) don't change.
   saveSessionToS3: (session: Session) => Promise<void>;
+  // Load completed-session history from the API (for new devices / Stats).
   loadSessionsFromS3: () => Promise<Session[]>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+// --- Server response shapes ---
+interface ServerTeam {
+  id: string;
+  name: string;
+  raceName: string;
+  sessionNumber: string;
+  sessionDurationMin: number;
+  lapTypeValues: LapTypeValues;
+}
+interface ServerDriver {
+  id: string;
+  name: string;
+  targetTimeSec: number;
+  penaltyLaps: number;
+  sortOrder: number;
+}
+interface TeamMeResponse {
+  team: ServerTeam;
+  drivers: ServerDriver[];
+}
+interface ServerSessionRow {
+  id: string;
+  clientSessionId: string | null;
+  status: 'live' | 'ended';
+}
+interface ServerSessionPayload {
+  id: string;
+  raceName: string;
+  sessionNumber: string;
+  sessionDurationMin: number;
+  startedAt: string;
+  endedAt: string | null;
+  drivers: Array<{ name: string; targetTime: number; penaltyLaps: number; laps: Lap[] }>;
+}
 
 const DEFAULT_TEAMS: Team[] = [
   {
@@ -72,7 +109,21 @@ const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
   safety: 0,
 };
 
+function mapStatus(state: SyncState): SyncStatus {
+  switch (state) {
+    case 'syncing':
+    case 'pending':
+      return 'syncing';
+    case 'error':
+      return 'error';
+    case 'idle':
+    default:
+      return 'synced';
+  }
+}
+
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
+  const { isAuthenticated, user } = useAuth();
   const systemColorScheme = useColorScheme();
   const [teams, setTeams] = useState<Team[]>(DEFAULT_TEAMS);
   const [activeTeam, setActiveTeam] = useState(0);
@@ -82,14 +133,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
-  const [syncStatus] = useState<SyncStatus>('offline');
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
 
-  // Calculate isDarkMode based on theme mode and system preference
-  const isDarkMode = themeMode === 'auto'
-    ? systemColorScheme === 'dark'
-    : themeMode === 'dark';
+  const serverTeamIdRef = useRef<string | null>(null);
+  const syncedUserRef = useRef<string | null>(null);
+  const teamsRef = useRef(teams);
+  const lapTypeValuesRef = useRef(lapTypeValues);
+  teamsRef.current = teams;
+  lapTypeValuesRef.current = lapTypeValues;
 
-  // Load data from AsyncStorage on mount
+  const isDarkMode =
+    themeMode === 'auto' ? systemColorScheme === 'dark' : themeMode === 'dark';
+
+  // --- Local load + sync queue init ---
+  useEffect(() => {
+    syncQueue.init();
+    const unsub = syncQueue.subscribe((state) => {
+      // Only reflect queue state once we're authenticated/synced.
+      if (serverTeamIdRef.current) setSyncStatus(mapStatus(state));
+    });
+    return unsub;
+  }, []);
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -106,7 +171,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         if (savedTeams) {
           const parsedTeams = JSON.parse(savedTeams);
-          // Migration: add sessionHistory if it doesn't exist and fix empty driver names
           const migratedTeams = parsedTeams.map((team: Team) => ({
             ...team,
             sessionHistory: team.sessionHistory || [],
@@ -131,7 +195,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (parsed.timeFormat === undefined) parsed.timeFormat = 'seconds';
           if (parsed.volumeButtonsEnabled === undefined) parsed.volumeButtonsEnabled = false;
           if (parsed.showPenaltyLaps === undefined) parsed.showPenaltyLaps = true;
-          // Remove old backgroundRecordingEnabled if it exists
           delete parsed.backgroundRecordingEnabled;
           setAudioSettings(parsed);
         }
@@ -143,7 +206,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setIsLoading(false);
       }
     };
-
     loadData();
   }, []);
 
@@ -153,9 +215,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const needsFix = teams.some(team =>
         team.drivers.some(driver => !driver.name || driver.name.trim() === '')
       );
-
       if (needsFix) {
-        const fixedTeams = teams.map(team => ({
+        setTeams(teams.map(team => ({
           ...team,
           drivers: team.drivers.map((driver, index) => ({
             ...driver,
@@ -163,30 +224,168 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
               ? driver.name
               : `Driver ${String.fromCharCode(65 + index)}`,
           })),
-        }));
-        setTeams(fixedTeams);
+        })));
       }
     }
   }, [isLoading]);
 
-  // Persist teams locally (debounced). Cloud sync is reintroduced in Phase 3.
-  useEffect(() => {
-    if (!isLoading) {
-      const timeout = setTimeout(() => {
-        AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
-      }, 300);
-      return () => clearTimeout(timeout);
-    }
-  }, [teams, isLoading]);
-
-  // Phase 3 will replace these with API-backed, offline-first persistence.
-  const saveSessionToS3 = useCallback(async (_session: Session) => {
-    // no-op until the API data layer lands (Phase 3)
+  // Build the bulk team payload (meta + roster) the API expects.
+  const buildTeamPayload = useCallback(() => {
+    const team = teamsRef.current[0];
+    return {
+      name: team?.name ?? '',
+      raceName: team?.raceName ?? '',
+      sessionNumber: team?.sessionNumber ?? '',
+      sessionDuration: team?.sessionDuration ?? 120,
+      lapTypeValues: lapTypeValuesRef.current,
+      drivers: (team?.drivers ?? []).map((d) => ({
+        name: d.name,
+        targetTime: d.targetTime,
+        penaltyLaps: d.penaltyLaps,
+      })),
+    };
   }, []);
 
+  // --- Initial server sync / first-login migration (runs once per user) ---
+  useEffect(() => {
+    if (isLoading || !isAuthenticated || !user) return;
+    if (syncedUserRef.current === user) return;
+    syncedUserRef.current = user;
+
+    (async () => {
+      try {
+        setSyncStatus('syncing');
+        const me = await api.get<TeamMeResponse>('/api/teams/me');
+        serverTeamIdRef.current = me.team.id;
+
+        // One-time migration of legacy local data into Postgres.
+        const migratedKey = `migratedToApi:${user}`;
+        const alreadyMigrated = await AsyncStorage.getItem(migratedKey);
+        const local = teamsRef.current[0];
+        const localMeaningful =
+          !!local &&
+          ((local.sessionHistory?.length ?? 0) > 0 ||
+            local.drivers.some((d) => d.laps.length > 0) ||
+            !!local.name?.trim());
+
+        if (!alreadyMigrated) {
+          if (localMeaningful) {
+            await api.post('/api/teams/import', {
+              name: local.name,
+              raceName: local.raceName,
+              sessionNumber: local.sessionNumber,
+              sessionDuration: local.sessionDuration,
+              lapTypeValues: lapTypeValuesRef.current,
+              drivers: local.drivers.map((d) => ({
+                name: d.name,
+                targetTime: d.targetTime,
+                penaltyLaps: d.penaltyLaps,
+                laps: d.laps,
+              })),
+              sessionHistory: local.sessionHistory ?? [],
+            });
+          }
+          await AsyncStorage.setItem(migratedKey, '1');
+        }
+
+        const fresh = await api.get<TeamMeResponse>('/api/teams/me');
+        serverTeamIdRef.current = fresh.team.id;
+
+        if (fresh.drivers.length > 0) {
+          // Server is authoritative for meta + roster; keep local sessionHistory.
+          const localHistory = teamsRef.current[0]?.sessionHistory ?? [];
+          const hydrated: Team = {
+            id: 1,
+            name: fresh.team.name,
+            raceName: fresh.team.raceName,
+            sessionNumber: fresh.team.sessionNumber,
+            sessionDuration: fresh.team.sessionDurationMin,
+            drivers: fresh.drivers.map((d, i) => ({
+              id: i + 1,
+              name: d.name,
+              targetTime: d.targetTimeSec,
+              penaltyLaps: d.penaltyLaps,
+              laps: [],
+            })),
+            sessionHistory: localHistory,
+          };
+          setTeams([hydrated]);
+          setLapTypeValues(fresh.team.lapTypeValues);
+        } else {
+          // Server has no roster yet — push our local team up.
+          await syncQueue.enqueue({ kind: 'putTeam', teamId: fresh.team.id, payload: buildTeamPayload() });
+        }
+        setSyncStatus(syncQueue.pending > 0 ? 'syncing' : 'synced');
+      } catch (e) {
+        // Offline or server unreachable — stay on local data.
+        console.warn('[sync] initial sync failed (working offline):', e);
+        setSyncStatus('offline');
+      }
+    })();
+  }, [isLoading, isAuthenticated, user, buildTeamPayload]);
+
+  // Reset sync gate on sign-out so a different user re-syncs.
+  useEffect(() => {
+    if (!isAuthenticated) {
+      syncedUserRef.current = null;
+      serverTeamIdRef.current = null;
+      setSyncStatus('offline');
+    }
+  }, [isAuthenticated]);
+
+  // Persist teams locally (debounced) + push meta/roster to the API.
+  useEffect(() => {
+    if (isLoading) return;
+    const timeout = setTimeout(() => {
+      AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
+      if (serverTeamIdRef.current && syncedUserRef.current) {
+        syncQueue.enqueue({
+          kind: 'putTeam',
+          teamId: serverTeamIdRef.current,
+          payload: buildTeamPayload(),
+        });
+      }
+    }, 800);
+    return () => clearTimeout(timeout);
+  }, [teams, lapTypeValues, isLoading, buildTeamPayload]);
+
+  // Persist a finished session to the API (durable, idempotent on session.id).
+  const saveSessionToS3 = useCallback(async (session: Session) => {
+    const teamId = serverTeamIdRef.current;
+    if (!teamId) return;
+    await syncQueue.enqueue({ kind: 'completeSession', teamId, payload: session });
+  }, []);
+
+  // Load completed-session history from the API.
   const loadSessionsFromS3 = useCallback(async (): Promise<Session[]> => {
-    // Sessions currently live in local team.sessionHistory.
-    return [];
+    const teamId = serverTeamIdRef.current;
+    if (!teamId) return [];
+    try {
+      const { sessions } = await api.get<{ sessions: ServerSessionRow[] }>(
+        `/api/teams/${teamId}/sessions`,
+      );
+      const ended = sessions.filter((s) => s.status === 'ended');
+      const full = await Promise.all(
+        ended.map((s) => api.get<ServerSessionPayload>(`/api/sessions/${s.id}`).then((p) => ({ p, row: s }))),
+      );
+      return full.map(({ p, row }) => ({
+        id: row.clientSessionId ?? p.id,
+        raceName: p.raceName,
+        sessionNumber: p.sessionNumber,
+        sessionDuration: p.sessionDurationMin,
+        timestamp: Date.parse(p.endedAt ?? p.startedAt) || Date.now(),
+        drivers: p.drivers.map((d, i): Driver => ({
+          id: i + 1,
+          name: d.name,
+          targetTime: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+          laps: d.laps,
+        })),
+      }));
+    } catch (e) {
+      console.warn('[sync] loadSessions failed:', e);
+      return [];
+    }
   }, []);
 
   // Save active indices
@@ -197,29 +396,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [activeTeam, activeDriver, isLoading]);
 
-  // Save theme mode
   useEffect(() => {
-    if (!isLoading) {
-      AsyncStorage.setItem('themeMode', themeMode);
-    }
+    if (!isLoading) AsyncStorage.setItem('themeMode', themeMode);
   }, [themeMode, isLoading]);
 
   useEffect(() => {
-    if (!isLoading) {
-      AsyncStorage.setItem('audioSettings', JSON.stringify(audioSettings));
-    }
+    if (!isLoading) AsyncStorage.setItem('audioSettings', JSON.stringify(audioSettings));
   }, [audioSettings, isLoading]);
 
   useEffect(() => {
-    if (!isLoading) {
-      AsyncStorage.setItem('lapTypeValues', JSON.stringify(lapTypeValues));
-    }
+    if (!isLoading) AsyncStorage.setItem('lapTypeValues', JSON.stringify(lapTypeValues));
   }, [lapTypeValues, isLoading]);
 
   useEffect(() => {
-    if (!isLoading) {
-      AsyncStorage.setItem('hasSeenWelcome', JSON.stringify(hasSeenWelcome));
-    }
+    if (!isLoading) AsyncStorage.setItem('hasSeenWelcome', JSON.stringify(hasSeenWelcome));
   }, [hasSeenWelcome, isLoading]);
 
   return (
