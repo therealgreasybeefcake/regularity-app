@@ -354,13 +354,15 @@ export default function DriversScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      {/* Floating Add Button */}
+      {/* Floating "Add Driver" button — labeled + lifted above the tab bar. */}
       <TouchableOpacity
         style={[styles.addButton, { backgroundColor: theme.primary }, glowShadow(String(theme.primary), 0.5, 16)]}
         onPress={openAddDriverModal}
         accessibilityLabel="Add driver"
+        activeOpacity={0.85}
       >
-        <Ionicons name="add" size={28} color="#fff" />
+        <Ionicons name="add" size={24} color="#fff" />
+        <Text style={styles.addButtonLabel}>Add Driver</Text>
       </TouchableOpacity>
 
       {/* Add Driver Sheet */}
@@ -466,13 +468,20 @@ const styles = StyleSheet.create({
   },
   addButton: {
     position: 'absolute',
-    bottom: spacing.xl,
+    bottom: 100, // clear the ~83px absolute tab bar
     right: spacing.xl,
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+    height: 52,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    gap: spacing.sm,
+  },
+  addButtonLabel: {
+    color: '#fff',
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.bold,
   },
   driverCard: {
     gap: spacing.md,
