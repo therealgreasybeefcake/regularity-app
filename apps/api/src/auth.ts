@@ -21,6 +21,11 @@ if (isRealSecret(env.APPLE_CLIENT_ID) && isRealSecret(env.APPLE_CLIENT_SECRET)) 
   };
 }
 
+// In production the web app and API live on different origins, so session
+// cookies must be SameSite=None; Secure to be sent cross-site. Locally
+// (http://localhost) that would prevent cookies entirely, so keep the default.
+const isProd = process.env.NODE_ENV === 'production';
+
 export const auth = betterAuth({
   baseURL: env.BETTER_AUTH_URL,
   secret: env.BETTER_AUTH_SECRET,
@@ -36,6 +41,9 @@ export const auth = betterAuth({
   emailAndPassword: { enabled: true },
   socialProviders,
   trustedOrigins: env.TRUSTED_ORIGINS,
+  ...(isProd
+    ? { advanced: { defaultCookieAttributes: { sameSite: 'none' as const, secure: true } } }
+    : {}),
   // Enables the native deep-link (regularity://) OAuth flow used by the Expo app.
   plugins: [expo()],
 });

@@ -5,6 +5,14 @@ import { Team, Driver, AudioSettings, LapTypeValues, Session, Lap, SyncStatus } 
 import { useAuth } from './AuthContext';
 import { api } from '../lib/api';
 import { syncQueue, type SyncState } from '../lib/syncQueue';
+import { randomUuid, deterministicUuid } from '../lib/uuid';
+import { WEB_URL } from '../constants/config';
+
+interface LiveSessionState {
+  id: string;
+  publicToken: string;
+  sessionDriverIds: string[];
+}
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -31,6 +39,10 @@ interface AppContextType {
   saveSessionToS3: (session: Session) => Promise<void>;
   // Load completed-session history from the API (for new devices / Stats).
   loadSessionsFromS3: () => Promise<Session[]>;
+  // Live session for the real-time web view (laps streamed as recorded).
+  liveSession: { id: string; publicToken: string } | null;
+  liveShareUrl: string | null;
+  endLiveSession: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -135,10 +147,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
 
+  const [liveSession, setLiveSession] = useState<{ id: string; publicToken: string } | null>(null);
+
   const serverTeamIdRef = useRef<string | null>(null);
   const syncedUserRef = useRef<string | null>(null);
   const teamsRef = useRef(teams);
   const lapTypeValuesRef = useRef(lapTypeValues);
+  const liveSessionRef = useRef<LiveSessionState | null>(null);
+  const streamedKeysRef = useRef<Set<string>>(new Set());
+  const prevLapTotalRef = useRef(0);
   teamsRef.current = teams;
   lapTypeValuesRef.current = lapTypeValues;
 
@@ -388,6 +405,120 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, []);
 
+  // --- Live session (real-time web view) ---
+
+  // Restore an in-progress live session across app restarts.
+  useEffect(() => {
+    AsyncStorage.getItem('liveSessionState').then((raw) => {
+      if (!raw) return;
+      try {
+        const s: LiveSessionState = JSON.parse(raw);
+        liveSessionRef.current = s;
+        setLiveSession({ id: s.id, publicToken: s.publicToken });
+      } catch {
+        // ignore corrupt state
+      }
+    });
+  }, []);
+
+  const startLiveSessionInternal = useCallback(async (): Promise<LiveSessionState | null> => {
+    const teamId = serverTeamIdRef.current;
+    const team = teamsRef.current[0];
+    if (!teamId || !team) return null;
+    const id = randomUuid();
+    const publicToken = randomUuid();
+    const sessionDriverIds = team.drivers.map(() => randomUuid());
+    const state: LiveSessionState = { id, publicToken, sessionDriverIds };
+    liveSessionRef.current = state;
+    setLiveSession({ id, publicToken });
+    await AsyncStorage.setItem('liveSessionState', JSON.stringify(state));
+    await syncQueue.enqueue({
+      kind: 'startSession',
+      teamId,
+      payload: {
+        id,
+        publicToken,
+        raceName: team.raceName,
+        sessionNumber: team.sessionNumber,
+        sessionDuration: team.sessionDuration,
+        drivers: team.drivers.map((d, i) => ({
+          id: sessionDriverIds[i],
+          name: d.name,
+          targetTime: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+        })),
+      },
+    });
+    return state;
+  }, []);
+
+  const endLiveSession = useCallback(async () => {
+    const live = liveSessionRef.current;
+    if (!live) return;
+    liveSessionRef.current = null;
+    setLiveSession(null);
+    streamedKeysRef.current.clear();
+    prevLapTotalRef.current = 0;
+    await AsyncStorage.removeItem('liveSessionState');
+    await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
+  }, []);
+
+  const streamLap = useCallback(
+    async (driverIndex: number, lap: Lap) => {
+      if (!serverTeamIdRef.current) return;
+      let live = liveSessionRef.current;
+      if (!live) {
+        live = await startLiveSessionInternal();
+        if (!live) return;
+      }
+      const sessionDriverId = live.sessionDriverIds[driverIndex];
+      if (!sessionDriverId) return;
+      await syncQueue.enqueue({
+        kind: 'appendLap',
+        sessionId: live.id,
+        payload: {
+          clientLapId: deterministicUuid(`${live.id}:${sessionDriverId}:${lap.timestamp}`),
+          sessionDriverId,
+          time: lap.time,
+          recordedAt: lap.timestamp,
+          isChangeover: lap.lapType === 'changeover',
+          isSafety: lap.lapType === 'safety',
+        },
+      });
+    },
+    [startLiveSessionInternal],
+  );
+
+  // Watch local laps and stream new ones to the live session. Auto-ends when all
+  // laps clear (session ended/reset). Deliberately diff-based so the timer screen
+  // needs no changes.
+  useEffect(() => {
+    if (isLoading || !serverTeamIdRef.current) return;
+    const team = teams[0];
+    if (!team) return;
+    const total = team.drivers.reduce((sum, d) => sum + d.laps.length, 0);
+
+    if (prevLapTotalRef.current > 0 && total === 0) {
+      if (liveSessionRef.current) void endLiveSession();
+      return;
+    }
+    prevLapTotalRef.current = total;
+    if (total === 0) return;
+
+    (async () => {
+      for (let i = 0; i < team.drivers.length; i++) {
+        for (const lap of team.drivers[i].laps) {
+          const key = `${i}:${lap.timestamp}`;
+          if (streamedKeysRef.current.has(key)) continue;
+          streamedKeysRef.current.add(key);
+          await streamLap(i, lap);
+        }
+      }
+    })();
+  }, [teams, isLoading, endLiveSession, streamLap]);
+
+  const liveShareUrl = liveSession ? `${WEB_URL}/live/${liveSession.publicToken}` : null;
+
   // Save active indices
   useEffect(() => {
     if (!isLoading) {
@@ -434,6 +565,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         syncStatus,
         saveSessionToS3,
         loadSessionsFromS3,
+        liveSession,
+        liveShareUrl,
+        endLiveSession,
       }}
     >
       {children}

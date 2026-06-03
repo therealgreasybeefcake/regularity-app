@@ -28,6 +28,10 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     const inAuthGroup = segments[0] === '(auth)';
     const inAppGroup = segments[0] === '(app)';
     const onWelcome = segments[0] === 'welcome';
+    const onLive = segments[0] === 'live';
+
+    // Public, shareable live-view — no auth required, never redirect away.
+    if (onLive) return;
 
     if (!isAuthenticated) {
       // Not signed in — go to login (unless already there)
@@ -82,6 +86,7 @@ export default function RootLayout() {
                     <Stack.Screen name="(auth)" />
                     <Stack.Screen name="welcome" />
                     <Stack.Screen name="(app)" />
+                    <Stack.Screen name="live/[publicToken]" />
                   </Stack>
                 </NavigationGuard>
               </AlertProvider>

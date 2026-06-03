@@ -9,6 +9,24 @@ import { rooms } from '../rooms';
 // Public, unauthenticated, read-only spectator stream keyed by public_token.
 export const liveRouter = new Hono();
 
+async function loadByToken(token: string) {
+  const rows = await db
+    .select({ session: raceSessions, team: teams })
+    .from(raceSessions)
+    .innerJoin(teams, eq(teams.id, raceSessions.teamId))
+    .where(eq(raceSessions.publicToken, token))
+    .limit(1);
+  return rows[0];
+}
+
+// One-shot snapshot (used by the native polling fallback where SSE is absent).
+liveRouter.get('/:publicToken/snapshot', async (c) => {
+  const found = await loadByToken(c.req.param('publicToken'));
+  if (!found) return c.json({ error: 'not_found' }, 404);
+  const payload = await buildSessionPayload(found.session, found.team.lapTypeValues);
+  return c.json(payload);
+});
+
 liveRouter.get('/:publicToken', async (c) => {
   const token = c.req.param('publicToken');
   const rows = await db

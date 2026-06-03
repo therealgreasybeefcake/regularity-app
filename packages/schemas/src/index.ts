@@ -153,6 +153,32 @@ export const importTeamSchema = z.object({
 });
 export type ImportTeamInput = z.infer<typeof importTeamSchema>;
 
+/**
+ * Start a live session. All ids are optional client-generated UUIDs so a session
+ * can be created offline (with stable ids) and synced later; the server uses the
+ * provided ids when present, else generates its own and snapshots the roster.
+ */
+export const startSessionInputSchema = z
+  .object({
+    id: z.string().uuid().optional(),
+    publicToken: z.string().uuid().optional(),
+    raceName: z.string().trim().max(120).optional(),
+    sessionNumber: z.string().trim().max(40).optional(),
+    sessionDuration: sessionDurationSchema.optional(),
+    drivers: z
+      .array(
+        z.object({
+          id: z.string().uuid().optional(),
+          name: z.string().trim().min(1).max(80),
+          targetTime: targetTimeSchema,
+          penaltyLaps: z.number().int().min(0).default(0),
+        }),
+      )
+      .optional(),
+  })
+  .optional();
+export type StartSessionInput = z.infer<typeof startSessionInputSchema>;
+
 /** Bulk team meta + roster replace (the client's debounced "save team" call). */
 export const teamStateSchema = z.object({
   name: z.string().trim().max(120).optional(),

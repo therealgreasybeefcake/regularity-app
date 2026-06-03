@@ -12,7 +12,10 @@ import { api, ApiError } from './api';
 
 export type SyncOp =
   | { kind: 'putTeam'; teamId: string; payload: unknown }
-  | { kind: 'completeSession'; teamId: string; payload: unknown };
+  | { kind: 'completeSession'; teamId: string; payload: unknown }
+  | { kind: 'startSession'; teamId: string; payload: unknown }
+  | { kind: 'appendLap'; sessionId: string; payload: unknown }
+  | { kind: 'endSession'; sessionId: string };
 
 interface QueueItem {
   id: string;
@@ -134,6 +137,15 @@ class SyncQueue {
         break;
       case 'completeSession':
         await api.post(`/api/teams/${op.teamId}/sessions/complete`, op.payload);
+        break;
+      case 'startSession':
+        await api.post(`/api/teams/${op.teamId}/sessions`, op.payload);
+        break;
+      case 'appendLap':
+        await api.post(`/api/sessions/${op.sessionId}/laps`, op.payload);
+        break;
+      case 'endSession':
+        await api.post(`/api/sessions/${op.sessionId}/end`);
         break;
     }
   }

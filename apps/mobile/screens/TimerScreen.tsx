@@ -35,6 +35,7 @@ import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadow
 import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
 import { useAlert } from '../components/CustomAlert';
+import LiveShareBanner from '../components/LiveShareBanner';
 
 export default function TimerScreen() {
   const {
@@ -650,6 +651,7 @@ export default function TimerScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <LiveShareBanner />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}

@@ -10,6 +10,7 @@ import {
   importTeamSchema,
   teamStateSchema,
   sessionSnapshotSchema,
+  startSessionInputSchema,
 } from '@regularity/schemas';
 
 export const teamRouter = new Hono<{ Variables: AppVariables }>();
@@ -296,42 +297,70 @@ teamRouter.get('/:id/sessions', async (c) => {
   return c.json({ sessions: list });
 });
 
-// POST /api/teams/:id/sessions — start a live session, snapshotting current drivers.
+// POST /api/teams/:id/sessions — start a live session. Accepts optional
+// client-generated ids (offline-safe) and is idempotent on the session id.
 teamRouter.post('/:id/sessions', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
   const team = await getOwnedTeam(user.id);
   if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
 
-  const roster = await db
-    .select()
-    .from(drivers)
-    .where(eq(drivers.teamId, id))
-    .orderBy(asc(drivers.sortOrder));
+  const body = await c.req.json().catch(() => undefined);
+  const parsed = startSessionInputSchema.safeParse(body ?? undefined);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const input = parsed.data;
+
+  // Idempotent: a replayed start (same client id) returns the existing session.
+  if (input?.id) {
+    const [existing] = await db
+      .select()
+      .from(raceSessions)
+      .where(and(eq(raceSessions.id, input.id), eq(raceSessions.teamId, id)))
+      .limit(1);
+    if (existing) {
+      const sd = await db
+        .select()
+        .from(sessionDrivers)
+        .where(eq(sessionDrivers.sessionId, existing.id))
+        .orderBy(asc(sessionDrivers.sortOrder));
+      return c.json({ session: existing, sessionDrivers: sd, existing: true });
+    }
+  }
 
   const [session] = await db
     .insert(raceSessions)
     .values({
+      ...(input?.id ? { id: input.id } : {}),
+      ...(input?.publicToken ? { publicToken: input.publicToken } : {}),
       teamId: id,
-      raceName: team.raceName,
-      sessionNumber: team.sessionNumber,
-      sessionDurationMin: team.sessionDurationMin,
+      raceName: input?.raceName ?? team.raceName,
+      sessionNumber: input?.sessionNumber ?? team.sessionNumber,
+      sessionDurationMin: input?.sessionDuration ?? team.sessionDurationMin,
       status: 'live',
     })
     .returning();
 
-  if (roster.length) {
-    await db.insert(sessionDrivers).values(
-      roster.map((d, i) => ({
-        sessionId: session.id,
-        driverId: d.id,
-        name: d.name,
-        targetTimeSec: d.targetTimeSec,
-        penaltyLaps: d.penaltyLaps,
-        sortOrder: i,
-      })),
-    );
-  }
+  const driverValues: (typeof sessionDrivers.$inferInsert)[] =
+    input?.drivers && input.drivers.length
+      ? input.drivers.map((d, i) => ({
+          id: d.id,
+          sessionId: session.id,
+          name: d.name,
+          targetTimeSec: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        }))
+      : (
+          await db.select().from(drivers).where(eq(drivers.teamId, id)).orderBy(asc(drivers.sortOrder))
+        ).map((d, i) => ({
+          sessionId: session.id,
+          driverId: d.id,
+          name: d.name,
+          targetTimeSec: d.targetTimeSec,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        }));
+  if (driverValues.length) await db.insert(sessionDrivers).values(driverValues);
 
   const sd = await db
     .select()
