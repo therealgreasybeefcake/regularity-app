@@ -472,7 +472,7 @@ export default function SettingsScreen() {
     setHasSeenWelcome,
     syncStatus,
   } = useApp();
-  const { user, signOut } = useAuth();
+  const { user, signOut, deleteAccount } = useAuth();
   const { showAlert } = useAlert();
 
   const theme = isDarkMode ? darkTheme : lightTheme;
@@ -697,12 +697,13 @@ export default function SettingsScreen() {
 
   const clearAllData = () => {
     showAlert({
-      title: 'Clear All Data',
-      message: 'This will delete all teams, drivers, and laps. This cannot be undone.',
+      title: 'Reset Current Team',
+      message:
+        "This resets the current team's roster and settings to defaults. It does NOT delete your account or other teams. This cannot be undone.",
       buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
-          text: 'Clear All',
+          text: 'Reset Team',
           style: 'destructive',
           onPress: () => {
             setTeams([
@@ -977,7 +978,7 @@ export default function SettingsScreen() {
             style={styles.cardBtn}
           />
           <Button
-            title="Clear All Data"
+            title="Reset Current Team"
             icon="trash-outline"
             variant="danger"
             onPress={clearAllData}
@@ -1029,6 +1030,34 @@ export default function SettingsScreen() {
             }}
             fullWidth
             style={styles.accountBtn}
+          />
+          <Button
+            title="Delete Account"
+            icon="trash-outline"
+            variant="secondary"
+            onPress={() => {
+              showAlert({
+                title: 'Delete Account',
+                message:
+                  'This permanently deletes your account and all teams you solely own (drivers, sessions, laps). Teams you own that have other members are handed to a co-owner. This cannot be undone.',
+                buttons: [
+                  { text: 'Cancel', style: 'cancel' },
+                  {
+                    text: 'Delete Account',
+                    style: 'destructive',
+                    onPress: async () => {
+                      const res = await deleteAccount();
+                      if (!res.success) {
+                        showAlert({ title: 'Error', message: res.error ?? 'Could not delete account.' });
+                      }
+                    },
+                  },
+                ],
+              });
+            }}
+            fullWidth
+            style={styles.accountBtn}
+            textStyle={{ color: theme.danger }}
           />
         </Collapsible>
 

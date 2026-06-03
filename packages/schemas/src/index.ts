@@ -99,17 +99,22 @@ export const appendLapInputSchema = z.object({
 });
 export type AppendLapInput = z.infer<typeof appendLapInputSchema>;
 
+/** Optional link from a roster driver to a member's user account (or null to unlink). */
+const linkedUserIdSchema = z.string().trim().min(1).max(120).nullish();
+
 export const updateDriverInputSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   targetTime: targetTimeSchema.optional(),
   penaltyLaps: penaltyLapsSchema.optional(),
   sortOrder: z.number().int().min(0).optional(),
+  linkedUserId: linkedUserIdSchema,
 });
 export type UpdateDriverInput = z.infer<typeof updateDriverInputSchema>;
 
 export const createDriverInputSchema = z.object({
   name: z.string().trim().min(1).max(80),
   targetTime: targetTimeSchema,
+  linkedUserId: linkedUserIdSchema,
 });
 export type CreateDriverInput = z.infer<typeof createDriverInputSchema>;
 
@@ -192,6 +197,7 @@ export const teamStateSchema = z.object({
         name: z.string().trim().min(1).max(80),
         targetTime: targetTimeSchema,
         penaltyLaps: z.number().int().min(0).default(0),
+        linkedUserId: linkedUserIdSchema,
       }),
     )
     .optional(),

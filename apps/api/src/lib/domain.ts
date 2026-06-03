@@ -1,6 +1,7 @@
-import { and, asc, eq } from 'drizzle-orm';
+import { and, asc, eq, ne } from 'drizzle-orm';
 import { db } from '../db';
 import {
+  user,
   teams,
   teamMembers,
   drivers,
@@ -217,6 +218,30 @@ export async function buildSessionPayload(
       percentageFactor: goalLaps > 0 ? (achievedLaps / goalLaps) * 100 : 0,
     },
   };
+}
+
+/**
+ * Delete a user account. Owned teams that still have OTHER members are handed to
+ * a co-owner (prefer an admin) so shared teams survive; teams the user solely
+ * owns cascade-delete with the user, as do their memberships in other teams.
+ */
+export async function deleteUserAccount(userId: string): Promise<void> {
+  await db.transaction(async (tx) => {
+    const owned = await tx.select().from(teams).where(eq(teams.ownerId, userId));
+    for (const t of owned) {
+      const others = await tx
+        .select()
+        .from(teamMembers)
+        .where(and(eq(teamMembers.teamId, t.id), ne(teamMembers.userId, userId)))
+        .orderBy(asc(teamMembers.createdAt));
+      if (others.length) {
+        const heir = others.find((mm) => mm.role === 'admin') ?? others[0];
+        await tx.update(teamMembers).set({ role: 'owner', updatedAt: new Date() }).where(eq(teamMembers.id, heir.id));
+        await tx.update(teams).set({ ownerId: heir.userId, updatedAt: new Date() }).where(eq(teams.id, t.id));
+      }
+    }
+    await tx.delete(user).where(eq(user.id, userId));
+  });
 }
 
 export { drivers, teams, raceSessions, sessionDrivers, laps };

@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View,
   Text,
@@ -19,10 +19,18 @@ import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, glowShadow } from '../constants/theme';
 import { Driver } from '../types';
 import { useAlert } from '../components/CustomAlert';
-import { Mono, Label, Card, Surface, Button, IconButton, StatTile, TextField, Sheet, Divider } from '../components/ui';
+import { api } from '../lib/api';
+import { Mono, Label, Card, Surface, Button, IconButton, StatTile, TextField, Sheet, Divider, Chip } from '../components/ui';
+
+interface TeamMemberLite {
+  id: string;
+  userId: string;
+  name: string;
+  role: string;
+}
 
 export default function DriversScreen() {
-  const { teams, setTeams, activeTeam, isDarkMode, audioSettings } = useApp();
+  const { teams, setTeams, activeTeam, isDarkMode, audioSettings, activeServerTeamId } = useApp();
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
@@ -75,11 +83,28 @@ export default function DriversScreen() {
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newDriverName, setNewDriverName] = useState('');
   const [newDriverTargetTime, setNewDriverTargetTime] = useState('');
+  const [newDriverLinkedUserId, setNewDriverLinkedUserId] = useState<string | null>(null);
+  const [members, setMembers] = useState<TeamMemberLite[]>([]);
+
+  // Team members available to link a driver to (those with accounts in the team).
+  useEffect(() => {
+    if (!activeServerTeamId) {
+      setMembers([]);
+      return;
+    }
+    let active = true;
+    api
+      .get<{ members: TeamMemberLite[] }>(`/api/teams/${activeServerTeamId}/members`)
+      .then((r) => { if (active) setMembers(r.members); })
+      .catch(() => { /* offline / no access */ });
+    return () => { active = false; };
+  }, [activeServerTeamId]);
 
   const openAddDriverModal = () => {
     const letter = String.fromCharCode(65 + team.drivers.length);
     setNewDriverName(`Driver ${letter}`);
     setNewDriverTargetTime(getDisplayValue(105));
+    setNewDriverLinkedUserId(null);
     setAddModalVisible(true);
   };
 
@@ -104,12 +129,14 @@ export default function DriversScreen() {
       targetTime: targetTime,
       penaltyLaps: 0,
       laps: [],
+      linkedUserId: newDriverLinkedUserId,
     });
 
     setTeams(updatedTeams);
     setAddModalVisible(false);
     setNewDriverName('');
     setNewDriverTargetTime('');
+    setNewDriverLinkedUserId(null);
   };
 
   const removeDriver = (index: number) => {
@@ -218,6 +245,9 @@ export default function DriversScreen() {
                       <Text style={[styles.driverName, { color: theme.text }]} numberOfLines={1}>
                         {driver.name}
                       </Text>
+                      {driver.linkedUserId ? (
+                        <Ionicons name="person-circle" size={15} color={theme.primary as string} />
+                      ) : null}
                       <Ionicons name="pencil" size={13} color={theme.textMuted as string} style={styles.nameEditIcon} />
                     </TouchableOpacity>
                   )}
@@ -346,6 +376,35 @@ export default function DriversScreen() {
         }
       >
         <View style={styles.sheetFields}>
+          {members.length > 0 && (
+            <View style={styles.pickerGroup}>
+              <Label>Add from</Label>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.pickerRow}>
+                <Chip
+                  label="Custom"
+                  icon="create-outline"
+                  active={newDriverLinkedUserId === null}
+                  onPress={() => setNewDriverLinkedUserId(null)}
+                />
+                {members.map((m) => (
+                  <Chip
+                    key={m.userId}
+                    label={m.name}
+                    icon="person"
+                    color={theme.primary}
+                    active={newDriverLinkedUserId === m.userId}
+                    onPress={() => {
+                      setNewDriverLinkedUserId(m.userId);
+                      setNewDriverName(m.name);
+                    }}
+                  />
+                ))}
+              </ScrollView>
+              <Label muted size={11}>
+                Link this driver to a teammate's account, or choose Custom for someone without the app.
+              </Label>
+            </View>
+          )}
           <TextField
             label="Driver Name"
             value={newDriverName}
@@ -496,5 +555,12 @@ const styles = StyleSheet.create({
   },
   sheetFields: {
     gap: spacing.lg,
+  },
+  pickerGroup: {
+    gap: spacing.sm,
+  },
+  pickerRow: {
+    gap: spacing.sm,
+    paddingVertical: 2,
   },
 });

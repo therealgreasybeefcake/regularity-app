@@ -18,6 +18,8 @@ export interface Driver {
   targetTime: number; // in seconds
   penaltyLaps: number;
   laps: Lap[];
+  /** Optional link to a team member's user account (null/undefined = custom driver). */
+  linkedUserId?: string | null;
 }
 
 export interface Session {

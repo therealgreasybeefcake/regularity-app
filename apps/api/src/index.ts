@@ -5,6 +5,7 @@ import { cors } from 'hono/cors';
 import { auth } from './auth';
 import { env } from './env';
 import { requireAuth, type AppVariables } from './middleware';
+import { deleteUserAccount } from './lib/domain';
 import { teamRouter } from './routes/team';
 import { memberRouter, inviteRouter } from './routes/members';
 import { driverRouter } from './routes/drivers';
@@ -30,6 +31,13 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
 // Current authenticated user (quick auth integration check).
 app.get('/api/me', requireAuth, (c) => c.json({ user: c.get('user') }));
+
+// Permanently delete the signed-in user's account (+ owned data; shared teams
+// they own are handed to a co-owner). The session cascade-invalidates server-side.
+app.delete('/api/me', requireAuth, async (c) => {
+  await deleteUserAccount(c.get('user').id);
+  return c.json({ ok: true });
+});
 
 app.route('/api/teams', teamRouter);
 app.route('/api/teams', memberRouter);

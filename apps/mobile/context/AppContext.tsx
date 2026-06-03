@@ -76,6 +76,7 @@ interface ServerDriver {
   targetTimeSec: number;
   penaltyLaps: number;
   sortOrder: number;
+  linkedUserId: string | null;
 }
 interface TeamMeResponse {
   team: ServerTeam;
@@ -295,6 +296,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         name: d.name,
         targetTime: d.targetTime,
         penaltyLaps: d.penaltyLaps,
+        linkedUserId: d.linkedUserId ?? null,
       })),
     };
   }, []);
@@ -313,7 +315,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       sessionNumber: res.team.sessionNumber,
       sessionDuration: res.team.sessionDurationMin,
       drivers: res.drivers.length
-        ? res.drivers.map((d, i) => ({ id: i + 1, name: d.name, targetTime: d.targetTimeSec, penaltyLaps: d.penaltyLaps, laps: [] }))
+        ? res.drivers.map((d, i) => ({ id: i + 1, name: d.name, targetTime: d.targetTimeSec, penaltyLaps: d.penaltyLaps, laps: [], linkedUserId: d.linkedUserId }))
         : DEFAULT_TEAMS[0].drivers.map((d) => ({ ...d, laps: [] })),
       sessionHistory: [],
     };
@@ -435,6 +437,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 targetTime: d.targetTimeSec,
                 penaltyLaps: d.penaltyLaps,
                 laps: [],
+                linkedUserId: d.linkedUserId,
               })),
               sessionHistory: teamsRef.current[0]?.sessionHistory ?? [],
             };

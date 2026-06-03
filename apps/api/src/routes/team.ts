@@ -195,6 +195,7 @@ teamRouter.post('/:id/drivers', async (c) => {
       teamId: id,
       name: parsed.data.name,
       targetTimeSec: parsed.data.targetTime,
+      linkedUserId: parsed.data.linkedUserId ?? null,
       sortOrder: existing.length,
     })
     .returning();
@@ -234,6 +235,7 @@ teamRouter.put('/:id', async (c) => {
             name: d.name,
             targetTimeSec: d.targetTime,
             penaltyLaps: d.penaltyLaps,
+            linkedUserId: d.linkedUserId ?? null,
             sortOrder: i,
           })),
         );

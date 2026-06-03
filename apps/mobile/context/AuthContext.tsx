@@ -1,5 +1,7 @@
 import React, { createContext, useContext, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authClient } from '../lib/auth-client';
+import { api } from '../lib/api';
 
 export type OAuthProvider = 'google' | 'apple';
 
@@ -18,6 +20,8 @@ interface AuthContextType {
   signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
   signInWithProvider: (provider: OAuthProvider) => Promise<AuthResult>;
   signOut: () => Promise<void>;
+  /** Permanently delete the account, then sign out + wipe local data. */
+  deleteAccount: () => Promise<AuthResult>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -53,6 +57,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     await authClient.signOut();
   };
 
+  const deleteAccount = async (): Promise<AuthResult> => {
+    try {
+      await api.del('/api/me');
+      await authClient.signOut();
+      await AsyncStorage.clear(); // wipe local teams/prefs for the deleted account
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e?.message ?? 'Failed to delete account' };
+    }
+  };
+
   return (
     <AuthContext.Provider
       value={{
@@ -64,6 +79,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         signUp,
         signInWithProvider,
         signOut,
+        deleteAccount,
       }}
     >
       {children}
