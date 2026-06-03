@@ -9,7 +9,12 @@ import { rooms } from '../rooms';
 // Public, unauthenticated, read-only spectator stream keyed by public_token.
 export const liveRouter = new Hono();
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 async function loadByToken(token: string) {
+  // Guard: public_token is a uuid column; a malformed token would otherwise
+  // throw a Postgres cast error (500) instead of a clean not-found.
+  if (!UUID_RE.test(token)) return undefined;
   const rows = await db
     .select({ session: raceSessions, team: teams })
     .from(raceSessions)
@@ -29,13 +34,7 @@ liveRouter.get('/:publicToken/snapshot', async (c) => {
 
 liveRouter.get('/:publicToken', async (c) => {
   const token = c.req.param('publicToken');
-  const rows = await db
-    .select({ session: raceSessions, team: teams })
-    .from(raceSessions)
-    .innerJoin(teams, eq(teams.id, raceSessions.teamId))
-    .where(eq(raceSessions.publicToken, token))
-    .limit(1);
-  const found = rows[0];
+  const found = await loadByToken(token);
   if (!found) return c.json({ error: 'not_found' }, 404);
 
   return streamSSE(c, async (stream) => {
