@@ -1,13 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
 import { Tabs, Slot, useRouter, usePathname } from 'expo-router';
-import { GlassView, isGlassEffectAPIAvailable } from 'expo-glass-effect';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../context/AppContext';
 import { api } from '../../../lib/api';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../../../constants/theme';
-
-const hasGlass = isGlassEffectAPIAvailable();
 
 const isWeb = Platform.OS === 'web';
 
@@ -162,29 +159,31 @@ export default function TabsLayout() {
         },
         tabBarActiveTintColor: theme.primary as string,
         tabBarInactiveTintColor: theme.textSecondary as string,
-        tabBarBackground: () =>
-          hasGlass ? (
-            <GlassView style={StyleSheet.absoluteFill} glassEffectStyle="regular" />
-          ) : (
-            <View
-              style={[
-                StyleSheet.absoluteFill,
-                {
-                  backgroundColor: isDarkMode
-                    ? 'rgba(12,18,32,0.92)'
-                    : 'rgba(248,250,252,0.92)',
-                },
-              ]}
-            />
-          ),
+        // Solid themed bar with a hairline top border. Drawn explicitly (not via
+        // GlassView) because the system glass effect follows the OS appearance,
+        // not the in-app dark/light override — which made it render light in dark mode.
+        tabBarBackground: () => (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              {
+                backgroundColor: isDarkMode ? 'rgba(9,13,21,0.96)' : 'rgba(255,255,255,0.96)',
+                borderTopWidth: StyleSheet.hairlineWidth,
+                borderTopColor: theme.border as string,
+              },
+            ]}
+          />
+        ),
         tabBarStyle: {
           position: 'absolute',
           backgroundColor: 'transparent',
+          borderTopWidth: 0,
           borderTopColor: 'transparent',
           elevation: 0,
         },
         tabBarLabelStyle: {
           fontSize: 10,
+          fontWeight: fontWeights.semibold,
         },
         headerShown: false,
       })}
@@ -246,6 +245,8 @@ const webStyles = StyleSheet.create({
   contentInner: {
     flex: 1,
     width: '100%',
-    maxWidth: 860,
+    // Wide enough for the data-dense Stats/Drivers grids to use the full container.
+    // Text-heavy screens (Timer/Settings) self-constrain to a narrower readable column.
+    maxWidth: 1280,
   },
 });

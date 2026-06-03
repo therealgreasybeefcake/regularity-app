@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Share, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Share, Platform } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useApp } from '../context/AppContext';
-import { spacing, radius, fontWeights, typography } from '../constants/theme';
+import { spacing, radius, typography } from '../constants/theme';
+import { useTheme } from '../hooks/useTheme';
+import { Mono, Label, LiveDot, IconButton } from './ui';
 
 /**
  * Appears while a live session is active. Tap to open the live-view, Share to
@@ -12,6 +14,7 @@ import { spacing, radius, fontWeights, typography } from '../constants/theme';
  */
 export default function LiveShareBanner() {
   const { liveShareUrl, liveSession } = useApp();
+  const { theme } = useTheme();
   const router = useRouter();
   const [dismissed, setDismissed] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -45,23 +48,27 @@ export default function LiveShareBanner() {
   };
 
   return (
-    <View style={styles.banner}>
+    <View
+      style={[
+        styles.banner,
+        {
+          backgroundColor: 'rgba(239,68,68,0.14)',
+          borderColor: theme.danger,
+        },
+      ]}
+    >
       <TouchableOpacity style={styles.main} onPress={openLive} activeOpacity={0.8} accessibilityLabel="Open live view">
         <View style={styles.live}>
-          <View style={styles.dot} />
-          <Text style={styles.liveText}>LIVE</Text>
+          <LiveDot size={8} color={theme.livePulse} active />
+          <Label color={theme.danger} style={styles.liveText}>LIVE</Label>
         </View>
-        <Text style={styles.label} numberOfLines={1}>
+        <Mono size={typography.body} color={theme.text} weight="medium" numberOfLines={1} style={styles.label}>
           {copied ? 'Link copied!' : 'View live timing'}
-        </Text>
-        <Ionicons name="open-outline" size={15} color="rgba(255,255,255,0.85)" />
+        </Mono>
+        <Ionicons name="open-outline" size={15} color={theme.textSecondary as string} />
       </TouchableOpacity>
-      <TouchableOpacity style={styles.btn} onPress={onShare} accessibilityLabel="Share live link">
-        <Ionicons name="share-outline" size={18} color="#fff" />
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.btn} onPress={() => setDismissed(true)} accessibilityLabel="Dismiss">
-        <Ionicons name="close" size={18} color="#fff" />
-      </TouchableOpacity>
+      <IconButton icon="share-outline" size={18} color={theme.danger} onPress={onShare} accessibilityLabel="Share live link" />
+      <IconButton icon="close" size={18} color={theme.textSecondary} onPress={() => setDismissed(true)} accessibilityLabel="Dismiss" />
     </View>
   );
 }
@@ -70,7 +77,7 @@ const styles = StyleSheet.create({
   banner: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#b91c1c',
+    borderWidth: 1,
     paddingVertical: spacing.sm,
     paddingHorizontal: spacing.md,
     borderRadius: radius.md,
@@ -79,9 +86,7 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   main: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  live: { flexDirection: 'row', alignItems: 'center' },
-  dot: { width: 8, height: 8, borderRadius: 4, backgroundColor: '#fff', marginRight: 4 },
-  liveText: { color: '#fff', fontWeight: fontWeights.bold, fontSize: typography.caption, letterSpacing: 1 },
-  label: { color: '#fff', flex: 1, fontSize: typography.body, fontWeight: fontWeights.medium },
-  btn: { padding: 6 },
+  live: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
+  liveText: { letterSpacing: 1 },
+  label: { flex: 1 },
 });

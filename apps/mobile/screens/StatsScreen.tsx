@@ -1,17 +1,17 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Modal, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows, brandColors } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../constants/theme';
 import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/calculations';
 import { Session } from '../types';
 import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
 import { generatePDF } from '../utils/pdfExport';
 import { useAlert } from '../components/CustomAlert';
+import { Mono, Label, Card, Surface, Divider, Button, IconButton, StatTile, TextField, Sheet } from '../components/ui';
 
 const isWeb = Platform.OS === 'web';
-const SIDEBAR_WIDTH = 340;
 
 export default function StatsScreen() {
   const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues, loadSessionsFromS3 } = useApp();
@@ -28,6 +28,9 @@ export default function StatsScreen() {
   const [showChartsModal, setShowChartsModal] = useState(false);
   const [selectedDriverForCharts, setSelectedDriverForCharts] = useState<number | null>(null);
   const [webSelectedDriver, setWebSelectedDriver] = useState<number | null>(null);
+  // Measured width of the driver-grid container (exact — avoids scrollbar/rounding
+  // estimation errors that caused 2-up cards to wrap to a single column).
+  const [gridW, setGridW] = useState(0);
 
   // Use selected session if available, otherwise use current team data
   const displayData = selectedSession || {
@@ -123,26 +126,50 @@ export default function StatsScreen() {
     }
   };
 
+  // --- Pit Wall presentation helpers ---
+  const deltaColor = (delta: number) =>
+    (delta < 0 ? theme.broken : delta <= 0.99 ? theme.bonus : theme.base);
+
+  const lapTypeColor = (t: string) =>
+    t === 'bonus' ? theme.bonus
+      : t === 'broken' ? theme.broken
+        : t === 'changeover' ? theme.changeover
+          : t === 'safety' ? theme.safety
+            : theme.base;
+
+  // Responsive web layout: use the full content container and tile the driver
+  // detail cards into columns to cut vertical scroll. Native stays single-column.
+  // twoColTop is a coarse boolean (window estimate is fine); the exact card width
+  // comes from the measured grid container (gridW) so 2-up never wraps.
+  const usableWidth = (isWeb ? Math.min(windowWidth - 200, 1280) : windowWidth) - spacing.lg * 2;
+  // Top row = Team Info · Team Stats · Driver Selector, 3-up on wide web.
+  const threeColTop = isWeb && usableWidth >= 900;
+  const detailGap = spacing.lg;
+  const detailCols = isWeb && gridW >= 900 ? 2 : 1;
+  const detailColWidth = detailCols > 1 ? (gridW - detailGap * (detailCols - 1)) / detailCols : gridW;
+  // gifted-charts needs an explicit width; fit it inside a detail card (lg padding).
+  const chartAreaWidth = Math.max(detailColWidth - spacing.lg * 2 - spacing.xs, 260);
+
   // --- Shared sub-components ---
 
   const SessionSelector = () => {
     if (team.sessionHistory.length === 0 && s3Sessions.length === 0) return null;
     return (
-      <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>View Session</Text>
+      <Card padding="lg" style={styles.panel}>
+        <Label size={13} style={styles.panelTitle}>View Session</Label>
         <TouchableOpacity
           style={[styles.sessionSelector, { borderColor: theme.border, backgroundColor: theme.surface }]}
           onPress={handleOpenSessionPicker}
         >
           <View style={styles.sessionSelectorContent}>
-            <Ionicons name="calendar-outline" size={20} color={theme.primary} />
+            <Ionicons name="calendar-outline" size={20} color={theme.primary as string} />
             <Text style={[styles.sessionSelectorText, { color: theme.text }]}>
               {selectedSession
                 ? `${selectedSession.raceName} - Session ${selectedSession.sessionNumber}`
                 : 'Current Session'}
             </Text>
           </View>
-          <Ionicons name="chevron-down" size={20} color={theme.textSecondary} />
+          <Ionicons name="chevron-down" size={20} color={theme.textSecondary as string} />
         </TouchableOpacity>
         {selectedSession && (
           <TouchableOpacity
@@ -154,586 +181,322 @@ export default function StatsScreen() {
             </Text>
           </TouchableOpacity>
         )}
-      </View>
+      </Card>
     );
   };
 
-  const TeamInfoSection = () => (
-    <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Team Information</Text>
-        {!selectedSession && !isEditing ? (
-          <TouchableOpacity onPress={() => setIsEditing(true)}>
-            <Text style={[styles.editButton, { color: theme.primary }]}>Edit</Text>
-          </TouchableOpacity>
-        ) : !selectedSession && isEditing ? (
-          <View style={styles.editActions}>
-            <TouchableOpacity onPress={handleCancel} style={styles.actionButton}>
-              <Text style={[styles.cancelButton, { color: theme.textSecondary }]}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleSave} style={styles.actionButton}>
-              <Text style={[styles.saveButton, { color: theme.primary }]}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
-      </View>
+  const TeamInfoSection = (cardStyle?: any) => {
+    const editable = isEditing && !selectedSession;
+    return (
+      <Card padding="lg" style={[styles.panel, cardStyle]}>
+        <View style={styles.panelHeader}>
+          <Label size={13}>Team Information</Label>
+          {!selectedSession && !isEditing ? (
+            <Button title="Edit" icon="create-outline" size="sm" variant="ghost" onPress={() => setIsEditing(true)} />
+          ) : !selectedSession && isEditing ? (
+            <View style={styles.editActions}>
+              <Button title="Cancel" size="sm" variant="secondary" onPress={handleCancel} />
+              <Button title="Save" icon="checkmark" size="sm" variant="primary" onPress={handleSave} />
+            </View>
+          ) : null}
+        </View>
 
-      <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>Team Name</Text>
-        {isEditing && !selectedSession ? (
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]}
-            value={editedTeamName}
-            onChangeText={setEditedTeamName}
-            placeholder="Team Name"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="words"
-          />
-        ) : (
-          <Text style={[styles.value, { color: theme.text }]}>{team.name}</Text>
-        )}
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>Race Name</Text>
-        {isEditing && !selectedSession ? (
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]}
-            value={editedRaceName}
-            onChangeText={setEditedRaceName}
-            placeholder="Race Name"
-            placeholderTextColor={theme.textSecondary}
-            autoCapitalize="words"
-          />
-        ) : (
-          <Text style={[styles.value, { color: theme.text }]}>{displayData.raceName || 'Not set'}</Text>
-        )}
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>Session</Text>
-        {isEditing && !selectedSession ? (
-          <TextInput
-            style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface }]}
-            value={editedSessionNumber}
-            onChangeText={setEditedSessionNumber}
-            placeholder="Session Number"
-            placeholderTextColor={theme.textSecondary}
-            keyboardType="default"
-          />
-        ) : (
-          <Text style={[styles.value, { color: theme.text }]}>{displayData.sessionNumber || 'Not set'}</Text>
-        )}
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={[styles.label, { color: theme.textSecondary }]}>Duration</Text>
-        {isEditing && !selectedSession ? (
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <TextInput
-              style={[styles.input, { color: theme.text, borderColor: theme.border, backgroundColor: theme.surface, minWidth: 80 }]}
-              value={editedSessionDuration}
-              onChangeText={setEditedSessionDuration}
-              placeholder="120"
-              placeholderTextColor={theme.textSecondary}
-              keyboardType="number-pad"
-            />
-            <Text style={[styles.value, { color: theme.textSecondary, marginLeft: spacing.sm }]}>min</Text>
+        {editable ? (
+          <View style={styles.editFields}>
+            <TextField label="Team Name" value={editedTeamName} onChangeText={setEditedTeamName} placeholder="Team Name" autoCapitalize="words" />
+            <TextField label="Race Name" value={editedRaceName} onChangeText={setEditedRaceName} placeholder="Race Name" autoCapitalize="words" />
+            <TextField label="Session" value={editedSessionNumber} onChangeText={setEditedSessionNumber} placeholder="Session Number" />
+            <TextField mono label="Duration (minutes)" value={editedSessionDuration} onChangeText={setEditedSessionDuration} placeholder="120" keyboardType="number-pad" />
           </View>
         ) : (
-          <Text style={[styles.value, { color: theme.text }]}>{displayData.sessionDuration} min</Text>
+          <View>
+            <View style={styles.infoRow}>
+              <Label>Team Name</Label>
+              <Text style={[styles.infoValue, { color: theme.text }]}>{team.name}</Text>
+            </View>
+            <Divider faint />
+            <View style={styles.infoRow}>
+              <Label>Race Name</Label>
+              <Text style={[styles.infoValue, { color: theme.text }]}>{displayData.raceName || 'Not set'}</Text>
+            </View>
+            <Divider faint />
+            <View style={styles.infoRow}>
+              <Label>Session</Label>
+              {displayData.sessionNumber
+                ? <Mono size={typography.bodyLg} weight="bold" color={theme.text}>{String(displayData.sessionNumber)}</Mono>
+                : <Text style={[styles.infoValue, { color: theme.textMuted }]}>Not set</Text>}
+            </View>
+            <Divider faint />
+            <View style={styles.infoRow}>
+              <Label>Duration</Label>
+              <View style={styles.infoValueRow}>
+                <Mono size={typography.bodyLg} weight="bold" color={theme.text}>{String(displayData.sessionDuration)}</Mono>
+                <Label muted style={{ marginLeft: 4 }}>min</Label>
+              </View>
+            </View>
+          </View>
         )}
-      </View>
-    </View>
-  );
+      </Card>
+    );
+  };
 
-  const TeamStatsSection = () => (
-    <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
-      <View style={styles.sectionHeader}>
-        <Text style={[styles.sectionTitle, { color: theme.text }]}>Team</Text>
+  const TeamStatsSection = (stacked: boolean, cardStyle?: any) => (
+    <Card padding="lg" style={[styles.panel, cardStyle]}>
+      <View style={styles.panelHeader}>
+        <Label size={13}>Team</Label>
         <View style={styles.buttonGroup}>
           {!isWeb && (
-            <TouchableOpacity
+            <Button
+              title="Charts"
+              icon="bar-chart-outline"
+              size="sm"
+              variant="secondary"
               onPress={() => {
                 setSelectedDriverForCharts(null);
                 setShowChartsModal(true);
               }}
-              style={[styles.chartButton, { backgroundColor: brandColors.chartPurple }]}
-            >
-              <Ionicons name="bar-chart-outline" size={18} color="#fff" />
-              <Text style={styles.buttonText}>Charts</Text>
-            </TouchableOpacity>
+            />
           )}
-          <TouchableOpacity
-            onPress={() => handleExportPDF()}
+          <Button
+            title="Team PDF"
+            icon="stats-chart"
+            size="sm"
+            variant="primary"
+            loading={isGeneratingPDF}
             disabled={isGeneratingPDF}
-            style={[styles.teamExportButton, { backgroundColor: theme.primary }]}
-          >
-            {isGeneratingPDF ? (
-              <ActivityIndicator color="#fff" size="small" />
-            ) : (
-              <>
-                <Ionicons name="stats-chart" size={18} color="#fff" />
-                <Text style={styles.teamExportText}>Team PDF</Text>
-              </>
-            )}
-          </TouchableOpacity>
+            onPress={() => handleExportPDF()}
+          />
         </View>
       </View>
-      <View style={isWeb ? webStyles.teamStatsRow : undefined}>
-        <View style={[styles.statCard, { borderBottomColor: theme.border }, isWeb && webStyles.teamStatItem]}>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Goal Laps</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {teamStats.goalLaps.toFixed(2)}
-          </Text>
-        </View>
-        <View style={[styles.statCard, { borderBottomColor: theme.border }, isWeb && webStyles.teamStatItem]}>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Achieved Laps</Text>
-          <Text style={[styles.statValue, { color: theme.text }]}>
-            {teamStats.achievedLaps.toFixed(2)}
-          </Text>
-        </View>
-        <View style={[styles.statCard, { borderBottomColor: theme.border }, isWeb && webStyles.teamStatItem]}>
-          <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Percentage Factor</Text>
-          <Text style={[styles.statValue, { color: theme.primary }]}>
-            {teamStats.percentageFactor.toFixed(2)}%
-          </Text>
-        </View>
+      <View style={[styles.teamStatsRow, stacked && styles.teamStatsCol]}>
+        <StatTile size="lg" label="Goal Laps" value={teamStats.goalLaps.toFixed(2)} style={stacked ? undefined : styles.teamStatItem} />
+        <StatTile size="lg" label="Achieved Laps" value={teamStats.achievedLaps.toFixed(2)} style={stacked ? undefined : styles.teamStatItem} />
+        <StatTile size="lg" label="Percentage Factor" value={`${teamStats.percentageFactor.toFixed(2)}%`} valueColor={theme.accent} style={stacked ? undefined : styles.teamStatItem} />
       </View>
-    </View>
+    </Card>
   );
 
-  const DriverStatsGrid = ({ driverIndex }: { driverIndex: number }) => {
+  const DriverSelector = (cardStyle?: any) => {
+    if (displayData.drivers.length === 0) return null;
+    const rows: Array<{ id: number | null; name: string; laps: number }> = [
+      { id: null, name: 'All Drivers', laps: displayData.drivers.reduce((sum, d) => sum + d.laps.length, 0) },
+      ...displayData.drivers.map(d => ({ id: d.id, name: d.name, laps: d.laps.length })),
+    ];
+    return (
+      <Card padding="lg" style={[styles.panel, cardStyle]}>
+        <Label size={13} style={styles.panelTitle}>Drivers</Label>
+        <Surface level="base" padding={0} style={styles.driverList}>
+          {rows.map((row, index) => {
+            const selected = webSelectedDriver === row.id;
+            return (
+              <Pressable
+                key={row.id === null ? 'all' : row.id}
+                onPress={() => setWebSelectedDriver(row.id)}
+                style={[
+                  styles.driverRow,
+                  { borderBottomColor: theme.borderFaint },
+                  index === rows.length - 1 && { borderBottomWidth: 0 },
+                  selected && { backgroundColor: theme.primaryMuted },
+                ]}
+              >
+                <Ionicons
+                  name={row.id === null ? 'people' : 'person'}
+                  size={18}
+                  color={selected ? (theme.primary as string) : (theme.textSecondary as string)}
+                />
+                <Text style={[styles.driverRowName, { color: selected ? theme.primary : theme.text }]} numberOfLines={1}>
+                  {row.name}
+                </Text>
+                <Mono size={12} weight="medium" color={selected ? theme.primary : theme.textSecondary}>
+                  {row.laps} laps
+                </Mono>
+              </Pressable>
+            );
+          })}
+        </Surface>
+      </Card>
+    );
+  };
+
+  const DriverDetail = ({ driverIndex }: { driverIndex: number }) => {
     const driver = displayData.drivers[driverIndex];
     const stats = calculateDriverStats(driver, lapTypeValues, displayData.drivers, displayData.sessionDuration);
+    const grid: Array<{ label: string; value: string; color?: typeof theme.text }> = [
+      { label: 'Achieved Laps', value: stats.achievedLaps.toFixed(1) },
+      { label: 'Goal Laps', value: stats.goalLaps.toFixed(1) },
+      { label: 'Net Score', value: `${stats.netScore > 0 ? '+' : ''}${stats.netScore}` },
+      { label: 'Base Laps', value: String(stats.baseLaps), color: theme.base },
+      { label: 'Bonus Laps', value: String(stats.bonusLaps), color: theme.bonus },
+      { label: 'Broken Laps', value: String(stats.brokenLaps), color: theme.broken },
+      { label: 'Changeover', value: String(stats.changeoverLaps), color: theme.changeover },
+      { label: 'Safety Car', value: String(stats.safetyLaps), color: theme.safety },
+      { label: 'Avg Delta', value: `${stats.averageDelta >= 0 ? '+' : ''}${stats.averageDelta.toFixed(3)}s`, color: deltaColor(stats.averageDelta) },
+      { label: '3-Lap Avg', value: stats.threelapAvg !== null ? `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(3)}s` : 'N/A', color: stats.threelapAvg !== null ? deltaColor(stats.threelapAvg) : undefined },
+      { label: 'Avg Lap Time', value: formatTime(stats.averageLapTime) },
+      { label: 'Penalty Laps', value: String(driver.penaltyLaps) },
+    ];
     return (
-      <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
-        <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>{driver.name}</Text>
+      <Card padding="lg" style={styles.panel}>
+        <View style={styles.panelHeader}>
+          <Text style={[styles.driverName, { color: theme.text }]} numberOfLines={1}>{driver.name}</Text>
           <View style={styles.buttonGroup}>
             {!isWeb && (
-              <TouchableOpacity
+              <Button
+                title="Charts"
+                icon="bar-chart-outline"
+                size="sm"
+                variant="secondary"
                 onPress={() => {
                   setSelectedDriverForCharts(driver.id);
                   setShowChartsModal(true);
                 }}
-                style={[styles.chartButton, { backgroundColor: brandColors.chartPurple }]}
-              >
-                <Ionicons name="bar-chart-outline" size={18} color="#fff" />
-                <Text style={styles.buttonText}>Charts</Text>
-              </TouchableOpacity>
+              />
             )}
-            <TouchableOpacity
-              onPress={() => handleExportPDF(driver.id)}
+            <Button
+              title="PDF"
+              icon="document-text-outline"
+              size="sm"
+              variant="primary"
               disabled={isGeneratingPDF}
-              style={[styles.driverExportButton, { backgroundColor: theme.primary }]}
-            >
-              <Ionicons name="share-outline" size={18} color="#fff" />
-              <Text style={styles.driverExportText}>PDF</Text>
-            </TouchableOpacity>
+              onPress={() => handleExportPDF(driver.id)}
+            />
           </View>
         </View>
 
         <View style={styles.statsGrid}>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Achieved Laps</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>{stats.achievedLaps.toFixed(1)}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Goal Laps</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>{stats.goalLaps.toFixed(1)}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Net Score</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>{stats.netScore > 0 ? '+' : ''}{stats.netScore}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Base Laps</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>{stats.baseLaps}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.bonus }]}>Bonus Laps</Text>
-            <Text style={[styles.gridValue, { color: theme.bonus }]}>{stats.bonusLaps}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.broken }]}>Broken Laps</Text>
-            <Text style={[styles.gridValue, { color: theme.broken }]}>{stats.brokenLaps}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Changeover</Text>
-            <Text style={[styles.gridValue, { color: theme.changeover }]}>{stats.changeoverLaps}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Safety Car</Text>
-            <Text style={[styles.gridValue, { color: theme.safety }]}>{stats.safetyLaps}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Avg Delta</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>{stats.averageDelta >= 0 ? '+' : ''}{stats.averageDelta.toFixed(3)}s</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>3-Lap Avg</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>
-              {stats.threelapAvg !== null ? `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(3)}s` : 'N/A'}
-            </Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Avg Lap Time</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>{formatTime(stats.averageLapTime)}</Text>
-          </View>
-          <View style={[styles.gridItem, { backgroundColor: theme.surface }]}>
-            <Text style={[styles.gridLabel, { color: theme.textSecondary }]}>Penalty Laps</Text>
-            <Text style={[styles.gridValue, { color: theme.text }]}>{driver.penaltyLaps}</Text>
-          </View>
+          {grid.map((item) => (
+            <View key={item.label} style={styles.gridItem}>
+              <StatTile size="md" label={item.label} value={item.value} valueColor={item.color} />
+            </View>
+          ))}
         </View>
-      </View>
+
+        {/* Charts inline (web shows them in-panel; native uses the Charts sheet) */}
+        {isWeb && (
+          <View style={styles.chartsWrap}>
+            <LapTimesChart driver={driver} theme={theme} chartWidth={chartAreaWidth} />
+            <DeltaChart driver={driver} theme={theme} chartWidth={chartAreaWidth} />
+          </View>
+        )}
+      </Card>
     );
   };
 
-  // --- WEB LAYOUT ---
-  if (isWeb) {
-    // Calculate chart width: main area minus sidebar, padding, and chart container padding
-    // Navigator sidebar is 200px, stats sidebar is SIDEBAR_WIDTH
-    const chartAreaWidth = Math.max(windowWidth - 200 - SIDEBAR_WIDTH - 80, 300);
+  // Which drivers to show in the detail/charts area.
+  const detailDriverIndexes = webSelectedDriver !== null
+    ? displayData.drivers
+        .map((d, i) => ({ d, i }))
+        .filter(({ d }) => d.id === webSelectedDriver)
+        .map(({ i }) => i)
+    : displayData.drivers.map((_, i) => i);
 
-    // Determine which drivers to show charts for
-    const chartsDrivers = webSelectedDriver !== null
-      ? displayData.drivers.filter(d => d.id === webSelectedDriver)
-      : displayData.drivers;
-
-    return (
-      <View style={[webStyles.splitRoot, { backgroundColor: theme.background }]}>
-        {/* Left panel - scrollable sidebar */}
-        <ScrollView
-          style={[webStyles.leftPanel, { borderRightColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)' }]}
-          contentContainerStyle={webStyles.leftPanelContent}
-        >
-          <SessionSelector />
-          <TeamInfoSection />
-          <TeamStatsSection />
-
-          {/* Driver selector list */}
-          <View style={[styles.section, { backgroundColor: theme.card }, shadows.card]}>
-            <Text style={[styles.sectionTitle, { color: theme.text, marginBottom: spacing.md }]}>Drivers</Text>
-
-            <TouchableOpacity
-              style={[
-                webStyles.driverTab,
-                { borderColor: theme.border },
-                webSelectedDriver === null && { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(30,64,175,0.08)', borderColor: theme.primary },
-              ]}
-              onPress={() => setWebSelectedDriver(null)}
-            >
-              <Ionicons name="people" size={18} color={webSelectedDriver === null ? (theme.primary as string) : (theme.textSecondary as string)} />
-              <Text style={[webStyles.driverTabText, { color: webSelectedDriver === null ? theme.primary : theme.text }]}>
-                All Drivers
-              </Text>
-            </TouchableOpacity>
-
-            {displayData.drivers.map((driver) => (
-              <TouchableOpacity
-                key={driver.id}
-                style={[
-                  webStyles.driverTab,
-                  { borderColor: theme.border },
-                  webSelectedDriver === driver.id && { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(30,64,175,0.08)', borderColor: theme.primary },
-                ]}
-                onPress={() => setWebSelectedDriver(driver.id)}
-              >
-                <Ionicons name="person" size={18} color={webSelectedDriver === driver.id ? (theme.primary as string) : (theme.textSecondary as string)} />
-                <Text style={[webStyles.driverTabText, { color: webSelectedDriver === driver.id ? theme.primary : theme.text }]}>
-                  {driver.name}
-                </Text>
-                <Text style={[webStyles.driverLapCount, { color: theme.textSecondary }]}>
-                  {driver.laps.length} laps
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-
-        {/* Right panel - charts area */}
-        <ScrollView
-          style={webStyles.rightPanel}
-          contentContainerStyle={webStyles.rightPanelContent}
-        >
-          {chartsDrivers.map((driver) => {
-            const stats = calculateDriverStats(driver, lapTypeValues, displayData.drivers, displayData.sessionDuration);
-            return (
-              <View key={driver.id} style={[webStyles.chartSection, { backgroundColor: theme.card, borderColor: isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)' }]}>
-                <View style={webStyles.chartSectionHeader}>
-                  <View>
-                    <Text style={[webStyles.chartDriverName, { color: theme.text }]}>{driver.name}</Text>
-                    <Text style={[webStyles.chartDriverMeta, { color: theme.textSecondary }]}>
-                      {stats.achievedLaps.toFixed(1)} achieved / {stats.goalLaps.toFixed(1)} goal  |  Net: {stats.netScore > 0 ? '+' : ''}{stats.netScore}  |  Avg Delta: {stats.averageDelta >= 0 ? '+' : ''}{stats.averageDelta.toFixed(3)}s
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => handleExportPDF(driver.id)}
-                    disabled={isGeneratingPDF}
-                    style={[styles.driverExportButton, { backgroundColor: theme.primary }]}
-                  >
-                    <Ionicons name="share-outline" size={16} color="#fff" />
-                    <Text style={styles.driverExportText}>PDF</Text>
-                  </TouchableOpacity>
-                </View>
-
-                <LapTimesChart driver={driver} theme={theme} chartWidth={chartAreaWidth} />
-                <DeltaChart driver={driver} theme={theme} chartWidth={chartAreaWidth} />
-              </View>
-            );
-          })}
-
-          {chartsDrivers.length === 0 && (
-            <View style={webStyles.emptyCharts}>
-              <Ionicons name="bar-chart-outline" size={48} color={theme.textSecondary} />
-              <Text style={[webStyles.emptyChartsText, { color: theme.textSecondary }]}>No drivers to display</Text>
-            </View>
-          )}
-        </ScrollView>
-
-        {/* Session Picker Modal (shared) */}
-        <Modal
-          visible={showSessionPicker}
-          transparent
-          animationType="fade"
-          onRequestClose={() => setShowSessionPicker(false)}
-        >
-          <Pressable style={styles.modalOverlay} onPress={() => setShowSessionPicker(false)}>
-            <Pressable style={[styles.modalContent, { backgroundColor: theme.card }, shadows.modal]} onPress={(e) => e.stopPropagation()}>
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Select Session</Text>
-              <ScrollView style={styles.sessionList}>
-                <TouchableOpacity
-                  style={[styles.sessionItem, { borderBottomColor: theme.border }, !selectedSession && { backgroundColor: theme.surface }]}
-                  onPress={() => { setSelectedSession(null); setShowSessionPicker(false); }}
-                >
-                  <View>
-                    <Text style={[styles.sessionItemTitle, { color: theme.text }]}>Current Session</Text>
-                    <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>
-                      {team.raceName || 'Untitled'} - Session {team.sessionNumber || 'N/A'}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-                {isLoadingSessions && (
-                  <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-                    <ActivityIndicator size="small" />
-                  </View>
-                )}
-                {allSessions.map((session) => (
-                  <TouchableOpacity
-                    key={session.id}
-                    style={[styles.sessionItem, { borderBottomColor: theme.border }, selectedSession?.id === session.id && { backgroundColor: theme.surface }]}
-                    onPress={() => { setSelectedSession(session); setShowSessionPicker(false); }}
-                  >
-                    <View>
-                      <Text style={[styles.sessionItemTitle, { color: theme.text }]}>{session.raceName} - Session {session.sessionNumber}</Text>
-                      <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>{formatSessionDate(session.timestamp)}</Text>
-                    </View>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
-            </Pressable>
-          </Pressable>
-        </Modal>
-      </View>
-    );
-  }
-
-  // --- NATIVE LAYOUT (unchanged) ---
+  // --- Single responsive column layout (web + native) ---
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
-          <View style={styles.content}>
-            <SessionSelector />
-            <TeamInfoSection />
-            <TeamStatsSection />
-
-            {/* Driver Stats */}
-            {displayData.drivers.map((driver, index) => (
-              <DriverStatsGrid key={driver.id} driverIndex={index} />
-            ))}
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.content}
+          keyboardShouldPersistTaps="handled"
+        >
+          {SessionSelector()}
+          <View style={threeColTop ? styles.topRow : undefined}>
+            <View style={threeColTop ? styles.flex1 : undefined}>{TeamInfoSection(threeColTop ? styles.fillCard : undefined)}</View>
+            <View style={threeColTop ? styles.flex1 : undefined}>{TeamStatsSection(threeColTop, threeColTop ? styles.fillCard : undefined)}</View>
+            <View style={threeColTop ? styles.flex1 : undefined}>{DriverSelector(threeColTop ? styles.fillCard : undefined)}</View>
           </View>
 
-          {/* Charts Modal */}
-          <Modal
-            visible={showChartsModal}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowChartsModal(false)}
-          >
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setShowChartsModal(false)}
+          {detailDriverIndexes.length > 0 ? (
+            <View
+              style={[styles.driverGrid, { columnGap: detailGap }]}
+              onLayout={(e) => setGridW(e.nativeEvent.layout.width)}
             >
-              <Pressable
-                style={[styles.chartsModalContent, { backgroundColor: theme.card }, shadows.modal]}
-                onPress={(e) => e.stopPropagation()}
-              >
-                <View style={styles.chartsModalHeader}>
-                  <Text style={[styles.modalTitle, { color: theme.text }]}>
-                    {selectedDriverForCharts === null
-                      ? 'Team Performance Charts'
-                      : displayData.drivers.find(d => d.id === selectedDriverForCharts)?.name || 'Driver Charts'}
-                  </Text>
-                  <TouchableOpacity onPress={() => setShowChartsModal(false)}>
-                    <Ionicons name="close" size={24} color={theme.textSecondary} />
-                  </TouchableOpacity>
+              {detailDriverIndexes.map((index) => (
+                <View
+                  key={displayData.drivers[index].id}
+                  style={isWeb && detailColWidth > 0 ? { width: detailColWidth } : styles.fullWidth}
+                >
+                  {DriverDetail({ driverIndex: index })}
                 </View>
-                <ScrollView style={styles.chartsScrollView}>
-                  {selectedDriverForCharts === null ? (
-                    displayData.drivers.map((driver) => (
-                      <View key={driver.id} style={styles.driverChartSection}>
-                        <Text style={[styles.driverChartTitle, { color: theme.text }]}>{driver.name}</Text>
-                        <LapTimesChart driver={driver} theme={theme} />
-                        <DeltaChart driver={driver} theme={theme} />
-                      </View>
-                    ))
-                  ) : (
-                    (() => {
-                      const driver = displayData.drivers.find(d => d.id === selectedDriverForCharts);
-                      return driver ? (
-                        <View>
-                          <LapTimesChart driver={driver} theme={theme} />
-                          <DeltaChart driver={driver} theme={theme} />
-                        </View>
-                      ) : null;
-                    })()
-                  )}
-                </ScrollView>
-              </Pressable>
-            </Pressable>
-          </Modal>
-
-          {/* Session Picker Modal */}
-          <Modal
-            visible={showSessionPicker}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setShowSessionPicker(false)}
-          >
-            <Pressable style={styles.modalOverlay} onPress={() => setShowSessionPicker(false)}>
-              <Pressable style={[styles.modalContent, { backgroundColor: theme.card }, shadows.modal]} onPress={(e) => e.stopPropagation()}>
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Select Session</Text>
-                <ScrollView style={styles.sessionList}>
-                  <TouchableOpacity
-                    style={[styles.sessionItem, { borderBottomColor: theme.border }, !selectedSession && { backgroundColor: theme.surface }]}
-                    onPress={() => { setSelectedSession(null); setShowSessionPicker(false); }}
-                  >
-                    <View>
-                      <Text style={[styles.sessionItemTitle, { color: theme.text }]}>Current Session</Text>
-                      <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>
-                        {team.raceName || 'Untitled'} - Session {team.sessionNumber || 'N/A'}
-                      </Text>
-                    </View>
-                  </TouchableOpacity>
-                  {isLoadingSessions && (
-                  <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-                    <ActivityIndicator size="small" />
-                  </View>
-                )}
-                {allSessions.map((session) => (
-                    <TouchableOpacity
-                      key={session.id}
-                      style={[styles.sessionItem, { borderBottomColor: theme.border }, selectedSession?.id === session.id && { backgroundColor: theme.surface }]}
-                      onPress={() => { setSelectedSession(session); setShowSessionPicker(false); }}
-                    >
-                      <View>
-                        <Text style={[styles.sessionItemTitle, { color: theme.text }]}>{session.raceName} - Session {session.sessionNumber}</Text>
-                        <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>{formatSessionDate(session.timestamp)}</Text>
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              </Pressable>
-            </Pressable>
-          </Modal>
+              ))}
+            </View>
+          ) : (
+            <Surface level="base" padding="xl" style={styles.emptyCard}>
+              <Ionicons name="bar-chart-outline" size={28} color={theme.textMuted as string} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No drivers to display</Text>
+            </Surface>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* Charts Sheet (native) */}
+      <Sheet
+        visible={showChartsModal}
+        onClose={() => setShowChartsModal(false)}
+        title={selectedDriverForCharts === null
+          ? 'Team Performance Charts'
+          : displayData.drivers.find(d => d.id === selectedDriverForCharts)?.name || 'Driver Charts'}
+        maxWidth={760}
+      >
+        {selectedDriverForCharts === null ? (
+          displayData.drivers.map((driver, idx) => (
+            <View key={driver.id} style={[styles.driverChartSection, idx > 0 && { borderTopColor: theme.borderFaint, borderTopWidth: StyleSheet.hairlineWidth, paddingTop: spacing.lg }]}>
+              <Label size={13} style={styles.panelTitle}>{driver.name}</Label>
+              <LapTimesChart driver={driver} theme={theme} />
+              <DeltaChart driver={driver} theme={theme} />
+            </View>
+          ))
+        ) : (
+          (() => {
+            const driver = displayData.drivers.find(d => d.id === selectedDriverForCharts);
+            return driver ? (
+              <View>
+                <LapTimesChart driver={driver} theme={theme} />
+                <DeltaChart driver={driver} theme={theme} />
+              </View>
+            ) : null;
+          })()
+        )}
+      </Sheet>
+
+      {/* Session Picker Sheet */}
+      <Sheet
+        visible={showSessionPicker}
+        onClose={() => setShowSessionPicker(false)}
+        title="Select Session"
+      >
+        <TouchableOpacity
+          style={[styles.sessionItem, { borderBottomColor: theme.borderFaint }, !selectedSession && { backgroundColor: theme.surface }]}
+          onPress={() => { setSelectedSession(null); setShowSessionPicker(false); }}
+        >
+          <Text style={[styles.sessionItemTitle, { color: theme.text }]}>Current Session</Text>
+          <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>
+            {team.raceName || 'Untitled'} - Session {team.sessionNumber || 'N/A'}
+          </Text>
+        </TouchableOpacity>
+        {isLoadingSessions && (
+          <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={theme.primary as string} />
+          </View>
+        )}
+        {allSessions.map((session) => (
+          <TouchableOpacity
+            key={session.id}
+            style={[styles.sessionItem, { borderBottomColor: theme.borderFaint }, selectedSession?.id === session.id && { backgroundColor: theme.surface }]}
+            onPress={() => { setSelectedSession(session); setShowSessionPicker(false); }}
+          >
+            <Text style={[styles.sessionItemTitle, { color: theme.text }]}>{session.raceName} - Session {session.sessionNumber}</Text>
+            <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>{formatSessionDate(session.timestamp)}</Text>
+          </TouchableOpacity>
+        ))}
+      </Sheet>
     </SafeAreaView>
   );
 }
 
-// --- Web-specific styles ---
-const webStyles = StyleSheet.create({
-  splitRoot: {
-    flex: 1,
-    flexDirection: 'row',
-  },
-  leftPanel: {
-    width: SIDEBAR_WIDTH,
-    borderRightWidth: 1,
-  },
-  leftPanelContent: {
-    padding: spacing.lg,
-    paddingBottom: 40,
-  },
-  rightPanel: {
-    flex: 1,
-  },
-  rightPanelContent: {
-    padding: spacing.xl,
-    paddingBottom: 40,
-  },
-  teamStatsRow: {
-    flexDirection: 'row',
-    gap: spacing.lg,
-  },
-  teamStatItem: {
-    flex: 1,
-    borderBottomWidth: 0,
-  },
-  driverTab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    marginBottom: spacing.sm,
-  },
-  driverTabText: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.medium,
-    flex: 1,
-  },
-  driverLapCount: {
-    fontSize: typography.caption,
-  },
-  chartSection: {
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    padding: spacing.xl,
-    marginBottom: spacing.xl,
-  },
-  chartSectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-  },
-  chartDriverName: {
-    fontSize: 20,
-    fontWeight: fontWeights.semibold,
-    marginBottom: 4,
-  },
-  chartDriverMeta: {
-    fontSize: typography.body,
-  },
-  emptyCharts: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 120,
-    gap: spacing.md,
-  },
-  emptyChartsText: {
-    fontSize: typography.bodyLg,
-  },
-});
-
-// --- Shared styles ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -743,144 +506,131 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: spacing.lg,
-    paddingBottom: 90,
+    paddingBottom: 110,
+    width: '100%',
+  },
+
+  // Web: Team Info · Team Stats · Driver Selector across the top. `stretch` makes
+  // the columns equal height; `fillCard` makes each card fill its column.
+  topRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+    alignItems: 'stretch',
+    marginBottom: spacing.lg,
+  },
+  flex1: { flex: 1 },
+  fillCard: { flex: 1, marginBottom: 0 },
+  // Driver detail cards tile into columns (width set inline from detailColWidth).
+  driverGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
+  },
+  fullWidth: { width: '100%' },
+
+  panel: {
+    marginBottom: spacing.lg,
+  },
+  panelTitle: {
+    marginBottom: spacing.md,
+  },
+  panelHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: spacing.lg,
+    gap: spacing.md,
   },
   buttonGroup: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.sm,
   },
-  chartButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    gap: spacing.xs + 2,
-  },
-  buttonText: {
-    color: '#fff',
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  teamExportButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    gap: spacing.xs + 2,
-  },
-  teamExportText: {
-    color: '#fff',
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  driverExportButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.sm,
-    gap: spacing.xs,
-  },
-  driverExportText: {
-    color: '#fff',
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  section: {
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    marginBottom: spacing.lg,
-  },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  sectionTitle: {
-    fontSize: typography.heading,
-    fontWeight: fontWeights.semibold,
-  },
-  editButton: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-  },
   editActions: {
     flexDirection: 'row',
-    gap: spacing.lg,
+    gap: spacing.sm,
   },
-  actionButton: {
-    paddingHorizontal: spacing.xs,
+  editFields: {
+    gap: spacing.md,
   },
-  cancelButton: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-  },
-  saveButton: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-  },
+
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: spacing.sm,
-  },
-  label: {
-    fontSize: typography.body,
-  },
-  value: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.medium,
-  },
-  input: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.medium,
-    borderWidth: 1,
-    borderRadius: radius.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm + 2,
-    minWidth: 160,
-  },
-  statCard: {
     paddingVertical: spacing.md,
-    borderBottomWidth: 1,
   },
-  statLabel: {
+  infoValue: {
+    fontSize: typography.bodyLg,
+    fontWeight: fontWeights.semibold,
+    flexShrink: 1,
+    textAlign: 'right',
+  },
+  infoValueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+  },
+
+  teamStatsRow: {
+    flexDirection: 'row',
+    gap: spacing.lg,
+    flexWrap: 'wrap',
+  },
+  teamStatsCol: {
+    flexDirection: 'column',
+    flexWrap: 'nowrap',
+    gap: spacing.md,
+  },
+  teamStatItem: {
+    flexGrow: 1,
+    flexBasis: 120,
+  },
+
+  driverName: {
+    fontSize: typography.heading,
+    fontWeight: fontWeights.heavy,
+    letterSpacing: 0.2,
+    flexShrink: 1,
+  },
+
+  driverList: {
+    overflow: 'hidden',
+  },
+  driverRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  driverRowName: {
+    flex: 1,
     fontSize: typography.body,
-    marginBottom: spacing.xs,
-  },
-  statValue: {
-    fontSize: 28,
     fontWeight: fontWeights.semibold,
   },
+
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: spacing.md,
   },
   gridItem: {
-    width: '47%',
-    padding: spacing.md,
-    borderRadius: radius.md,
+    flexGrow: 1,
+    flexBasis: '44%',
+    minWidth: 130,
   },
-  gridLabel: {
-    fontSize: typography.caption,
-    marginBottom: spacing.xs,
+
+  chartsWrap: {
+    marginTop: spacing.lg,
   },
-  gridValue: {
-    fontSize: 28,
-    fontWeight: fontWeights.semibold,
-  },
+
   sessionSelector: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: spacing.md,
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     borderWidth: 1,
   },
   sessionSelectorContent: {
@@ -900,60 +650,14 @@ const styles = StyleSheet.create({
     fontSize: typography.body,
     fontWeight: fontWeights.semibold,
   },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '85%',
-    maxWidth: 500,
-    maxHeight: '70%',
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-  },
-  chartsModalContent: {
-    width: '95%',
-    maxHeight: '85%',
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-  },
-  chartsModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    paddingBottom: spacing.md,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128, 128, 128, 0.2)',
-  },
-  chartsScrollView: {
-    maxHeight: '100%',
-  },
+
   driverChartSection: {
-    marginBottom: spacing.xl,
-    paddingBottom: spacing.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: 'rgba(128, 128, 128, 0.1)',
-  },
-  driverChartTitle: {
-    fontSize: typography.title,
-    fontWeight: fontWeights.semibold,
-    marginBottom: spacing.md,
-  },
-  modalTitle: {
-    fontSize: typography.heading,
-    fontWeight: fontWeights.semibold,
     marginBottom: spacing.lg,
-    textAlign: 'center',
   },
-  sessionList: {
-    maxHeight: 400,
-  },
+
   sessionItem: {
     padding: spacing.lg,
-    borderBottomWidth: 1,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderRadius: radius.sm,
   },
   sessionItemTitle: {
@@ -962,6 +666,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xs,
   },
   sessionItemSubtitle: {
+    fontSize: typography.body,
+  },
+
+  emptyCard: {
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginBottom: spacing.lg,
+  },
+  emptyText: {
     fontSize: typography.body,
   },
 });

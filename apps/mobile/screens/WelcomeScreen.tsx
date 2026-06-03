@@ -1,12 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Linking } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows, brandColors } from '../constants/theme';
-
-const { width } = Dimensions.get('window');
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, brandColors } from '../constants/theme';
+import { Mono, Label, Button } from '../components/ui';
 
 const PAGES = [
   {
@@ -109,106 +108,116 @@ export default function WelcomeScreen() {
   };
 
   const page = PAGES[currentPage];
+  const isLast = currentPage === PAGES.length - 1;
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['left', 'right', 'bottom']}>
-      {/* Header */}
-      <View style={styles.header}>
-        {currentPage > 0 ? (
-          <TouchableOpacity onPress={handleBack} style={styles.backButton}>
-            <Ionicons name="arrow-back" size={24} color={theme.primary} />
-            <Text style={[styles.backButtonText, { color: theme.primary }]}>Back</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.backButtonPlaceholder} />
-        )}
-        <Text style={[styles.pageIndicator, { color: theme.textSecondary }]}>
-          {currentPage + 1} / {PAGES.length}
-        </Text>
-        {currentPage < PAGES.length - 1 ? (
-          <TouchableOpacity onPress={handleSkip}>
-            <Text style={[styles.skipButton, { color: theme.primary }]}>Skip</Text>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.skipButtonPlaceholder} />
-        )}
-      </View>
-
-      {/* Content */}
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.iconContainer}>
-          <View style={[styles.iconCircle, { backgroundColor: `${String(theme.primary)}20` }]}>
-            <Ionicons name={page.icon} size={80} color={theme.primary as string} />
+      <View style={styles.inner}>
+        {/* Header */}
+        <View style={styles.header}>
+          {currentPage > 0 ? (
+            <Button title="Back" icon="arrow-back" variant="ghost" size="sm" onPress={handleBack} />
+          ) : (
+            <View style={styles.backButtonPlaceholder} />
+          )}
+          <View style={styles.headerCenter}>
+            <Mono size={typography.body} weight="bold" color={theme.text}>{currentPage + 1}</Mono>
+            <Mono size={typography.body} weight="bold" color={theme.textMuted}>{` / ${PAGES.length}`}</Mono>
           </View>
+          {!isLast ? (
+            <Button title="Skip" variant="ghost" size="sm" onPress={handleSkip} />
+          ) : (
+            <View style={styles.skipButtonPlaceholder} />
+          )}
         </View>
 
-        <Text style={[styles.title, { color: theme.text }]}>{page.title}</Text>
-        <Text style={[styles.description, { color: theme.textSecondary }]}>
-          {page.description}
-        </Text>
-
-        <View style={[styles.featuresContainer, { backgroundColor: theme.surfaceElevated }]}>
-          {page.features.map((feature, index) => (
-            <View key={index} style={styles.featureRow}>
-              <Ionicons name="checkmark-circle" size={24} color={theme.primary} />
-              <Text style={[styles.featureText, { color: theme.text }]}>{feature}</Text>
+        {/* Content */}
+        <ScrollView style={styles.content} contentContainerStyle={styles.contentInner} showsVerticalScrollIndicator={false}>
+          <View style={styles.iconContainer}>
+            <View style={[styles.iconCircle, { backgroundColor: theme.primaryMuted, borderColor: theme.primary }]}>
+              <Ionicons name={page.icon} size={72} color={theme.primary as string} />
             </View>
-          ))}
-        </View>
+          </View>
 
-        {/* Buy Me A Coffee Button - only on last page */}
-        {currentPage === PAGES.length - 1 && (
-          <TouchableOpacity
-            style={styles.coffeeButton}
-            onPress={handleBuyMeACoffee}
-          >
-            <Ionicons name="cafe" size={24} color="#000" />
-            <Text style={styles.coffeeButtonText}>Buy Me A Coffee</Text>
-          </TouchableOpacity>
-        )}
-      </ScrollView>
-
-      {/* Footer */}
-      <View style={styles.footer}>
-        {/* Page Indicators */}
-        <View style={styles.dotsContainer}>
-          {PAGES.map((_, index) => (
-            <View
-              key={index}
-              style={[
-                styles.dot,
-                {
-                  backgroundColor:
-                    index === currentPage ? theme.primary : theme.border,
-                  width: index === currentPage ? 24 : 8,
-                },
-              ]}
-            />
-          ))}
-        </View>
-
-        {/* Next/Get Started Button */}
-        <TouchableOpacity
-          style={[styles.nextButton, { backgroundColor: theme.primary }]}
-          onPress={handleNext}
-        >
-          <Text style={styles.nextButtonText}>
-            {currentPage === PAGES.length - 1 ? 'Get Started' : 'Next'}
+          <Label size={typography.label} color={theme.accent} style={styles.kicker}>
+            {`STEP ${currentPage + 1} OF ${PAGES.length}`}
+          </Label>
+          <Text style={[styles.title, { color: theme.text }]}>{page.title}</Text>
+          <Text style={[styles.description, { color: theme.textSecondary }]}>
+            {page.description}
           </Text>
-          <Ionicons
-            name={currentPage === PAGES.length - 1 ? 'checkmark' : 'arrow-forward'}
-            size={20}
-            color="#fff"
+
+          <View style={[styles.featuresContainer, { backgroundColor: theme.surfaceElevated, borderColor: theme.border }]}>
+            {page.features.map((feature, index) => (
+              <View key={index} style={styles.featureRow}>
+                <Ionicons name="checkmark-circle" size={22} color={theme.primary as string} />
+                <Text style={[styles.featureText, { color: theme.text }]}>{feature}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Buy Me A Coffee Button - only on last page */}
+          {isLast && (
+            <Button
+              title="Buy Me A Coffee"
+              icon="cafe"
+              onPress={handleBuyMeACoffee}
+              fullWidth
+              size="lg"
+              style={[styles.coffeeButton, { backgroundColor: brandColors.coffee }]}
+              textStyle={styles.coffeeButtonText}
+            />
+          )}
+        </ScrollView>
+
+        {/* Footer */}
+        <View style={styles.footer}>
+          {/* Page Indicators */}
+          <View style={styles.dotsContainer}>
+            {PAGES.map((_, index) => (
+              <View
+                key={index}
+                style={[
+                  styles.dot,
+                  {
+                    backgroundColor:
+                      index === currentPage ? theme.primary : theme.border,
+                    width: index === currentPage ? 24 : 8,
+                  },
+                ]}
+              />
+            ))}
+          </View>
+
+          {/* Next/Get Started Button */}
+          <Button
+            title={isLast ? 'Get Started' : 'Next'}
+            icon={isLast ? 'checkmark' : 'arrow-forward'}
+            iconPosition="right"
+            variant="primary"
+            size="lg"
+            fullWidth
+            glow
+            onPress={handleNext}
           />
-        </TouchableOpacity>
+        </View>
       </View>
     </SafeAreaView>
   );
 }
 
+// Coffee button keeps the brand-yellow swatch, so its label uses a fixed dark ink (allowed literal).
+const COFFEE_INK = '#1a1300';
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  inner: {
+    flex: 1,
+    width: '100%',
+    maxWidth: 520,
+    alignSelf: 'center',
   },
   header: {
     flexDirection: 'row',
@@ -217,22 +226,9 @@ const styles = StyleSheet.create({
     padding: spacing.xl,
     paddingTop: 60,
   },
-  pageIndicator: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  skipButton: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-  },
-  backButton: {
+  headerCenter: {
     flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  backButtonText: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
+    alignItems: 'baseline',
   },
   backButtonPlaceholder: {
     width: 70,
@@ -244,23 +240,32 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: spacing.xl,
   },
+  contentInner: {
+    paddingBottom: spacing.xl,
+  },
   iconContainer: {
     alignItems: 'center',
     marginVertical: spacing.xxl,
   },
   iconCircle: {
-    width: 160,
-    height: 160,
+    width: 144,
+    height: 144,
     borderRadius: radius.full,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
   },
+  kicker: {
+    textAlign: 'center',
+    marginBottom: spacing.sm,
+  },
   title: {
     fontSize: typography.heading + 8,
-    fontWeight: fontWeights.bold,
+    fontWeight: fontWeights.heavy,
     textAlign: 'center',
     marginBottom: spacing.lg,
-    paddingHorizontal: spacing.xl,
+    paddingHorizontal: spacing.lg,
+    letterSpacing: 0.2,
   },
   description: {
     fontSize: typography.bodyLg,
@@ -271,9 +276,9 @@ const styles = StyleSheet.create({
   },
   featuresContainer: {
     gap: spacing.lg,
-    paddingBottom: spacing.xxl,
     padding: spacing.lg,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
+    borderWidth: 1,
   },
   featureRow: {
     flexDirection: 'row',
@@ -296,37 +301,15 @@ const styles = StyleSheet.create({
     marginBottom: spacing.xl,
   },
   dot: {
-    height: 10,
+    height: 8,
     borderRadius: radius.full,
   },
-  nextButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-    borderRadius: radius.lg,
-    gap: spacing.sm,
-  },
-  nextButtonText: {
-    color: '#fff',
-    fontSize: typography.title,
-    fontWeight: fontWeights.semibold,
-  },
   coffeeButton: {
-    backgroundColor: brandColors.coffee,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    marginBottom: spacing.xl,
-    ...shadows.card,
+    marginTop: spacing.xl,
+    marginBottom: spacing.sm,
   },
   coffeeButtonText: {
-    color: '#000',
-    fontSize: typography.title,
+    color: COFFEE_INK,
     fontWeight: fontWeights.bold,
   },
 });

@@ -1,23 +1,31 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import { calculateDriverStats, formatTime, type Driver as CoreDriver } from '@regularity/core';
 import { subscribeLive, normalizeLap, type LiveSnapshot } from '../../lib/liveClient';
+import { fonts } from '../../constants/theme';
+import { LiveDot } from '../../components/ui';
 
+// Public broadcast view — intentionally always-dark "Pit Wall", independent of the
+// viewer's app theme. Palette mirrors the dark theme tokens in constants/theme.ts.
 const C = {
-  bg: '#0a0e16',
+  bg: '#070a11',
   panel: '#121826',
   panelHi: '#18202f',
   border: 'rgba(255,255,255,0.08)',
+  borderFaint: 'rgba(255,255,255,0.05)',
   text: '#e8eef7',
   dim: '#8a97ab',
+  muted: '#5d6a7e',
   green: '#22c55e',
   red: '#ef4444',
   blue: '#3b82f6',
   amber: '#f59e0b',
+  accent: '#22d3ee',
   live: '#22d36b',
 };
-const mono = Platform.select({ ios: 'Menlo', android: 'monospace', default: 'ui-monospace, SFMono-Regular, Menlo, monospace' });
+const monoBold = fonts.monoBold;
+const monoMed = fonts.monoMedium;
 
 function deltaColor(delta: number): string {
   if (delta < 0) return C.red;
@@ -124,11 +132,11 @@ export default function LiveView() {
     <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={styles.container}>
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{snap.raceName || 'Regularity Session'}</Text>
-          <Text style={styles.dim}>{snap.sessionNumber ? `Session ${snap.sessionNumber}` : 'Live timing'}</Text>
+          <Text style={styles.kicker}>{snap.sessionNumber ? `SESSION ${snap.sessionNumber}` : 'LIVE TIMING'}</Text>
+          <Text style={styles.title} numberOfLines={1}>{snap.raceName || 'Regularity Session'}</Text>
         </View>
-        <View style={[styles.badge, { backgroundColor: isLive ? 'rgba(34,211,107,0.15)' : 'rgba(138,151,171,0.15)' }]}>
-          <View style={[styles.dot, { backgroundColor: isLive ? C.live : C.dim }]} />
+        <View style={[styles.badge, { backgroundColor: isLive ? 'rgba(34,211,107,0.14)' : 'rgba(138,151,171,0.14)', borderColor: isLive ? 'rgba(34,211,107,0.4)' : C.border }]}>
+          <LiveDot size={8} color={isLive ? C.live : C.dim} active={isLive} />
           <Text style={[styles.badgeText, { color: isLive ? C.live : C.dim }]}>{isLive ? 'LIVE' : 'ENDED'}</Text>
         </View>
       </View>
@@ -142,8 +150,8 @@ export default function LiveView() {
       {drivers.map(({ d, stats, last }) => (
         <View key={d.id} style={styles.driverCard}>
           <View style={styles.driverHeader}>
-            <Text style={styles.driverName}>{d.name}</Text>
-            <Text style={styles.lapCount}>{d.laps.length} laps</Text>
+            <Text style={styles.driverName} numberOfLines={1}>{d.name}</Text>
+            <Text style={styles.lapCount}>{d.laps.length} LAPS</Text>
           </View>
           <View style={styles.driverBody}>
             <View style={styles.lastLap}>
@@ -172,7 +180,7 @@ export default function LiveView() {
           <Text style={[styles.dim, { padding: 16 }]}>Waiting for laps…</Text>
         ) : (
           recent.map((l, i) => (
-            <View key={`${l.driver}-${l.number}-${i}`} style={styles.feedRow}>
+            <View key={`${l.driver}-${l.number}-${i}`} style={[styles.feedRow, i === recent.length - 1 && { borderBottomWidth: 0 }]}>
               <Text style={[styles.feedDriver]} numberOfLines={1}>{l.driver}</Text>
               <Text style={styles.feedTime}>{formatTime(l.time)}</Text>
               <Text style={[styles.feedDelta, { color: deltaColor(l.delta) }]}>
@@ -200,32 +208,32 @@ function Metric({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
   container: { padding: 16, maxWidth: 720, width: '100%', alignSelf: 'center' },
-  title: { color: C.text, fontSize: 22, fontWeight: '700' },
+  kicker: { color: C.accent, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 3 },
+  title: { color: C.text, fontSize: 24, fontWeight: '800', letterSpacing: 0.2 },
   dim: { color: C.dim, fontSize: 13 },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginTop: 8 },
-  badge: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999 },
-  dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
-  badgeText: { fontSize: 12, fontWeight: '700', letterSpacing: 1 },
-  factorCard: { backgroundColor: C.panel, borderRadius: 16, padding: 20, alignItems: 'center', borderWidth: 1, borderColor: C.border, marginBottom: 16 },
-  factorLabel: { color: C.dim, fontSize: 12, letterSpacing: 2, fontWeight: '600' },
-  factorValue: { color: C.text, fontSize: 56, fontWeight: '800', fontFamily: mono, marginVertical: 4 },
-  driverCard: { backgroundColor: C.panel, borderRadius: 14, padding: 16, borderWidth: 1, borderColor: C.border, marginBottom: 12 },
-  driverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  driverName: { color: C.text, fontSize: 18, fontWeight: '700' },
-  lapCount: { color: C.dim, fontSize: 13 },
+  badge: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
+  badgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
+  factorCard: { backgroundColor: C.panel, borderRadius: 18, padding: 22, alignItems: 'center', borderWidth: 1, borderColor: C.border, marginBottom: 16 },
+  factorLabel: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700' },
+  factorValue: { color: C.text, fontSize: 60, fontFamily: fonts.monoExtraBold, marginVertical: 6, letterSpacing: -2 },
+  driverCard: { backgroundColor: C.panel, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border, marginBottom: 12 },
+  driverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  driverName: { color: C.text, fontSize: 18, fontWeight: '700', flex: 1 },
+  lapCount: { color: C.dim, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
   driverBody: { flexDirection: 'row', alignItems: 'center' },
   lastLap: { flex: 1 },
-  lapTime: { fontSize: 30, fontWeight: '700', fontFamily: mono },
-  lapDelta: { fontSize: 16, fontWeight: '700', fontFamily: mono, marginTop: 2 },
-  metrics: { flexDirection: 'row', gap: 14 },
+  lapTime: { fontSize: 32, fontFamily: monoBold, letterSpacing: -1 },
+  lapDelta: { fontSize: 16, fontFamily: monoBold, marginTop: 2 },
+  metrics: { flexDirection: 'row', gap: 16 },
   metric: { alignItems: 'flex-end', minWidth: 56 },
-  metricLabel: { color: C.dim, fontSize: 10, letterSpacing: 1, fontWeight: '600' },
-  metricValue: { color: C.text, fontSize: 16, fontWeight: '700', fontFamily: mono, marginTop: 2 },
-  sectionTitle: { color: C.dim, fontSize: 12, letterSpacing: 2, fontWeight: '700', marginTop: 8, marginBottom: 8, marginLeft: 4 },
-  feed: { backgroundColor: C.panel, borderRadius: 14, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-  feedRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.border },
+  metricLabel: { color: C.muted, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
+  metricValue: { color: C.text, fontSize: 16, fontFamily: monoBold, marginTop: 3 },
+  sectionTitle: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700', marginTop: 10, marginBottom: 8, marginLeft: 4 },
+  feed: { backgroundColor: C.panel, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
+  feedRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.borderFaint },
   feedDriver: { color: C.text, flex: 1, fontSize: 14, fontWeight: '600' },
-  feedTime: { color: C.text, fontFamily: mono, fontSize: 14, width: 90, textAlign: 'right' },
-  feedDelta: { fontFamily: mono, fontSize: 14, width: 64, textAlign: 'right' },
-  feedType: { fontSize: 10, fontWeight: '700', width: 80, textAlign: 'right' },
+  feedTime: { color: C.text, fontFamily: monoMed, fontSize: 14, width: 92, textAlign: 'right' },
+  feedDelta: { fontFamily: monoBold, fontSize: 14, width: 64, textAlign: 'right' },
+  feedType: { fontSize: 10, fontWeight: '800', width: 80, textAlign: 'right', letterSpacing: 0.5 },
 });

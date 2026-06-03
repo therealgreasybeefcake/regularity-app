@@ -13,8 +13,24 @@ export interface ThemeColors {
   card: ColorValue;
   text: ColorValue;
   textSecondary: ColorValue;
+  /** Lowest-emphasis text — captions, units, disabled. */
+  textMuted: ColorValue;
   border: ColorValue;
+  /** Even fainter hairline for dense tables/dividers. */
+  borderFaint: ColorValue;
   primary: ColorValue;
+  /** Translucent primary tint for chip/section backgrounds. */
+  primaryMuted: ColorValue;
+  /** Electric highlight (focus rings, live accents, mono emphasis). */
+  accent: ColorValue;
+  accentMuted: ColorValue;
+  // Semantic status colors — distinct from lap-type colors below.
+  success: ColorValue;
+  danger: ColorValue;
+  info: ColorValue;
+  /** Pulsing indicator for an active/live session. */
+  livePulse: ColorValue;
+  // Lap-type colors (scoring semantics).
   bonus: ColorValue;
   base: ColorValue;
   broken: ColorValue;

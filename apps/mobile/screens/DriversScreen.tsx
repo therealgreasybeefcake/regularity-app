@@ -16,15 +16,23 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, glowShadow } from '../constants/theme';
 import { Driver } from '../types';
 import { useAlert } from '../components/CustomAlert';
+import { Mono, Label, Card, Surface, Button, IconButton, StatTile, TextField, Sheet, Divider } from '../components/ui';
 
 export default function DriversScreen() {
   const { teams, setTeams, activeTeam, isDarkMode, audioSettings } = useApp();
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
+
+  // Fixed 2-column grid on web (1 column on phones / narrow windows). Width comes
+  // from the measured grid container so 2-up cards fill the row exactly (no wrap).
+  const isWeb = Platform.OS === 'web';
+  const [gridW, setGridW] = useState(0);
+  const cols = isWeb && gridW >= 700 ? 2 : 1;
+  const cardWidth = cols > 1 && gridW > 0 ? (gridW - spacing.lg * (cols - 1)) / cols : undefined;
 
   const formatTargetTime = (seconds: number) => {
     if (audioSettings.timeFormat === 'seconds') {
@@ -165,16 +173,30 @@ export default function DriversScreen() {
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={styles.content}>
+          {/* Header */}
+          <View style={styles.header}>
+            <Label muted>{team?.name || 'Regularity Timer'}</Label>
+            <View style={styles.headerTitleRow}>
+              <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+                Drivers
+              </Text>
+              <Mono size={typography.body} weight="bold" color={theme.textSecondary}>
+                {team?.drivers.length ?? 0}
+              </Mono>
+            </View>
+          </View>
+
+          <View style={styles.content} onLayout={(e) => setGridW(e.nativeEvent.layout.width - spacing.lg * 2)}>
             {team?.drivers.map((driver, index) => (
-              <View
-                key={driver.id}
-                style={[styles.driverCard, { backgroundColor: theme.card }, shadows.card]}
-              >
+              <Card key={driver.id} padding="lg" style={[styles.driverCard, cardWidth ? { width: cardWidth } : styles.fullWidthCard]}>
+                {/* Header row — name (editable) + delete */}
                 <View style={styles.driverHeader}>
                   {editingDriver === index ? (
                     <TextInput
-                      style={[styles.nameInput, { color: theme.text, borderColor: theme.border }]}
+                      style={[
+                        styles.nameInput,
+                        { color: theme.text as string, borderColor: theme.accent, backgroundColor: theme.surface },
+                      ]}
                       value={editValue}
                       onChangeText={setEditValue}
                       keyboardType="default"
@@ -191,26 +213,32 @@ export default function DriversScreen() {
                         setEditingDriver(index);
                         setEditValue(driver.name);
                       }}
-                      style={[styles.nameInput, { borderColor: theme.border, justifyContent: 'center' }]}
+                      style={styles.nameTouchable}
                     >
-                      <Text style={[styles.driverName, { color: theme.text }]}>{driver.name}</Text>
+                      <Text style={[styles.driverName, { color: theme.text }]} numberOfLines={1}>
+                        {driver.name}
+                      </Text>
+                      <Ionicons name="pencil" size={13} color={theme.textMuted as string} style={styles.nameEditIcon} />
                     </TouchableOpacity>
                   )}
 
-                  <TouchableOpacity
-                    style={styles.deleteButton}
+                  <IconButton
+                    icon="trash-outline"
+                    color={theme.danger}
                     onPress={() => removeDriver(index)}
-                  >
-                    <Ionicons name="trash-outline" size={24} color={theme.broken} />
-                  </TouchableOpacity>
+                    accessibilityLabel={`Delete ${driver.name}`}
+                  />
                 </View>
 
-                <View style={styles.driverInfo}>
+                <Divider faint />
+
+                {/* Field rows — label left, compact control right */}
+                <View style={styles.fieldGroup}>
                   <View style={styles.infoRow}>
-                    <Text style={[styles.label, { color: theme.textSecondary }]}>Target Time</Text>
+                    <Label>Target Time</Label>
                     {editingTargetTime === index ? (
-                      <TextInput
-                        style={[styles.input, { color: theme.text, borderColor: theme.border, minWidth: 120 }]}
+                      <TextField
+                        mono
                         value={editTargetValue}
                         onChangeText={setEditTargetValue}
                         onBlur={() => {
@@ -218,9 +246,10 @@ export default function DriversScreen() {
                           setEditingTargetTime(null);
                         }}
                         placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
-                        placeholderTextColor={theme.textSecondary}
                         autoFocus
                         keyboardType="number-pad"
+                        containerStyle={styles.fieldControl}
+                        style={styles.fieldInputText}
                       />
                     ) : (
                       <TouchableOpacity
@@ -228,57 +257,68 @@ export default function DriversScreen() {
                           setEditingTargetTime(index);
                           setEditTargetValue(getDisplayValue(driver.targetTime));
                         }}
-                        style={styles.targetTimeTouchable}
+                        style={[styles.valuePill, { backgroundColor: theme.surface, borderColor: theme.border }]}
                       >
-                        <Text style={[styles.targetTimeText, { color: theme.text }]}>
+                        <Mono size={typography.bodyLg} weight="bold" color={theme.text}>
                           {formatTargetTime(driver.targetTime)}
-                        </Text>
+                        </Mono>
                       </TouchableOpacity>
                     )}
                   </View>
 
                   {audioSettings.showPenaltyLaps && (
                     <View style={styles.infoRow}>
-                      <Text style={[styles.label, { color: theme.textSecondary }]}>Penalty Laps</Text>
-                      <TextInput
-                        style={[styles.input, { color: theme.text, borderColor: theme.border }]}
+                      <Label>Penalty Laps</Label>
+                      <TextField
+                        mono
                         value={driver.penaltyLaps.toString()}
                         onChangeText={(text) => updateDriverField(index, 'penaltyLaps', parseInt(text) || 0)}
                         keyboardType="number-pad"
+                        containerStyle={styles.fieldControlNarrow}
+                        style={styles.fieldInputText}
                       />
                     </View>
                   )}
-
-                  <View style={styles.statsRow}>
-                    <View style={[styles.stat, { backgroundColor: theme.surface }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Laps</Text>
-                      <Text style={[styles.statValue, { color: theme.text }]}>{driver.laps.length}</Text>
-                    </View>
-                    <View style={[styles.stat, { backgroundColor: theme.surface }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Bonus</Text>
-                      <Text style={[styles.statValue, { color: theme.bonus }]}>
-                        {driver.laps.filter(l => l.lapType === 'bonus').length}
-                      </Text>
-                    </View>
-                    <View style={[styles.stat, { backgroundColor: theme.surface }]}>
-                      <Text style={[styles.statLabel, { color: theme.textSecondary }]}>Broken</Text>
-                      <Text style={[styles.statValue, { color: theme.broken }]}>
-                        {driver.laps.filter(l => l.lapType === 'broken').length}
-                      </Text>
-                    </View>
-                  </View>
-
-                  {driver.laps.length > 0 && (
-                    <TouchableOpacity
-                      style={[styles.clearButton, { borderColor: theme.broken }]}
-                      onPress={() => clearDriverLaps(index)}
-                    >
-                      <Ionicons name="trash-outline" size={16} color={theme.broken} />
-                      <Text style={[styles.clearButtonText, { color: theme.broken }]}>Clear Laps</Text>
-                    </TouchableOpacity>
-                  )}
                 </View>
-              </View>
+
+                {/* Laps / Bonus / Broken mini-stats */}
+                <View style={styles.statsRow}>
+                  <Surface level="muted" padding="md" radius="md" style={styles.statTile}>
+                    <StatTile label="Laps" value={driver.laps.length} size="sm" align="center" />
+                  </Surface>
+                  <Surface level="muted" padding="md" radius="md" style={styles.statTile}>
+                    <StatTile
+                      label="Bonus"
+                      value={driver.laps.filter(l => l.lapType === 'bonus').length}
+                      valueColor={theme.bonus}
+                      size="sm"
+                      align="center"
+                    />
+                  </Surface>
+                  <Surface level="muted" padding="md" radius="md" style={styles.statTile}>
+                    <StatTile
+                      label="Broken"
+                      value={driver.laps.filter(l => l.lapType === 'broken').length}
+                      valueColor={theme.broken}
+                      size="sm"
+                      align="center"
+                    />
+                  </Surface>
+                </View>
+
+                {driver.laps.length > 0 && (
+                  <Button
+                    title="Clear Laps"
+                    icon="trash-outline"
+                    variant="outline"
+                    size="sm"
+                    onPress={() => clearDriverLaps(index)}
+                    fullWidth
+                    style={[styles.clearButton, { borderColor: theme.danger }]}
+                    textStyle={{ color: theme.danger }}
+                  />
+                )}
+              </Card>
             ))}
           </View>
         </ScrollView>
@@ -286,76 +326,45 @@ export default function DriversScreen() {
 
       {/* Floating Add Button */}
       <TouchableOpacity
-        style={[styles.addButton, { backgroundColor: theme.primary }, shadows.card]}
+        style={[styles.addButton, { backgroundColor: theme.primary }, glowShadow(String(theme.primary), 0.5, 16)]}
         onPress={openAddDriverModal}
+        accessibilityLabel="Add driver"
       >
         <Ionicons name="add" size={28} color="#fff" />
       </TouchableOpacity>
 
-      {/* Add Driver Modal */}
-      <Modal
+      {/* Add Driver Sheet */}
+      <Sheet
         visible={addModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddModalVisible(false)}
+        onClose={() => setAddModalVisible(false)}
+        title="Add New Driver"
+        footer={
+          <View style={styles.sheetBtns}>
+            <Button title="Cancel" variant="secondary" onPress={() => setAddModalVisible(false)} style={{ flex: 1 }} />
+            <Button title="Add Driver" onPress={confirmAddDriver} style={{ flex: 1 }} />
+          </View>
+        }
       >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          style={styles.modalOverlay}
-        >
-          <Pressable
-            style={styles.modalOverlay}
-            onPress={() => setAddModalVisible(false)}
-          >
-            <Pressable
-              style={[styles.modalContent, { backgroundColor: theme.card }, shadows.modal]}
-              onPress={(e) => e.stopPropagation()}
-            >
-              <Text style={[styles.modalTitle, { color: theme.text }]}>Add New Driver</Text>
-
-              <Text style={[styles.modalLabel, { color: theme.textSecondary }]}>Driver Name</Text>
-              <TextInput
-                style={[styles.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                value={newDriverName}
-                onChangeText={setNewDriverName}
-                keyboardType="default"
-                placeholder="Enter driver name"
-                placeholderTextColor={theme.textSecondary}
-                autoFocus
-                autoCapitalize="words"
-              />
-
-              <Text style={[styles.modalLabel, { color: theme.textSecondary, marginTop: spacing.lg }]}>
-                Target Time {audioSettings.timeFormat === 'seconds' ? '(seconds)' : '(MM:SS.mmm)'}
-              </Text>
-              <TextInput
-                style={[styles.modalInput, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
-                value={newDriverTargetTime}
-                onChangeText={setNewDriverTargetTime}
-                placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
-                placeholderTextColor={theme.textSecondary}
-                keyboardType="numbers-and-punctuation"
-              />
-
-              <View style={styles.modalButtons}>
-                <TouchableOpacity
-                  style={[styles.modalButton, { backgroundColor: theme.textSecondary }]}
-                  onPress={() => setAddModalVisible(false)}
-                >
-                  <Text style={styles.modalButtonText}>Cancel</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                  onPress={confirmAddDriver}
-                >
-                  <Text style={styles.modalButtonText}>Add Driver</Text>
-                </TouchableOpacity>
-              </View>
-            </Pressable>
-          </Pressable>
-        </KeyboardAvoidingView>
-      </Modal>
+        <View style={styles.sheetFields}>
+          <TextField
+            label="Driver Name"
+            value={newDriverName}
+            onChangeText={setNewDriverName}
+            keyboardType="default"
+            placeholder="Enter driver name"
+            autoFocus
+            autoCapitalize="words"
+          />
+          <TextField
+            mono
+            label={`Target Time ${audioSettings.timeFormat === 'seconds' ? '(seconds)' : '(MM:SS.mmm)'}`}
+            value={newDriverTargetTime}
+            onChangeText={setNewDriverTargetTime}
+            placeholder={audioSettings.timeFormat === 'seconds' ? '105' : '1:45.000'}
+            keyboardType="numbers-and-punctuation"
+          />
+        </View>
+      </Sheet>
     </SafeAreaView >
   );
 }
@@ -368,10 +377,32 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 90,
+    paddingBottom: 110,
+    width: '100%',
+  },
+  header: {
+    paddingHorizontal: spacing.lg,
+    paddingTop: spacing.lg,
+    paddingBottom: spacing.sm,
+  },
+  headerTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    marginTop: 2,
+  },
+  headerTitle: {
+    fontSize: typography.heading,
+    fontWeight: fontWeights.heavy,
+    letterSpacing: 0.2,
   },
   content: {
     padding: spacing.lg,
+    // Auto-responsive card grid: cards grow from a 320px basis, so phones get a
+    // single column and wide web fills the container with 2–4 across (less scroll).
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'flex-start',
     gap: spacing.lg,
   },
   addButton: {
@@ -385,149 +416,85 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   driverCard: {
-    borderRadius: radius.lg,
-    padding: spacing.xl,
+    gap: spacing.md,
+  },
+  fullWidthCard: {
+    width: '100%',
   },
   driverHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: spacing.lg,
+    gap: spacing.sm,
+  },
+  nameTouchable: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    minHeight: 40,
+  },
+  nameEditIcon: {
+    opacity: 0.8,
   },
   driverName: {
     fontSize: typography.heading,
-    fontWeight: fontWeights.semibold,
+    fontWeight: fontWeights.bold,
+    flexShrink: 1,
   },
   nameInput: {
+    flex: 1,
     fontSize: typography.heading,
-    fontWeight: fontWeights.semibold,
-    borderWidth: 1,
+    fontWeight: fontWeights.bold,
+    borderWidth: 1.5,
     borderRadius: radius.md,
-    padding: spacing.md,
-    minHeight: 48,
-    minWidth: 150,
+    paddingHorizontal: spacing.md,
+    minHeight: 46,
   },
-  deleteButton: {
-    minWidth: 48,
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  driverInfo: {
-    gap: spacing.md,
+  fieldGroup: {
+    gap: spacing.sm,
   },
   infoRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 48,
+    minHeight: 46,
+    gap: spacing.md,
   },
-  label: {
-    fontSize: typography.body,
+  fieldControl: {
+    width: 140,
   },
-  input: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    minWidth: 80,
-    minHeight: 48,
+  fieldControlNarrow: {
+    width: 96,
+  },
+  fieldInputText: {
     textAlign: 'right',
   },
-  formatHint: {
-    fontSize: typography.caption,
-    marginTop: spacing.xs,
-  },
-  targetTimeTouchable: {
-    minHeight: 48,
+  valuePill: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    minHeight: 40,
     justifyContent: 'center',
-  },
-  targetTimeText: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-    padding: spacing.sm,
   },
   statsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-around',
-    marginTop: spacing.lg,
     gap: spacing.sm,
   },
-  stat: {
-    alignItems: 'center',
+  statTile: {
     flex: 1,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-  },
-  statLabel: {
-    fontSize: typography.caption,
-  },
-  statValue: {
-    fontSize: typography.title,
-    fontWeight: fontWeights.semibold,
-    marginTop: spacing.xs,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   clearButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.lg,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    gap: spacing.sm,
-    marginTop: spacing.sm,
-    minHeight: 48,
+    marginTop: spacing.xs,
   },
-  clearButtonText: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.medium,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'stretch',
-  },
-  modalContent: {
-    marginHorizontal: spacing.lg,
-    borderRadius: radius.xl,
-    padding: spacing.xl,
-  },
-  modalTitle: {
-    fontSize: typography.heading,
-    fontWeight: fontWeights.semibold,
-    marginBottom: spacing.xl,
-    textAlign: 'center',
-  },
-  modalLabel: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-    marginBottom: spacing.sm,
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    fontSize: typography.bodyLg,
-    minHeight: 48,
-  },
-  modalButtons: {
+  sheetBtns: {
     flexDirection: 'row',
     gap: spacing.md,
-    marginTop: spacing.xl,
   },
-  modalButton: {
-    flex: 1,
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    minHeight: 48,
-    justifyContent: 'center',
-  },
-  modalButtonText: {
-    color: '#fff',
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
+  sheetFields: {
+    gap: spacing.lg,
   },
 });

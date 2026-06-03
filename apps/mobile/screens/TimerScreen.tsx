@@ -3,11 +3,8 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
-  TextInput,
   ScrollView,
   Animated,
-  Modal,
   Pressable,
   Vibration,
   Platform,
@@ -31,11 +28,12 @@ if (!isWeb) {
   VolumeManager = require('react-native-volume-manager').VolumeManager;
 }
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, glowShadow } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
 import { useAlert } from '../components/CustomAlert';
 import LiveShareBanner from '../components/LiveShareBanner';
+import { Mono, Label, Card, Surface, Button, IconButton, Chip, TextField, Sheet, LiveDot } from '../components/ui';
 
 export default function TimerScreen() {
   const {
@@ -656,6 +654,21 @@ export default function TimerScreen() {
     return 'WAITING';
   };
 
+  // --- Pit Wall presentation helpers ---
+  const deltaColor = (delta: number) =>
+    (delta < 0 ? theme.broken : delta <= 0.99 ? theme.bonus : theme.base);
+
+  const lapTypeColor = (t: string) =>
+    t === 'bonus' ? theme.bonus
+      : t === 'broken' ? theme.broken
+        : t === 'changeover' ? theme.changeover
+          : t === 'safety' ? theme.safety
+            : theme.base;
+
+  const lapCount = driver?.laps.length ?? 0;
+  const liveDelta = driver ? elapsedTime - driver.targetTime : 0;
+  const statusColor = getStatusColor();
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <LiveShareBanner />
@@ -663,836 +676,285 @@ export default function TimerScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView style={styles.scrollView} keyboardShouldPersistTaps="handled">
-          <View style={styles.content}>
-            {/* Title */}
-            <View style={styles.titleContainer}>
-              <View style={styles.titleRow}>
-                <Ionicons name="timer" size={28} color={theme.primary} />
-                <Text style={[styles.screenTitle, { color: theme.text }]}>Regularity Race Timer</Text>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* Header */}
+          <View style={styles.header}>
+            <View style={{ flex: 1 }}>
+              <Label muted>{team?.raceName || 'Regularity Timer'}</Label>
+              <View style={styles.headerTitleRow}>
+                <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+                  {team?.name || 'New Session'}
+                </Text>
+                {team?.sessionNumber ? <Chip label={`S${team.sessionNumber}`} color={theme.accent} active size="sm" /> : null}
               </View>
-              <View style={[styles.titleUnderline, { backgroundColor: theme.primary }]} />
-            </View>
-
-            {/* Rejected Lap Message */}
-            {rejectedMessage && (
-              <View style={[styles.rejectedCard, { backgroundColor: theme.broken }]}>
-                <Ionicons name="close-circle" size={20} color="#fff" />
-                <Text style={styles.rejectedText}>{rejectedMessage}</Text>
-              </View>
-            )}
-
-            {/* Status Card */}
-            <Animated.View
-              style={[
-                styles.statusCard,
-                { backgroundColor: getStatusColor(), transform: [{ scale: pulseAnim }] },
-              ]}
-            >
-              <Text style={styles.statusText}>{getStatusText()}</Text>
-            </Animated.View>
-
-            {/* Driver Tabs */}
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.driverTabs}>
-              {team?.drivers.map((d, index) => (
-                <TouchableOpacity
-                  key={d.id}
-                  style={[
-                    styles.driverTab,
-                    {
-                      backgroundColor: activeDriver === index ? theme.primary : theme.surfaceMuted,
-                    },
-                  ]}
-                  onPress={() => setActiveDriver(index)}
-                >
-                  <Text
-                    style={[
-                      styles.driverTabText,
-                      { color: activeDriver === index ? '#fff' : theme.text },
-                    ]}
-                  >
-                    {d.name}
-                  </Text>
-                  <Text
-                    style={[
-                      styles.driverTabLaps,
-                      { color: activeDriver === index ? '#fff' : theme.textSecondary },
-                    ]}
-                  >
-                    {d.laps.length} laps
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            {/* Timer Display */}
-            <View style={[styles.timerCard, { backgroundColor: theme.surfaceElevated }]}>
-              <Text style={[styles.timerText, { color: theme.text }]}>
-                {elapsedTime.toFixed(2)}s
-              </Text>
-              <Text style={[styles.timerSubtext, { color: theme.textSecondary }]}>
-                Target: {driver?.targetTime}s ({formatTime(driver?.targetTime || 0)})
-              </Text>
-            </View>
-
-            {/* Controls */}
-            <TouchableOpacity
-              style={[styles.primaryButton, { backgroundColor: isRunning ? theme.broken : theme.bonus }]}
-              onPress={addLap}
-            >
-              <Ionicons name={isRunning ? 'flag' : 'play'} size={32} color="#fff" />
-              <Text style={styles.primaryButtonText}>
-                {isRunning ? 'Lap' : 'Start'}
-              </Text>
-            </TouchableOpacity>
-
-            <View style={styles.secondaryControls}>
-              <TouchableOpacity
-                style={[styles.halfButton, { backgroundColor: theme.surfaceElevated }]}
-                onPress={() => setIsRunning(false)}
-              >
-                <Ionicons name="stop" size={20} color={theme.text} />
-                <Text style={[styles.halfButtonText, { color: theme.text }]}>Stop</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.halfButton, { backgroundColor: theme.surfaceElevated }]}
-                onPress={resetTimer}
-              >
-                <Ionicons name="refresh" size={20} color={theme.text} />
-                <Text style={[styles.halfButtonText, { color: theme.text }]}>Reset</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Manual Input */}
-            <View style={styles.manualInput}>
-              <TextInput
-                style={[
-                  styles.input,
-                  {
-                    backgroundColor: theme.surfaceElevated,
-                    color: theme.text,
-                    borderColor: theme.border,
-                  },
-                ]}
-                placeholder="Lap time (MM:SS.mmm)"
-                placeholderTextColor={theme.textSecondary}
-                value={lapInput}
-                onChangeText={setLapInput}
-                keyboardType="numbers-and-punctuation"
-              />
-              <TouchableOpacity
-                style={[styles.addButton, { backgroundColor: theme.primary }]}
-                onPress={addLap}
-              >
-                <Ionicons name="add" size={24} color="#fff" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Lap History */}
-            <View style={styles.lapHistory}>
-              <View style={styles.historyHeader}>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>Lap History</Text>
-                {driver?.laps.length > 0 && (
-                  <View style={styles.sessionActionsRow}>
-                    <TouchableOpacity
-                      style={[styles.endSessionButton, { backgroundColor: theme.warning }]}
-                      onPress={endSession}
-                    >
-                      <Ionicons name="checkmark-circle-outline" size={18} color="#fff" />
-                      <Text style={styles.endSessionText}>End Session</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.moreButton, { backgroundColor: theme.surfaceMuted }]}
-                      onPress={showSessionActions}
-                    >
-                      <Ionicons name="ellipsis-horizontal" size={18} color={theme.text as string} />
-                    </TouchableOpacity>
-                  </View>
-                )}
-              </View>
-              {driver?.laps.length === 0 ? (
-                <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No laps recorded</Text>
-              ) : (
-                driver?.laps
-                  .slice()
-                  .reverse()
-                  .map((lap, index) => {
-                    const renderRightActions = () => (
-                      <View style={styles.swipeActions}>
-                        <TouchableOpacity
-                          style={styles.deleteAction}
-                          onPress={() => deleteLap(index)}
-                          activeOpacity={0.7}
-                        >
-                          <View style={styles.deleteIconContainer}>
-                            <Ionicons name="trash" size={26} color="#fff" />
-                          </View>
-                          <Text style={styles.deleteActionText}>DELETE</Text>
-                        </TouchableOpacity>
-                      </View>
-                    );
-
-                    return (
-                      <Swipeable
-                        key={lap.number}
-                        renderRightActions={renderRightActions}
-                        overshootRight={false}
-                      >
-                        <Pressable
-                          style={[styles.lapItem, { backgroundColor: theme.surfaceElevated }]}
-                          onLongPress={() => showLapOptions(index)}
-                          delayLongPress={500}
-                        >
-                          <Text style={[styles.lapNumber, { color: theme.text }]}>#{lap.number}</Text>
-                          <View style={styles.lapDetails}>
-                            <Text style={[styles.lapTime, { color: theme.text }]}>
-                              {formatTime(lap.time)}
-                            </Text>
-                            <Text
-                              style={[
-                                styles.lapDelta,
-                                { color: lap.delta < 0 ? theme.broken : lap.delta <= 0.99 ? theme.bonus : theme.base },
-                              ]}
-                            >
-                              {' • '}
-                              {lap.delta >= 0 ? '+' : ''}
-                              {lap.delta.toFixed(3)}s
-                            </Text>
-                          </View>
-                          <View
-                            style={[
-                              styles.lapTypeBadge,
-                              {
-                                backgroundColor:
-                                  lap.lapType === 'bonus'
-                                    ? theme.bonus
-                                    : lap.lapType === 'broken'
-                                      ? theme.broken
-                                      : lap.lapType === 'changeover'
-                                        ? theme.changeover
-                                        : lap.lapType === 'safety'
-                                          ? theme.safety
-                                          : theme.base,
-                              },
-                            ]}
-                          >
-                            <Text style={styles.lapTypeBadgeText}>
-                              {lap.lapType.toUpperCase()}
-                            </Text>
-                          </View>
-                        </Pressable>
-                      </Swipeable>
-                    );
-                  })
-              )}
             </View>
           </View>
 
-          {/* Edit Lap Modal */}
-          <Modal
-            visible={editModalVisible}
-            transparent
-            animationType="fade"
-            onRequestClose={() => setEditModalVisible(false)}
-          >
-            <Pressable
-              style={styles.modalOverlay}
-              onPress={() => setEditModalVisible(false)}
-            >
-              <Pressable
-                style={[styles.modalContent, { backgroundColor: theme.card }]}
-                onPress={(e) => e.stopPropagation()}
-              >
-                <Text style={[styles.modalTitle, { color: theme.text }]}>Edit Lap Time</Text>
+          {/* Rejected lap message */}
+          {rejectedMessage && (
+            <Surface level="base" style={[styles.rejected, { borderColor: theme.danger }]}>
+              <Ionicons name="close-circle" size={18} color={theme.danger as string} />
+              <Text style={[styles.rejectedText, { color: theme.text }]}>{rejectedMessage}</Text>
+            </Surface>
+          )}
 
-                <TextInput
-                  style={[
-                    styles.modalInput,
-                    { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
-                  ]}
-                  value={editLapValue}
-                  onChangeText={setEditLapValue}
-                  keyboardType="decimal-pad"
-                  placeholder="Enter time in seconds"
-                  placeholderTextColor={theme.textSecondary}
-                  autoFocus
+          {/* Driver tabs */}
+          {team?.drivers?.length ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.driverTabs} contentContainerStyle={styles.driverTabsContent}>
+              {team.drivers.map((d, index) => {
+                const active = activeDriver === index;
+                return (
+                  <Pressable
+                    key={d.id}
+                    onPress={() => setActiveDriver(index)}
+                    style={[
+                      styles.driverTab,
+                      { backgroundColor: active ? theme.primaryMuted : theme.surfaceElevated, borderColor: active ? theme.primary : theme.border },
+                    ]}
+                  >
+                    <Text style={[styles.driverTabName, { color: active ? theme.primary : theme.text }]} numberOfLines={1}>
+                      {d.name || 'Driver'}
+                    </Text>
+                    <Mono size={11} color={active ? theme.primary : theme.textSecondary}>{d.laps.length} laps</Mono>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          ) : null}
+
+          {/* Hero clock */}
+          <Card
+            padding="xl"
+            style={[styles.clockCard, isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
+          >
+            <View style={styles.clockTopRow}>
+              <Label muted>{isRunning ? 'RECORDING' : 'ELAPSED'}</Label>
+              {isRunning && (
+                <View style={styles.recRow}>
+                  <LiveDot size={8} color={theme.danger} />
+                  <Label color={theme.danger}>REC</Label>
+                </View>
+              )}
+            </View>
+            <Animated.Text style={[styles.clock, { color: theme.text, transform: [{ scale: pulseAnim }] }]}>
+              {elapsedTime.toFixed(2)}
+            </Animated.Text>
+            <View style={styles.clockMeta}>
+              <Label muted>TARGET {driver ? formatTime(driver.targetTime) : '—'}</Label>
+              {driver && (isRunning || lapCount > 0) ? (
+                <Mono size={typography.title} weight="bold" color={deltaColor(liveDelta)}>
+                  {liveDelta >= 0 ? '+' : ''}{liveDelta.toFixed(2)}
+                </Mono>
+              ) : null}
+            </View>
+            <View style={[styles.statusStrip, { borderColor: statusColor }]}>
+              <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>{getStatusText()}</Text>
+            </View>
+          </Card>
+
+          {/* Primary action */}
+          <Button
+            title={isRunning ? 'LAP' : 'START'}
+            icon={isRunning ? 'flag' : 'play'}
+            onPress={addLap}
+            size="lg"
+            style={[styles.primaryBtn, { backgroundColor: isRunning ? theme.broken : theme.bonus }, glowShadow(isRunning ? String(theme.broken) : String(theme.bonus), 0.4, 16)]}
+            textStyle={styles.primaryBtnText}
+          />
+
+          {/* Secondary controls */}
+          <View style={styles.secondaryRow}>
+            <Button title="Stop" icon="stop" variant="secondary" onPress={() => setIsRunning(false)} style={{ flex: 1 }} />
+            <Button title="Reset" icon="refresh" variant="secondary" onPress={resetTimer} style={{ flex: 1 }} />
+          </View>
+
+          {/* Manual entry */}
+          <View style={styles.manualRow}>
+            <TextField
+              mono
+              placeholder="MM:SS.mmm"
+              value={lapInput}
+              onChangeText={setLapInput}
+              keyboardType="numbers-and-punctuation"
+              containerStyle={{ flex: 1 }}
+            />
+            <IconButton icon="add" variant="primary" size={24} onPress={addLap} accessibilityLabel="Add manual lap" />
+          </View>
+
+          {/* Lap history */}
+          <View style={styles.historyHeader}>
+            <Label size={13}>Lap History</Label>
+            {lapCount > 0 && (
+              <View style={styles.historyActions}>
+                <Button title="End Session" icon="checkmark-circle-outline" size="sm" variant="secondary" onPress={endSession} />
+                <Button
+                  title="Clear"
+                  icon="trash-outline"
+                  size="sm"
+                  variant="secondary"
+                  onPress={clearSession}
+                  textStyle={{ color: theme.danger }}
                 />
-
-                <View style={styles.modalButtons}>
-                  <TouchableOpacity
-                    style={[styles.modalButton, { backgroundColor: theme.textSecondary }]}
-                    onPress={() => setEditModalVisible(false)}
-                  >
-                    <Text style={styles.modalButtonText}>Cancel</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                    onPress={saveEditedLap}
-                  >
-                    <Text style={styles.modalButtonText}>Save</Text>
-                  </TouchableOpacity>
-                </View>
-              </Pressable>
-            </Pressable>
-          </Modal>
-
-          {/* Race Info Modal */}
-          <Modal
-            visible={raceInfoModalVisible}
-            transparent
-            animationType="slide"
-            onRequestClose={() => setRaceInfoModalVisible(false)}
-          >
-
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={{ flex: 1 }}
-            >
-              <Pressable
-                style={styles.sheetOverlay}
-                onPress={() => setRaceInfoModalVisible(false)}
-              >
-                <Pressable
-                  style={[styles.sheetContent, { backgroundColor: theme.card }]}
-                  onPress={(e) => e.stopPropagation()}
-                >
-                  <Text style={[styles.modalTitle, { color: theme.text }]}>Missing Information</Text>
-                  <Text style={[styles.modalSubtitle, { color: theme.textSecondary }]}>
-                    Please enter all required fields to record laps
-                  </Text>
-
-                  <TextInput
-                    style={[
-                      styles.modalInput,
-                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
-                    ]}
-                    value={tempTeamName}
-                    onChangeText={setTempTeamName}
-                    placeholder="Team Name"
-                    placeholderTextColor={theme.textSecondary}
-                    autoFocus
-                  />
-
-                  <TextInput
-                    style={[
-                      styles.modalInput,
-                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
-                    ]}
-                    value={tempDriverName}
-                    onChangeText={setTempDriverName}
-                    placeholder="Driver Name"
-                    placeholderTextColor={theme.textSecondary}
-                  />
-
-                  <TextInput
-                    style={[
-                      styles.modalInput,
-                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
-                    ]}
-                    value={tempRaceName}
-                    onChangeText={setTempRaceName}
-                    placeholder="Race Name"
-                    placeholderTextColor={theme.textSecondary}
-                  />
-
-                  <TextInput
-                    style={[
-                      styles.modalInput,
-                      { backgroundColor: theme.background, color: theme.text, borderColor: theme.border },
-                    ]}
-                    value={tempSessionNumber}
-                    onChangeText={setTempSessionNumber}
-                    placeholder="Session Number"
-                    placeholderTextColor={theme.textSecondary}
-                  />
-
-                  <View style={styles.modalButtons}>
-                    <TouchableOpacity
-                      style={[styles.modalButton, { backgroundColor: theme.textSecondary }]}
-                      onPress={() => setRaceInfoModalVisible(false)}
-                    >
-                      <Text style={styles.modalButtonText}>Cancel</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                      style={[styles.modalButton, { backgroundColor: theme.primary }]}
-                      onPress={saveRaceInfo}
-                    >
-                      <Text style={styles.modalButtonText}>Save</Text>
-                    </TouchableOpacity>
-                  </View>
-                </Pressable>
-              </Pressable>
-            </KeyboardAvoidingView>
-          </Modal>
-
-          {/* Session Setup Modal */}
-          <Modal
-            visible={showSessionSetup}
-            transparent
-            animationType="slide"
-            onRequestClose={() => { }}
-          >
-            <KeyboardAvoidingView
-              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-              style={styles.sessionSetupOverlay}
-            >
-              <View style={[styles.sessionSetupContent, { backgroundColor: theme.card }]}>
-                <View style={styles.sessionSetupHeader}>
-                  <Ionicons name="flag" size={40} color={theme.primary} />
-                  <Text style={[styles.sessionSetupTitle, { color: theme.text }]}>
-                    Start New Session
-                  </Text>
-                  <Text style={[styles.sessionSetupSubtitle, { color: theme.textSecondary }]}>
-                    Set up your race session details
-                  </Text>
-                </View>
-
-                <View style={styles.sessionSetupFields}>
-                  <View style={styles.sessionField}>
-                    <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
-                      Team Name
-                    </Text>
-                    <TextInput
-                      style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
-                      value={setupTeamName}
-                      onChangeText={setSetupTeamName}
-                      placeholder="Enter team name"
-                      placeholderTextColor={theme.textSecondary}
-                    />
-                  </View>
-
-                  <View style={styles.sessionField}>
-                    <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
-                      Race Name
-                    </Text>
-                    <TextInput
-                      style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
-                      value={setupRaceName}
-                      onChangeText={setSetupRaceName}
-                      placeholder="Enter race name"
-                      placeholderTextColor={theme.textSecondary}
-                    />
-                  </View>
-
-                  <View style={styles.sessionField}>
-                    <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
-                      Session Number
-                    </Text>
-                    <TextInput
-                      style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
-                      value={setupSessionNumber}
-                      onChangeText={setSetupSessionNumber}
-                      keyboardType="number-pad"
-                      placeholder="e.g., 1, 2, Practice"
-                      placeholderTextColor={theme.textSecondary}
-                    />
-                  </View>
-
-                  <View style={styles.sessionField}>
-                    <Text style={[styles.sessionFieldLabel, { color: theme.textSecondary }]}>
-                      Session Duration (minutes)
-                    </Text>
-                    <TextInput
-                      style={[styles.sessionInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.background }]}
-                      value={setupSessionDuration}
-                      onChangeText={setSetupSessionDuration}
-                      placeholder="120"
-                      placeholderTextColor={theme.textSecondary}
-                      keyboardType="number-pad"
-                    />
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  style={[styles.sessionStartButton, { backgroundColor: theme.primary }]}
-                  onPress={handleStartSession}
-                >
-                  <Ionicons name="checkmark-circle" size={24} color="#fff" />
-                  <Text style={styles.sessionStartButtonText}>Start Session</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={styles.sessionSkipButton}
-                  onPress={() => setShowSessionSetup(false)}
-                >
-                  <Text style={[styles.sessionSkipButtonText, { color: theme.textSecondary }]}>
-                    Skip for now
-                  </Text>
-                </TouchableOpacity>
               </View>
-            </KeyboardAvoidingView>
-          </Modal>
+            )}
+          </View>
+
+          {lapCount === 0 ? (
+            <Surface level="base" padding="xl" style={styles.emptyCard}>
+              <Ionicons name="time-outline" size={28} color={theme.textMuted as string} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No laps recorded yet</Text>
+            </Surface>
+          ) : (
+            <Surface level="base" padding={0} style={styles.lapList}>
+              {driver!.laps.slice().reverse().map((lap, index, arr) => {
+                const renderRightActions = () => (
+                  <Pressable style={styles.deleteAction} onPress={() => deleteLap(index)}>
+                    <Ionicons name="trash" size={24} color="#fff" />
+                    <Text style={styles.deleteActionText}>DELETE</Text>
+                  </Pressable>
+                );
+                return (
+                  <Swipeable key={lap.number} renderRightActions={renderRightActions} overshootRight={false}>
+                    <Pressable
+                      onLongPress={() => showLapOptions(index)}
+                      delayLongPress={500}
+                      style={[
+                        styles.lapRow,
+                        { backgroundColor: theme.surface, borderBottomColor: theme.borderFaint },
+                        index === arr.length - 1 && { borderBottomWidth: 0 },
+                      ]}
+                    >
+                      <Mono size={13} weight="bold" color={theme.textMuted} style={styles.lapNum}>{lap.number}</Mono>
+                      <Mono size={17} weight="medium" color={theme.text} style={{ flex: 1 }}>{formatTime(lap.time)}</Mono>
+                      <Mono size={14} weight="bold" color={deltaColor(lap.delta)} style={styles.lapDelta}>
+                        {lap.delta >= 0 ? '+' : ''}{lap.delta.toFixed(2)}
+                      </Mono>
+                      <Chip label={lap.lapType} color={lapTypeColor(lap.lapType)} active size="sm" uppercase style={styles.lapChip} />
+                    </Pressable>
+                  </Swipeable>
+                );
+              })}
+            </Surface>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView >
+
+      {/* Edit Lap Sheet */}
+      <Sheet
+        visible={editModalVisible}
+        onClose={() => setEditModalVisible(false)}
+        title="Edit Lap Time"
+        scroll={false}
+        footer={
+          <View style={styles.sheetBtns}>
+            <Button title="Cancel" variant="secondary" onPress={() => setEditModalVisible(false)} style={{ flex: 1 }} />
+            <Button title="Save" onPress={saveEditedLap} style={{ flex: 1 }} />
+          </View>
+        }
+      >
+        <TextField
+          mono
+          label="Lap time (seconds)"
+          value={editLapValue}
+          onChangeText={setEditLapValue}
+          keyboardType="decimal-pad"
+          placeholder="Enter time in seconds"
+          autoFocus
+        />
+      </Sheet>
+
+      {/* Race Info Sheet */}
+      <Sheet
+        visible={raceInfoModalVisible}
+        onClose={() => setRaceInfoModalVisible(false)}
+        title="Missing Information"
+        footer={
+          <View style={styles.sheetBtns}>
+            <Button title="Cancel" variant="secondary" onPress={() => setRaceInfoModalVisible(false)} style={{ flex: 1 }} />
+            <Button title="Save" onPress={saveRaceInfo} style={{ flex: 1 }} />
+          </View>
+        }
+      >
+        <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>Please enter all required fields to record laps</Text>
+        <View style={styles.sheetFields}>
+          <TextField label="Team Name" value={tempTeamName} onChangeText={setTempTeamName} placeholder="Team Name" autoFocus />
+          <TextField label="Driver Name" value={tempDriverName} onChangeText={setTempDriverName} placeholder="Driver Name" />
+          <TextField label="Race Name" value={tempRaceName} onChangeText={setTempRaceName} placeholder="Race Name" />
+          <TextField label="Session Number" value={tempSessionNumber} onChangeText={setTempSessionNumber} placeholder="Session Number" />
+        </View>
+      </Sheet>
+
+      {/* Session Setup Sheet */}
+      <Sheet
+        visible={showSessionSetup}
+        onClose={() => setShowSessionSetup(false)}
+        title="Start New Session"
+        footer={
+          <>
+            <Button title="Start Session" icon="checkmark-circle" onPress={handleStartSession} fullWidth size="lg" />
+            <Button title="Skip for now" variant="ghost" onPress={() => setShowSessionSetup(false)} fullWidth />
+          </>
+        }
+      >
+        <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>Set up your race session details</Text>
+        <View style={styles.sheetFields}>
+          <TextField label="Team Name" value={setupTeamName} onChangeText={setSetupTeamName} placeholder="Enter team name" />
+          <TextField label="Race Name" value={setupRaceName} onChangeText={setSetupRaceName} placeholder="Enter race name" />
+          <TextField label="Session Number" value={setupSessionNumber} onChangeText={setSetupSessionNumber} keyboardType="number-pad" placeholder="e.g., 1, 2, Practice" />
+          <TextField mono label="Session Duration (minutes)" value={setupSessionDuration} onChangeText={setSetupSessionDuration} keyboardType="number-pad" placeholder="120" />
+        </View>
+      </Sheet>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  content: {
-    padding: spacing.lg,
-    paddingBottom: 90,
-  },
-  titleContainer: {
-    marginBottom: spacing.xl,
-  },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  screenTitle: {
-    fontSize: typography.heading,
-    fontWeight: fontWeights.bold,
-    letterSpacing: 0.3,
-  },
-  titleUnderline: {
-    height: 3,
-    width: 60,
-    borderRadius: radius.sm,
-    marginLeft: 40,
-  },
-  rejectedCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    marginBottom: spacing.lg,
-    gap: spacing.md,
-  },
-  rejectedText: {
-    flex: 1,
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-    color: '#fff',
-  },
-  statusCard: {
-    padding: spacing.xl,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  statusText: {
-    fontSize: typography.heading,
-    fontWeight: fontWeights.bold,
-    color: '#fff',
-  },
-  driverTabs: {
-    marginBottom: spacing.lg,
-  },
-  driverTab: {
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-    borderRadius: radius.full,
-    marginRight: spacing.sm,
-  },
-  driverTabText: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  driverTabLaps: {
-    fontSize: typography.caption,
-    marginTop: spacing.xs,
-  },
-  timerCard: {
-    padding: spacing.xl,
-    borderRadius: radius.lg,
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-    ...shadows.card,
-  },
-  timerText: {
-    fontSize: typography.display,
-    fontWeight: fontWeights.bold,
-  },
-  timerSubtext: {
-    fontSize: typography.body,
-    marginTop: spacing.sm,
-  },
-  primaryButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 28,
-    borderRadius: radius.lg,
-    marginBottom: spacing.md,
-    gap: spacing.md,
-  },
-  primaryButtonText: {
-    color: '#fff',
-    fontSize: 28,
-    fontWeight: fontWeights.bold,
-  },
-  secondaryControls: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  halfButton: {
-    flex: 1,
-    flexDirection: 'row',
-    padding: spacing.md,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.xs,
-    ...shadows.subtle,
-  },
-  halfButtonText: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  manualInput: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginBottom: spacing.lg,
-  },
-  input: {
-    flex: 1,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    fontSize: typography.bodyLg,
-  },
-  addButton: {
-    padding: spacing.md,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  lapHistory: {
-    borderRadius: radius.lg,
-  },
-  historyHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.md,
-  },
-  sectionTitle: {
-    fontSize: typography.title,
-    fontWeight: fontWeights.semibold,
-  },
-  sessionActionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  endSessionButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    gap: spacing.xs,
-  },
-  moreButton: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  endSessionText: {
-    color: '#fff',
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  emptyText: {
-    fontSize: typography.body,
-    textAlign: 'center',
-    padding: spacing.xl,
-  },
-  lapItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.md,
-    borderRadius: radius.md,
-    marginBottom: spacing.md,
-  },
-  swipeActions: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingLeft: spacing.md,
-  },
-  deleteAction: {
-    backgroundColor: '#dc2626',
-    justifyContent: 'center',
-    alignItems: 'center',
-    width: 85,
-    height: 85,
-    borderRadius: radius.lg,
-    ...shadows.card,
-  },
-  deleteIconContainer: {
-    marginBottom: 2,
-  },
-  deleteActionText: {
-    color: '#fff',
-    fontSize: 11,
-    fontWeight: '800',
-    marginTop: 2,
-    letterSpacing: 0.8,
-  },
-  lapNumber: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-    width: 50,
-  },
-  lapDetails: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  lapTime: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.medium,
-  },
-  lapDelta: {
-    fontSize: typography.body,
-  },
-  lapTypeBadge: {
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-  },
-  lapTypeBadgeText: {
-    color: '#fff',
-    fontSize: 10,
-    fontWeight: fontWeights.semibold,
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    width: '80%',
-    borderRadius: radius.lg,
-    padding: spacing.xl,
-    ...shadows.modal,
-  },
-  modalTitle: {
-    fontSize: typography.heading,
-    fontWeight: fontWeights.semibold,
-    marginBottom: spacing.lg,
-    textAlign: 'center',
-  },
-  modalSubtitle: {
-    fontSize: typography.body,
-    marginBottom: spacing.lg,
-    textAlign: 'center',
-  },
-  modalInput: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    fontSize: typography.bodyLg,
-    marginBottom: spacing.xl,
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  modalButton: {
-    flex: 1,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    alignItems: 'center',
-  },
-  modalButtonText: {
-    color: '#fff',
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-  },
-  sessionSetupOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  sessionSetupContent: {
-    width: '90%',
-    maxWidth: 500,
-    borderRadius: radius.xl,
-    padding: spacing.xxl,
-    ...shadows.modal,
-  },
-  sessionSetupHeader: {
-    alignItems: 'center',
-    marginBottom: spacing.xxl,
-  },
-  sessionSetupTitle: {
-    fontSize: 26,
-    fontWeight: fontWeights.bold,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  sessionSetupSubtitle: {
-    fontSize: typography.body,
-    textAlign: 'center',
-  },
-  sessionSetupFields: {
-    gap: spacing.xl,
-    marginBottom: spacing.xl,
-  },
-  sessionField: {
-    gap: spacing.sm,
-  },
-  sessionFieldLabel: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  sessionInput: {
-    borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.md,
-    fontSize: typography.bodyLg,
-  },
-  sessionStartButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.lg,
-    borderRadius: radius.md,
-    gap: spacing.sm,
-    marginBottom: spacing.md,
-  },
-  sessionStartButtonText: {
-    color: '#fff',
-    fontSize: typography.title,
-    fontWeight: fontWeights.bold,
-  },
-  sessionSkipButton: {
-    padding: spacing.md,
-    alignItems: 'center',
-  },
-  sessionSkipButtonText: {
-    fontSize: typography.body,
-    fontWeight: fontWeights.semibold,
-  },
-  sheetOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-    justifyContent: 'flex-end',
-  },
-  sheetContent: {
-    width: '100%',
-    borderTopLeftRadius: radius.xl,
-    borderTopRightRadius: radius.xl,
-    padding: spacing.xl,
-    ...shadows.modal,
-  },
+  container: { flex: 1 },
+  scrollView: { flex: 1 },
+  content: { padding: spacing.lg, paddingBottom: 110, maxWidth: 760, width: '100%', alignSelf: 'center' },
+
+  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
+  headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
+  headerTitle: { fontSize: typography.heading, fontWeight: fontWeights.heavy, letterSpacing: 0.2, flexShrink: 1 },
+
+  rejected: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, padding: spacing.md, marginBottom: spacing.lg, borderWidth: 1 },
+  rejectedText: { flex: 1, fontSize: typography.caption, fontWeight: fontWeights.medium },
+
+  driverTabs: { marginBottom: spacing.lg, flexGrow: 0 },
+  driverTabsContent: { gap: spacing.sm, paddingRight: spacing.lg },
+  driverTab: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, minWidth: 96 },
+  driverTabName: { fontSize: typography.body, fontWeight: fontWeights.semibold },
+
+  clockCard: { alignItems: 'stretch', marginBottom: spacing.lg },
+  clockTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  recRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  clock: { fontSize: typography.hero, fontFamily: 'JetBrainsMono-ExtraBold', letterSpacing: -2, textAlign: 'center', marginVertical: spacing.sm },
+  clockMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  statusStrip: { marginTop: spacing.lg, borderWidth: 1, borderRadius: radius.full, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
+  statusText: { fontSize: typography.body, fontWeight: fontWeights.bold, letterSpacing: 0.5 },
+
+  primaryBtn: { height: 64, borderRadius: radius.lg, marginBottom: spacing.md },
+  primaryBtnText: { fontSize: 22, fontWeight: fontWeights.heavy, letterSpacing: 1 },
+
+  secondaryRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
+  manualRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center', marginBottom: spacing.xl },
+
+  historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
+  historyActions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
+
+  emptyCard: { alignItems: 'center', gap: spacing.sm },
+  emptyText: { fontSize: typography.body },
+
+  lapList: { overflow: 'hidden' },
+  lapRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth },
+  lapNum: { width: 34 },
+  lapDelta: { width: 72, textAlign: 'right' },
+  lapChip: { marginLeft: spacing.md, minWidth: 84 },
+
+  deleteAction: { backgroundColor: '#dc2626', justifyContent: 'center', alignItems: 'center', width: 88, height: '100%' },
+  deleteActionText: { color: '#fff', fontSize: 11, fontWeight: '800', marginTop: 2, letterSpacing: 0.8 },
+
+  sheetBtns: { flexDirection: 'row', gap: spacing.md },
+  sheetSubtitle: { fontSize: typography.body, marginBottom: spacing.lg },
+  sheetFields: { gap: spacing.md },
 });

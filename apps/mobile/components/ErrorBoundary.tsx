@@ -51,21 +51,23 @@ class ErrorBoundary extends Component<Props, State> {
       const exhausted = this.state.resetCount >= MAX_RESETS;
       return (
         <View style={styles.container}>
-          <Text style={styles.title}>
-            {exhausted ? 'The app keeps running into a problem' : 'Something went wrong'}
-          </Text>
-          <Text style={styles.message}>
-            {this.state.error?.message || 'An unexpected error occurred.'}
-          </Text>
-          <TouchableOpacity
-            style={styles.button}
-            onPress={exhausted ? this.handleReload : this.handleReset}
-          >
-            <Text style={styles.buttonText}>{exhausted ? 'Reload app' : 'Try Again'}</Text>
-          </TouchableOpacity>
-          {exhausted ? (
-            <Text style={styles.hint}>If this keeps happening, please fully restart the app.</Text>
-          ) : null}
+          <View style={styles.panel}>
+            <Text style={styles.title}>
+              {exhausted ? 'The app keeps running into a problem' : 'Something went wrong'}
+            </Text>
+            <Text style={styles.message}>
+              {this.state.error?.message || 'An unexpected error occurred.'}
+            </Text>
+            <TouchableOpacity
+              style={styles.button}
+              onPress={exhausted ? this.handleReload : this.handleReset}
+            >
+              <Text style={styles.buttonText}>{exhausted ? 'Reload app' : 'Try Again'}</Text>
+            </TouchableOpacity>
+            {exhausted ? (
+              <Text style={styles.hint}>If this keeps happening, please fully restart the app.</Text>
+            ) : null}
+          </View>
         </View>
       );
     }
@@ -74,24 +76,46 @@ class ErrorBoundary extends Component<Props, State> {
   }
 }
 
+// Self-contained Pit Wall DARK palette — this boundary mounts ABOVE the theme
+// providers, so it cannot consume useTheme. Keep these in sync with darkTheme.
+const PIT_WALL = {
+  background: '#070a11',
+  panel: '#121826',
+  border: 'rgba(255,255,255,0.08)',
+  text: '#e8eef7',
+  textSecondary: '#8a97ab',
+  primary: '#3b82f6',
+} as const;
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 24,
-    backgroundColor: '#1a1a1a',
+    backgroundColor: PIT_WALL.background,
+  },
+  panel: {
+    width: '100%',
+    maxWidth: 420,
+    alignItems: 'center',
+    padding: 28,
+    borderRadius: 20,
+    backgroundColor: PIT_WALL.panel,
+    borderWidth: 1,
+    borderColor: PIT_WALL.border,
   },
   title: {
     fontSize: 20,
-    fontWeight: '600',
-    color: '#e0e0e0',
+    fontWeight: '700',
+    color: PIT_WALL.text,
     marginBottom: 12,
     textAlign: 'center',
   },
   message: {
+    fontFamily: 'JetBrainsMono-Bold',
     fontSize: 14,
-    color: '#999',
+    color: PIT_WALL.textSecondary,
     textAlign: 'center',
     marginBottom: 24,
     lineHeight: 20,
@@ -99,19 +123,17 @@ const styles = StyleSheet.create({
   button: {
     paddingHorizontal: 24,
     paddingVertical: 12,
-    backgroundColor: '#333',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#555',
+    backgroundColor: PIT_WALL.primary,
+    borderRadius: 12,
   },
   buttonText: {
     fontSize: 16,
-    fontWeight: '500',
-    color: '#e0e0e0',
+    fontWeight: '600',
+    color: '#fff',
   },
   hint: {
     fontSize: 12,
-    color: '#777',
+    color: PIT_WALL.textSecondary,
     textAlign: 'center',
     marginTop: 16,
   },

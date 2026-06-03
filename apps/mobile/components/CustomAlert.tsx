@@ -1,16 +1,14 @@
 import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
-  Text,
   StyleSheet,
   Modal,
   Pressable,
-  TouchableOpacity,
   Animated,
-  ColorValue,
 } from 'react-native';
-import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
+import { spacing, radius, typography, shadows } from '../constants/theme';
+import { useTheme } from '../hooks/useTheme';
+import { Mono, Button } from './ui';
 
 // --- Types ---
 
@@ -151,8 +149,7 @@ function AlertDialog({
   onPress: (button: AlertButton) => void;
   onDismiss: () => void;
 }) {
-  const { isDarkMode } = useApp();
-  const theme = isDarkMode ? darkTheme : lightTheme;
+  const { theme } = useTheme();
 
   const buttons = config.buttons || [{ text: 'OK', style: 'default' as const }];
   const cancelButton = buttons.find(b => b.style === 'cancel');
@@ -165,89 +162,61 @@ function AlertDialog({
         <Animated.View
           style={[
             alertStyles.container,
-            { backgroundColor: theme.card as string, ...shadows.modal },
+            {
+              backgroundColor: theme.card as string,
+              borderWidth: 1,
+              borderColor: theme.border as string,
+              ...shadows.modal,
+            },
             { opacity: opacityAnim, transform: [{ scale: scaleAnim }] },
             isActionSheet && alertStyles.actionSheetContainer,
           ]}
         >
           <Pressable onPress={e => e.stopPropagation()}>
-            <Text style={[alertStyles.title, { color: theme.text as string }]}>
+            <Mono size={typography.title} weight="bold" color={theme.text} style={alertStyles.title}>
               {config.title}
-            </Text>
+            </Mono>
             {config.message ? (
-              <Text style={[alertStyles.message, { color: theme.textSecondary as string }]}>
+              <Mono size={typography.body} color={theme.textSecondary} style={alertStyles.message}>
                 {config.message}
-              </Text>
+              </Mono>
             ) : null}
 
             <View style={isActionSheet ? alertStyles.actionSheetButtons : alertStyles.buttonRow}>
               {cancelButton && !isActionSheet && (
-                <TouchableOpacity
-                  style={[
-                    alertStyles.button,
-                    { backgroundColor: theme.surfaceMuted as string, borderWidth: 1, borderColor: theme.border as string },
-                  ]}
+                <Button
+                  title={cancelButton.text}
+                  variant="secondary"
                   onPress={() => onPress(cancelButton)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[alertStyles.buttonText, { color: theme.textSecondary as string }]}>
-                    {cancelButton.text}
-                  </Text>
-                </TouchableOpacity>
+                  style={alertStyles.flexButton}
+                />
               )}
 
               {actionButtons.map((button, i) => {
                 const isDestructive = button.style === 'destructive';
-                const bgColor = isDestructive
-                  ? (theme.broken as string)
-                  : isActionSheet
-                    ? (theme.surface as string)
-                    : (theme.primary as string);
-                const textColor = isDestructive
-                  ? '#fff'
-                  : isActionSheet
-                    ? (theme.text as string)
-                    : '#fff';
+                const variant = isDestructive ? 'danger' : isActionSheet ? 'secondary' : 'primary';
 
                 return (
-                  <TouchableOpacity
+                  <Button
                     key={i}
+                    title={button.text}
+                    variant={variant}
+                    onPress={() => onPress(button)}
                     style={[
-                      isActionSheet ? alertStyles.actionSheetButton : alertStyles.button,
-                      { backgroundColor: bgColor },
-                      isActionSheet && !isDestructive && { borderWidth: 1, borderColor: theme.border as string },
+                      isActionSheet ? alertStyles.fullButton : alertStyles.flexButton,
                       isActionSheet && i < actionButtons.length - 1 && { marginBottom: spacing.sm },
                     ]}
-                    onPress={() => onPress(button)}
-                    activeOpacity={0.7}
-                  >
-                    <Text
-                      style={[
-                        alertStyles.buttonText,
-                        { color: textColor },
-                        isDestructive && alertStyles.destructiveText,
-                      ]}
-                    >
-                      {button.text}
-                    </Text>
-                  </TouchableOpacity>
+                  />
                 );
               })}
 
               {cancelButton && isActionSheet && (
-                <TouchableOpacity
-                  style={[
-                    alertStyles.cancelButton,
-                    { backgroundColor: theme.surfaceMuted as string, borderWidth: 1, borderColor: theme.border as string },
-                    { marginTop: spacing.sm },
-                  ]}
+                <Button
+                  title={cancelButton.text}
+                  variant="ghost"
                   onPress={() => onPress(cancelButton)}
-                  activeOpacity={0.7}
-                >
-                  <Text style={[alertStyles.buttonText, { color: theme.textSecondary as string }]}>
-                    {cancelButton.text}
-                  </Text>
-                </TouchableOpacity>
+                  style={[alertStyles.fullButton, { marginTop: spacing.sm }]}
+                />
               )}
             </View>
           </Pressable>
@@ -274,13 +243,10 @@ const alertStyles = StyleSheet.create({
     maxWidth: 340,
   },
   title: {
-    fontSize: typography.title,
-    fontWeight: fontWeights.semibold,
     textAlign: 'center',
     marginBottom: spacing.sm,
   },
   message: {
-    fontSize: typography.body,
     textAlign: 'center',
     marginBottom: spacing.xl,
     lineHeight: 20,
@@ -290,36 +256,13 @@ const alertStyles = StyleSheet.create({
     gap: spacing.md,
     marginTop: spacing.sm,
   },
-  button: {
+  flexButton: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-  },
-  buttonText: {
-    fontSize: typography.bodyLg,
-    fontWeight: fontWeights.semibold,
-  },
-  destructiveText: {
-    fontWeight: fontWeights.bold,
   },
   actionSheetButtons: {
     marginTop: spacing.sm,
   },
-  actionSheetButton: {
-    paddingVertical: 14,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
-    borderRadius: radius.md,
-  },
-  cancelButton: {
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-    minHeight: 48,
+  fullButton: {
+    alignSelf: 'stretch',
   },
 });

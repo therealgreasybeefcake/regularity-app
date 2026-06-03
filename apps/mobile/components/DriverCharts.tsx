@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, ColorValue } from 'react-nati
 import { LineChart, BarChart } from 'react-native-gifted-charts';
 import { Driver } from '../types';
 import { ThemeColors } from '../types';
+import { fonts } from '../constants/theme';
 
 // Helper to cast ColorValue to string for third-party chart libraries
 const cs = (color: ColorValue): string => color as string;
@@ -18,8 +19,8 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme, char
 
   if (driver.laps.length === 0) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: theme.background }]}>
-        <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No lap data available</Text>
+      <View style={[styles.emptyContainer, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+        <Text style={[styles.emptyText, { color: theme.textMuted }]}>No lap data available</Text>
       </View>
     );
   }
@@ -88,7 +89,7 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme, char
       </View>
 
       {selectedLap !== null && driver.laps[selectedLap] && (
-        <View style={[styles.selectedLapInfo, { backgroundColor: theme.background, borderColor: theme.border }]}>
+        <View style={[styles.selectedLapInfo, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.selectedLapText, { color: theme.text }]}>
             Lap {driver.laps[selectedLap].number}: {driver.laps[selectedLap].time?.toFixed(2) || 'N/A'}s
             {' '}({driver.laps[selectedLap].lapType})
@@ -112,8 +113,8 @@ export const LapTimesChart: React.FC<DriverChartsProps> = ({ driver, theme, char
         dataPointsRadius={5}
         textColor={cs(theme.textSecondary)}
         textFontSize={10}
-        yAxisTextStyle={{ color: cs(theme.textSecondary), fontSize: 10 }}
-        xAxisLabelTextStyle={{ color: cs(theme.textSecondary), fontSize: 9 }}
+        yAxisTextStyle={{ color: cs(theme.textMuted), fontSize: 10, fontFamily: fonts.mono }}
+        xAxisLabelTextStyle={{ color: cs(theme.textSecondary), fontSize: 9, fontFamily: fonts.mono }}
         yAxisColor={cs(theme.border)}
         xAxisColor={cs(theme.border)}
         rulesColor={cs(theme.border)}
@@ -173,8 +174,8 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme, chartWi
 
   if (nonChangeoverLaps.length === 0) {
     return (
-      <View style={[styles.emptyContainer, { backgroundColor: theme.background }]}>
-        <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No delta data available</Text>
+      <View style={[styles.emptyContainer, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+        <Text style={[styles.emptyText, { color: theme.textMuted }]}>No delta data available</Text>
       </View>
     );
   }
@@ -237,7 +238,7 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme, chartWi
       </View>
 
       {selectedLap !== null && (
-        <View style={[styles.selectedLapInfo, { backgroundColor: theme.background, borderColor: theme.border }]}>
+        <View style={[styles.selectedLapInfo, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[styles.selectedLapText, { color: theme.text }]}>
             Lap {nonChangeoverLaps[selectedLap].number}:
             {nonChangeoverLaps[selectedLap].delta >= 0 ? '+' : ''}
@@ -262,7 +263,7 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme, chartWi
           noOfSections={3}
           stepValue={Math.max(maxDelta * 1.1, 0.1) / 3}
           maxValue={Math.max(maxDelta * 1.1, 0.1)}
-          yAxisTextStyle={{ color: cs(theme.textSecondary), fontSize: 10 }}
+          yAxisTextStyle={{ color: cs(theme.textMuted), fontSize: 10, fontFamily: fonts.mono }}
           xAxisLabelTextStyle={{ color: 'transparent', fontSize: 1 }}
           yAxisColor={cs(theme.border)}
           xAxisColor="transparent"
@@ -315,8 +316,8 @@ export const DeltaChart: React.FC<DriverChartsProps> = ({ driver, theme, chartWi
           noOfSections={3}
           stepValue={Math.max(Math.abs(minDelta) * 1.1, 0.1) / 3}
           maxValue={Math.max(Math.abs(minDelta) * 1.1, 0.1)}
-          yAxisTextStyle={{ color: cs(theme.textSecondary), fontSize: 10 }}
-          xAxisLabelTextStyle={{ color: cs(theme.textSecondary), fontSize: 9 }}
+          yAxisTextStyle={{ color: cs(theme.textMuted), fontSize: 10, fontFamily: fonts.mono }}
+          xAxisLabelTextStyle={{ color: cs(theme.textSecondary), fontSize: 9, fontFamily: fonts.mono }}
           yAxisColor={cs(theme.border)}
           xAxisColor={cs(theme.border)}
           rulesColor={cs(theme.border)}
@@ -378,8 +379,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
   chartSubtitle: {
+    fontFamily: fonts.monoMedium,
     fontSize: 13,
-    fontWeight: '500',
   },
   selectedLapInfo: {
     flexDirection: 'row',
@@ -391,8 +392,8 @@ const styles = StyleSheet.create({
     marginBottom: 12,
   },
   selectedLapText: {
+    fontFamily: fonts.monoMedium,
     fontSize: 13,
-    fontWeight: '500',
   },
   closeButton: {
     fontSize: 18,
@@ -401,20 +402,22 @@ const styles = StyleSheet.create({
   },
   emptyContainer: {
     padding: 40,
-    borderRadius: 8,
+    borderRadius: 12,
+    borderWidth: 1,
     alignItems: 'center',
     marginVertical: 12,
   },
   emptyText: {
-    fontSize: 14,
+    fontFamily: fonts.mono,
+    fontSize: 13,
   },
   statsRow: {
     alignItems: 'center',
     marginTop: 8,
   },
   statsText: {
+    fontFamily: fonts.monoMedium,
     fontSize: 12,
-    fontWeight: '500',
   },
   legend: {
     flexDirection: 'row',

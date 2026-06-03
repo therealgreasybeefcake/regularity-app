@@ -2,10 +2,7 @@ import React, { useState } from 'react';
 import {
   View,
   Text,
-  TextInput,
-  TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   useColorScheme,
@@ -13,7 +10,8 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth, type OAuthProvider } from '../context/AuthContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, shadows } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../constants/theme';
+import { Label, Card, Button, TextField, Divider } from '../components/ui';
 
 type Mode = 'signin' | 'signup';
 
@@ -73,94 +71,103 @@ export default function LoginScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       >
         <View style={styles.content}>
-          <Text style={[styles.title, { color: theme.text }]}>Regularity Race Timer</Text>
-          <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
-            {mode === 'signin' ? 'Sign in to continue' : 'Create your account'}
-          </Text>
+          {/* Brand lockup */}
+          <View style={styles.brand}>
+            <View style={[styles.brandMark, { backgroundColor: theme.primaryMuted, borderColor: theme.primary }]}>
+              <Ionicons name="flag" size={30} color={theme.primary as string} />
+            </View>
+            <Label size={typography.label} color={theme.accent} style={styles.kicker}>
+              REGULARITY
+            </Label>
+            <Text style={[styles.title, { color: theme.text }]}>Race Timer</Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              {mode === 'signin' ? 'Sign in to the pit wall' : 'Create your account'}
+            </Text>
+          </View>
 
-          <View style={[styles.card, { backgroundColor: theme.card }, shadows.card]}>
+          <Card padding="xl" style={styles.card}>
             {mode === 'signup' && (
-              <TextInput
-                style={[styles.input, { color: theme.text as string, borderColor: theme.border as string, backgroundColor: theme.background as string }]}
-                placeholder="Name"
-                placeholderTextColor={theme.textSecondary as string}
+              <TextField
+                label="Name"
+                placeholder="Your name"
                 value={name}
                 onChangeText={setName}
                 autoCapitalize="words"
                 autoComplete="name"
+                containerStyle={styles.field}
               />
             )}
-            <TextInput
-              style={[styles.input, { color: theme.text as string, borderColor: theme.border as string, backgroundColor: theme.background as string }]}
-              placeholder="Email"
-              placeholderTextColor={theme.textSecondary as string}
+            <TextField
+              label="Email"
+              placeholder="you@example.com"
               value={email}
               onChangeText={setEmail}
               autoCapitalize="none"
               keyboardType="email-address"
               autoComplete="email"
+              containerStyle={styles.field}
             />
-            <TextInput
-              style={[styles.input, { color: theme.text as string, borderColor: theme.border as string, backgroundColor: theme.background as string }]}
-              placeholder="Password"
-              placeholderTextColor={theme.textSecondary as string}
+            <TextField
+              label="Password"
+              placeholder="••••••••"
               value={password}
               onChangeText={setPassword}
               secureTextEntry
               autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              containerStyle={styles.field}
             />
-            <TouchableOpacity
-              style={[styles.button, { backgroundColor: theme.primary as string }, busy && styles.disabled]}
-              onPress={handleSubmit}
+
+            <Button
+              title={mode === 'signin' ? 'Sign In' : 'Sign Up'}
+              variant="primary"
+              size="lg"
+              fullWidth
+              loading={isLoading}
               disabled={busy}
-            >
-              {isLoading ? (
-                <ActivityIndicator color="#fff" />
-              ) : (
-                <Text style={styles.buttonText}>{mode === 'signin' ? 'Sign In' : 'Sign Up'}</Text>
-              )}
-            </TouchableOpacity>
+              onPress={handleSubmit}
+              style={styles.submitBtn}
+            />
 
             <View style={styles.dividerRow}>
-              <View style={[styles.divider, { backgroundColor: theme.border as string }]} />
-              <Text style={[styles.dividerText, { color: theme.textSecondary as string }]}>or</Text>
-              <View style={[styles.divider, { backgroundColor: theme.border as string }]} />
+              <Divider style={styles.dividerLine} />
+              <Label size={typography.micro} muted style={styles.dividerText}>
+                OR
+              </Label>
+              <Divider style={styles.dividerLine} />
             </View>
 
-            <TouchableOpacity
-              style={[styles.socialButton, { borderColor: theme.border as string, backgroundColor: theme.background as string }, busy && styles.disabled]}
+            <Button
+              title="Continue with Google"
+              icon="logo-google"
+              variant="secondary"
+              size="lg"
+              fullWidth
+              loading={pendingProvider === 'google'}
+              disabled={busy}
               onPress={() => handleSocial('google')}
+              style={styles.oauthBtn}
+            />
+            <Button
+              title="Continue with Apple"
+              icon="logo-apple"
+              variant="secondary"
+              size="lg"
+              fullWidth
+              loading={pendingProvider === 'apple'}
               disabled={busy}
-            >
-              {pendingProvider === 'google' ? (
-                <ActivityIndicator color={theme.text as string} />
-              ) : (
-                <>
-                  <Ionicons name="logo-google" size={18} color={theme.text as string} style={styles.socialIcon} />
-                  <Text style={[styles.socialText, { color: theme.text as string }]}>Continue with Google</Text>
-                </>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.socialButton, { borderColor: theme.border as string, backgroundColor: theme.background as string }, busy && styles.disabled]}
               onPress={() => handleSocial('apple')}
-              disabled={busy}
-            >
-              {pendingProvider === 'apple' ? (
-                <ActivityIndicator color={theme.text as string} />
-              ) : (
-                <>
-                  <Ionicons name="logo-apple" size={18} color={theme.text as string} style={styles.socialIcon} />
-                  <Text style={[styles.socialText, { color: theme.text as string }]}>Continue with Apple</Text>
-                </>
-              )}
-            </TouchableOpacity>
+            />
 
-            {!!error && <Text style={[styles.error, { color: theme.broken as string }]}>{error}</Text>}
-          </View>
+            {!!error && (
+              <View style={[styles.errorBox, { backgroundColor: `${String(theme.broken)}1a`, borderColor: theme.broken }]}>
+                <Ionicons name="alert-circle" size={16} color={theme.broken as string} />
+                <Text style={[styles.error, { color: theme.broken as string }]}>{error}</Text>
+              </View>
+            )}
+          </Card>
 
-          <TouchableOpacity
+          <Button
+            variant="ghost"
             onPress={() => {
               setMode(mode === 'signin' ? 'signup' : 'signin');
               setError('');
@@ -173,7 +180,7 @@ export default function LoginScreen() {
                 {mode === 'signin' ? 'Sign up' : 'Sign in'}
               </Text>
             </Text>
-          </TouchableOpacity>
+          </Button>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -184,34 +191,42 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   keyboardView: { flex: 1 },
   content: { flex: 1, justifyContent: 'center', padding: spacing.xl, width: '100%', maxWidth: 420, alignSelf: 'center' },
-  title: { fontSize: 28, fontWeight: fontWeights.bold, textAlign: 'center', marginBottom: spacing.sm },
-  subtitle: { fontSize: typography.bodyLg, textAlign: 'center', marginBottom: spacing.xxl },
-  card: { borderRadius: radius.lg, padding: spacing.xl },
-  input: {
+
+  brand: { alignItems: 'center', marginBottom: spacing.xxl },
+  brandMark: {
+    width: 64,
+    height: 64,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    borderRadius: radius.md,
-    padding: spacing.lg,
-    fontSize: typography.bodyLg,
-    marginBottom: spacing.md,
-  },
-  button: { borderRadius: radius.md, padding: spacing.lg, alignItems: 'center', marginTop: spacing.sm },
-  buttonText: { color: '#fff', fontSize: typography.bodyLg, fontWeight: fontWeights.semibold },
-  disabled: { opacity: 0.6 },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.lg },
-  divider: { flex: 1, height: 1 },
-  dividerText: { marginHorizontal: spacing.md, fontSize: typography.body },
-  socialButton: {
-    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
+    marginBottom: spacing.lg,
+  },
+  kicker: { marginBottom: spacing.xs },
+  title: { fontSize: typography.headingLg + 4, fontWeight: fontWeights.heavy, textAlign: 'center', letterSpacing: 0.2 },
+  subtitle: { fontSize: typography.body, textAlign: 'center', marginTop: spacing.xs },
+
+  card: {},
+  field: { marginBottom: spacing.md },
+  submitBtn: { marginTop: spacing.sm },
+
+  dividerRow: { flexDirection: 'row', alignItems: 'center', marginVertical: spacing.lg },
+  dividerLine: { flex: 1 },
+  dividerText: { marginHorizontal: spacing.md },
+
+  oauthBtn: { marginBottom: spacing.md },
+
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
     borderWidth: 1,
     borderRadius: radius.md,
-    padding: spacing.lg,
-    marginBottom: spacing.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
   },
-  socialIcon: { marginRight: spacing.sm },
-  socialText: { fontSize: typography.bodyLg, fontWeight: fontWeights.medium },
-  error: { fontSize: typography.body, textAlign: 'center', marginTop: spacing.md },
-  switchModeButton: { marginTop: spacing.xl, alignItems: 'center' },
+  error: { flex: 1, fontSize: typography.caption, fontWeight: fontWeights.medium },
+
+  switchModeButton: { marginTop: spacing.xl, alignSelf: 'center', height: undefined, paddingVertical: spacing.md },
   switchModeText: { fontSize: typography.body },
 });
