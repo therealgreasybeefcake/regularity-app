@@ -1,7 +1,9 @@
 import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { requireAuth, type AppVariables } from '../middleware';
+import { rooms, teamRoom } from '../rooms';
 import { getOrCreateTeam, getOwnedTeam, getMembership, roleAtLeast } from '../lib/domain';
 import { teams, drivers, raceSessions, sessionDrivers, laps } from '@regularity/db';
 import {
@@ -156,6 +158,29 @@ teamRouter.get('/:id', async (c) => {
   return c.json({ team: m.team, drivers: roster, role: m.role });
 });
 
+// GET /api/teams/:id/events — authenticated per-team SSE. Peers are notified of
+// roster/settings edits (`teamChanged`) and when a teammate starts recording
+// (`sessionStarted`), so a shared team stays in sync without a manual reload.
+teamRouter.get('/:id/events', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  return streamSSE(c, async (stream) => {
+    let closed = false;
+    const unsub = rooms.subscribe(teamRoom(id), (event, eid) => {
+      stream.writeSSE({ event: event.type, data: JSON.stringify(event), id: String(eid) }).catch(() => {});
+    });
+    stream.onAbort(() => { closed = true; unsub(); });
+    await stream.writeSSE({ event: 'hello', data: '{}', id: '0' });
+    while (!closed) {
+      await stream.sleep(15000);
+      if (closed) break;
+      await stream.writeSSE({ event: 'ping', data: 'keepalive' }).catch(() => {});
+    }
+  });
+});
+
 // PATCH /api/teams/:id — settings/scoring/meta (owner|admin).
 teamRouter.patch('/:id', async (c) => {
   const user = c.get('user');
@@ -173,6 +198,7 @@ teamRouter.patch('/:id', async (c) => {
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(teams.id, id))
     .returning();
+  rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
   return c.json({ team: updated });
 });
 
@@ -199,6 +225,7 @@ teamRouter.post('/:id/drivers', async (c) => {
       sortOrder: existing.length,
     })
     .returning();
+  rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
   return c.json({ driver: created }, 201);
 });
 
@@ -245,6 +272,7 @@ teamRouter.put('/:id', async (c) => {
 
   const roster = await db.select().from(drivers).where(eq(drivers.teamId, id)).orderBy(asc(drivers.sortOrder));
   const [updated] = await db.select().from(teams).where(eq(teams.id, id));
+  rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
   return c.json({ team: updated, drivers: roster });
 });
 
@@ -406,5 +434,6 @@ teamRouter.post('/:id/sessions', async (c) => {
     .where(eq(sessionDrivers.sessionId, session.id))
     .orderBy(asc(sessionDrivers.sortOrder));
 
+  rooms.broadcast(teamRoom(id), { type: 'sessionStarted', publicToken: session.publicToken, sessionId: session.id });
   return c.json({ session, sessionDrivers: sd }, 201);
 });

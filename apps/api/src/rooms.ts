@@ -12,7 +12,14 @@ export type LiveEvent =
   | { type: 'lapEdited'; lap: unknown }
   | { type: 'lapDeleted'; lapId: string }
   | { type: 'sessionEnded'; sessionId: string }
-  | { type: 'driverChanged'; sessionDriverId: string };
+  | { type: 'driverChanged'; sessionDriverId: string }
+  // Authenticated per-team channel (keyed `team:<teamId>`): peers see roster /
+  // settings edits, and that a teammate started recording.
+  | { type: 'teamChanged' }
+  | { type: 'sessionStarted'; publicToken: string; sessionId: string };
+
+/** Room key for a team's authenticated event channel. */
+export const teamRoom = (teamId: string) => `team:${teamId}`;
 
 type Subscriber = (event: LiveEvent, id: number) => void;
 

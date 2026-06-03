@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, AppState } from 'react-native';
 import { Team, Driver, AudioSettings, LapTypeValues, Session, Lap, SyncStatus } from '../types';
 import { useAuth } from './AuthContext';
 import { api } from '../lib/api';
+import { subscribeTeamEvents } from '../lib/teamEvents';
 import { syncQueue, type SyncState } from '../lib/syncQueue';
 import { randomUuid, deterministicUuid } from '../lib/uuid';
 import { WEB_URL } from '../constants/config';
@@ -187,6 +188,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const userRoleRef = useRef<TeamRole | null>(null);
   userRoleRef.current = userRole;
+  // Suppresses the next debounced roster push when a teams change came from a
+  // remote sync (reloadActiveTeam) — prevents an A↔B push/broadcast ping-pong.
+  const suppressPushRef = useRef(false);
   const serverTeamIdRef = useRef<string | null>(null);
   const syncedUserRef = useRef<string | null>(null);
   const teamsRef = useRef(teams);
@@ -362,6 +366,62 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     [refreshMemberships, switchTeam],
   );
 
+  // Merge the active team's server roster/settings into local state WITHOUT
+  // wiping in-progress laps (matched by position). Skipped while recording a live
+  // session so a peer edit can't disturb the recorder. Drives peer-edit sync.
+  const reloadActiveTeam = useCallback(async () => {
+    const id = serverTeamIdRef.current;
+    if (!id || liveSessionRef.current) return;
+    try {
+      const res = await api.get<TeamByIdResponse>(`/api/teams/${id}`);
+      setUserRole(res.role);
+      setLapTypeValues(res.team.lapTypeValues);
+      suppressPushRef.current = true; // this change is a remote sync, not a local edit
+      setTeams((prev) => {
+        const cur = prev[0];
+        const merged: Team = {
+          id: 1,
+          name: res.team.name,
+          raceName: res.team.raceName,
+          sessionNumber: res.team.sessionNumber,
+          sessionDuration: res.team.sessionDurationMin,
+          drivers: res.drivers.length
+            ? res.drivers.map((d, i) => ({
+                id: i + 1,
+                name: d.name,
+                targetTime: d.targetTimeSec,
+                penaltyLaps: d.penaltyLaps,
+                linkedUserId: d.linkedUserId,
+                laps: cur?.drivers[i]?.laps ?? [],
+              }))
+            : (cur?.drivers ?? []),
+          sessionHistory: cur?.sessionHistory ?? [],
+        };
+        return [merged];
+      });
+    } catch (e) {
+      console.warn('[teams] reloadActiveTeam failed:', e);
+    }
+  }, []);
+
+  // Web: instant peer roster/settings sync via the team SSE channel.
+  useEffect(() => {
+    if (!activeServerTeamId) return;
+    const unsub = subscribeTeamEvents(activeServerTeamId, {
+      onTeamChanged: () => { void reloadActiveTeam(); },
+    });
+    return unsub;
+  }, [activeServerTeamId, reloadActiveTeam]);
+
+  // Both platforms (covers native, where there is no EventSource): refresh the
+  // active team when the app returns to the foreground.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void reloadActiveTeam();
+    });
+    return () => sub.remove();
+  }, [reloadActiveTeam]);
+
   // --- Initial server sync / first-login migration (runs once per user) ---
   useEffect(() => {
     if (isLoading || !isAuthenticated || !user) return;
@@ -483,6 +543,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (isLoading) return;
     const timeout = setTimeout(() => {
       AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
+      // Skip the push if this change was a remote sync (avoids a push/broadcast loop).
+      if (suppressPushRef.current) {
+        suppressPushRef.current = false;
+        return;
+      }
       // Only owner/admin push roster+settings; members/viewers never clobber them.
       if (serverTeamIdRef.current && syncedUserRef.current && canEditTeam(userRoleRef.current)) {
         syncQueue.enqueue({

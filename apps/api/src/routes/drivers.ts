@@ -5,6 +5,7 @@ import { requireAuth, type AppVariables } from '../middleware';
 import { drivers, teams, teamMembers, type TeamMemberRole } from '@regularity/db';
 import { updateDriverInputSchema } from '@regularity/schemas';
 import { roleAtLeast } from '../lib/domain';
+import { rooms, teamRoom } from '../rooms';
 
 export const driverRouter = new Hono<{ Variables: AppVariables }>();
 driverRouter.use('*', requireAuth);
@@ -46,6 +47,7 @@ driverRouter.patch('/:id', async (c) => {
     })
     .where(eq(drivers.id, id))
     .returning();
+  rooms.broadcast(teamRoom(owned.driver.teamId), { type: 'teamChanged' });
   return c.json({ driver: updated });
 });
 
@@ -58,5 +60,6 @@ driverRouter.delete('/:id', async (c) => {
   if (!roleAtLeast(owned.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
 
   await db.delete(drivers).where(eq(drivers.id, id));
+  rooms.broadcast(teamRoom(owned.driver.teamId), { type: 'teamChanged' });
   return c.json({ ok: true });
 });
