@@ -17,3 +17,5 @@ export { SegmentedControl } from './SegmentedControl';
 export type { SegmentedControlProps, SegmentOption } from './SegmentedControl';
 export { LiveDot } from './LiveDot';
 export type { LiveDotProps } from './LiveDot';
+export { Collapsible } from './Collapsible';
+export type { CollapsibleProps } from './Collapsible';

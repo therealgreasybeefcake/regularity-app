@@ -141,6 +141,21 @@ teamRouter.get('/me/live', async (c) => {
   return c.json({ live: s ?? null });
 });
 
+// GET /api/teams/:id — a specific team + its roster (any member). Lets a member
+// load a shared team's roster/settings after switching to it.
+teamRouter.get('/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  const roster = await db
+    .select()
+    .from(drivers)
+    .where(eq(drivers.teamId, id))
+    .orderBy(asc(drivers.sortOrder));
+  return c.json({ team: m.team, drivers: roster, role: m.role });
+});
+
 // PATCH /api/teams/:id — settings/scoring/meta (owner|admin).
 teamRouter.patch('/:id', async (c) => {
   const user = c.get('user');

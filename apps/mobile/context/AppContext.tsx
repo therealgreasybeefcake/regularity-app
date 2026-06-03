@@ -34,6 +34,19 @@ interface AppContextType {
   hasSeenWelcome: boolean;
   setHasSeenWelcome: (value: boolean) => void;
   syncStatus: SyncStatus;
+  // --- Shared teams ---
+  /** Every team the signed-in user belongs to (id + name + their role). */
+  memberships: TeamMembership[];
+  /** The caller's role on the active team (null until synced). */
+  userRole: TeamRole | null;
+  /** Server UUID of the active team (null until synced). */
+  activeServerTeamId: string | null;
+  /** Switch the active team — reloads its roster/settings/history. */
+  switchTeam: (serverTeamId: string) => Promise<void>;
+  /** Re-fetch the membership list (after joining/leaving/role changes). */
+  refreshMemberships: () => Promise<void>;
+  /** Accept an invite (token or code), then switch to the joined team. */
+  joinTeam: (opts: { token?: string; code?: string }) => Promise<{ ok: boolean; error?: string; teamName?: string }>;
   // Persist a finished session to the API (durable offline queue). Kept under
   // the original name so existing callers (StatsScreen) don't change.
   saveSessionToS3: (session: Session) => Promise<void>;
@@ -67,6 +80,24 @@ interface ServerDriver {
 interface TeamMeResponse {
   team: ServerTeam;
   drivers: ServerDriver[];
+}
+export type TeamRole = 'owner' | 'admin' | 'member' | 'viewer';
+export interface TeamMembership {
+  id: string;
+  name: string;
+  role: TeamRole;
+}
+interface TeamByIdResponse extends TeamMeResponse {
+  role: TeamRole;
+}
+const ROLE_RANK: Record<TeamRole, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
+/** True if `role` can edit roster/settings (owner|admin). */
+export function canEditTeam(role: TeamRole | null): boolean {
+  return !!role && ROLE_RANK[role] >= ROLE_RANK.admin;
+}
+/** True if `role` can record laps / run sessions (owner|admin|member). */
+export function canRecord(role: TeamRole | null): boolean {
+  return !!role && ROLE_RANK[role] >= ROLE_RANK.member;
 }
 interface ServerSessionRow {
   id: string;
@@ -147,9 +178,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
+  const [memberships, setMemberships] = useState<TeamMembership[]>([]);
+  const [userRole, setUserRole] = useState<TeamRole | null>(null);
+  const [activeServerTeamId, setActiveServerTeamId] = useState<string | null>(null);
 
   const [liveSession, setLiveSession] = useState<{ id: string; publicToken: string } | null>(null);
 
+  const userRoleRef = useRef<TeamRole | null>(null);
+  userRoleRef.current = userRole;
   const serverTeamIdRef = useRef<string | null>(null);
   const syncedUserRef = useRef<string | null>(null);
   const teamsRef = useRef(teams);
@@ -263,6 +299,67 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     };
   }, []);
 
+  // Hydrate the active team's roster + settings from the server (login + switch).
+  // Session history is loaded lazily by StatsScreen via loadSessionsFromS3.
+  const loadTeam = useCallback(async (serverTeamId: string) => {
+    const res = await api.get<TeamByIdResponse>(`/api/teams/${serverTeamId}`);
+    serverTeamIdRef.current = res.team.id;
+    setActiveServerTeamId(res.team.id);
+    setUserRole(res.role);
+    const hydrated: Team = {
+      id: 1,
+      name: res.team.name,
+      raceName: res.team.raceName,
+      sessionNumber: res.team.sessionNumber,
+      sessionDuration: res.team.sessionDurationMin,
+      drivers: res.drivers.length
+        ? res.drivers.map((d, i) => ({ id: i + 1, name: d.name, targetTime: d.targetTimeSec, penaltyLaps: d.penaltyLaps, laps: [] }))
+        : DEFAULT_TEAMS[0].drivers.map((d) => ({ ...d, laps: [] })),
+      sessionHistory: [],
+    };
+    setTeams([hydrated]);
+    setLapTypeValues(res.team.lapTypeValues);
+  }, []);
+
+  const refreshMemberships = useCallback(async () => {
+    try {
+      const { teams: list } = await api.get<{ teams: TeamMembership[] }>('/api/teams');
+      setMemberships(list);
+    } catch (e) {
+      console.warn('[teams] refreshMemberships failed:', e);
+    }
+  }, []);
+
+  const switchTeam = useCallback(async (serverTeamId: string) => {
+    if (serverTeamId === serverTeamIdRef.current) return;
+    // Tear down any live session bound to the previous team before switching.
+    liveSessionRef.current = null;
+    setLiveSession(null);
+    streamedKeysRef.current.clear();
+    await AsyncStorage.removeItem('liveSessionState');
+    setActiveDriver(0);
+    await AsyncStorage.setItem('activeServerTeamId', serverTeamId);
+    await loadTeam(serverTeamId);
+  }, [loadTeam]);
+
+  // Accept an invite (token or code), refresh memberships, switch to the team.
+  const joinTeam = useCallback(
+    async (opts: { token?: string; code?: string }): Promise<{ ok: boolean; error?: string; teamName?: string }> => {
+      try {
+        const res = await api.post<{ team: { id: string; name: string; role: TeamRole }; joined: boolean }>(
+          '/api/invites/accept',
+          opts,
+        );
+        await refreshMemberships();
+        await switchTeam(res.team.id);
+        return { ok: true, teamName: res.team.name };
+      } catch (e) {
+        return { ok: false, error: e instanceof Error ? e.message : 'failed' };
+      }
+    },
+    [refreshMemberships, switchTeam],
+  );
+
   // --- Initial server sync / first-login migration (runs once per user) ---
   useEffect(() => {
     if (isLoading || !isAuthenticated || !user) return;
@@ -308,44 +405,72 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         const fresh = await api.get<TeamMeResponse>('/api/teams/me');
         serverTeamIdRef.current = fresh.team.id;
 
-        if (fresh.drivers.length > 0) {
-          // Server is authoritative for meta + roster; keep local sessionHistory.
-          const localHistory = teamsRef.current[0]?.sessionHistory ?? [];
-          const hydrated: Team = {
-            id: 1,
-            name: fresh.team.name,
-            raceName: fresh.team.raceName,
-            sessionNumber: fresh.team.sessionNumber,
-            sessionDuration: fresh.team.sessionDurationMin,
-            drivers: fresh.drivers.map((d, i) => ({
-              id: i + 1,
-              name: d.name,
-              targetTime: d.targetTimeSec,
-              penaltyLaps: d.penaltyLaps,
-              laps: [],
-            })),
-            sessionHistory: localHistory,
-          };
-          setTeams([hydrated]);
-          setLapTypeValues(fresh.team.lapTypeValues);
+        // Load all memberships, then pick the active team (restore last choice).
+        let list: TeamMembership[] = [];
+        try {
+          list = (await api.get<{ teams: TeamMembership[] }>('/api/teams')).teams;
+        } catch {
+          /* offline — fall through with empty list */
+        }
+        setMemberships(list);
+        const savedActive = await AsyncStorage.getItem('activeServerTeamId');
+        const activeId = savedActive && list.some((t) => t.id === savedActive) ? savedActive : fresh.team.id;
+        const activeRole = list.find((t) => t.id === activeId)?.role ?? 'owner';
+
+        if (activeId === fresh.team.id) {
+          // The caller's own team — server is authoritative if it has a roster,
+          // otherwise push the local roster up to seed it.
+          setActiveServerTeamId(fresh.team.id);
+          setUserRole(activeRole);
+          if (fresh.drivers.length > 0) {
+            const hydrated: Team = {
+              id: 1,
+              name: fresh.team.name,
+              raceName: fresh.team.raceName,
+              sessionNumber: fresh.team.sessionNumber,
+              sessionDuration: fresh.team.sessionDurationMin,
+              drivers: fresh.drivers.map((d, i) => ({
+                id: i + 1,
+                name: d.name,
+                targetTime: d.targetTimeSec,
+                penaltyLaps: d.penaltyLaps,
+                laps: [],
+              })),
+              sessionHistory: teamsRef.current[0]?.sessionHistory ?? [],
+            };
+            setTeams([hydrated]);
+            setLapTypeValues(fresh.team.lapTypeValues);
+          } else {
+            await syncQueue.enqueue({ kind: 'putTeam', teamId: fresh.team.id, payload: buildTeamPayload() });
+          }
         } else {
-          // Server has no roster yet — push our local team up.
-          await syncQueue.enqueue({ kind: 'putTeam', teamId: fresh.team.id, payload: buildTeamPayload() });
+          // A shared team the user joined — load its roster/settings.
+          await loadTeam(activeId);
         }
         setSyncStatus(syncQueue.pending > 0 ? 'syncing' : 'synced');
+
+        // Consume a deep-link invite captured before sign-in (regularity://join/<token>).
+        const pending = await AsyncStorage.getItem('pendingInviteToken');
+        if (pending) {
+          await AsyncStorage.removeItem('pendingInviteToken');
+          await joinTeam({ token: pending });
+        }
       } catch (e) {
         // Offline or server unreachable — stay on local data.
         console.warn('[sync] initial sync failed (working offline):', e);
         setSyncStatus('offline');
       }
     })();
-  }, [isLoading, isAuthenticated, user, buildTeamPayload]);
+  }, [isLoading, isAuthenticated, user, buildTeamPayload, loadTeam, joinTeam]);
 
   // Reset sync gate on sign-out so a different user re-syncs.
   useEffect(() => {
     if (!isAuthenticated) {
       syncedUserRef.current = null;
       serverTeamIdRef.current = null;
+      setMemberships([]);
+      setUserRole(null);
+      setActiveServerTeamId(null);
       setSyncStatus('offline');
     }
   }, [isAuthenticated]);
@@ -355,7 +480,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (isLoading) return;
     const timeout = setTimeout(() => {
       AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
-      if (serverTeamIdRef.current && syncedUserRef.current) {
+      // Only owner/admin push roster+settings; members/viewers never clobber them.
+      if (serverTeamIdRef.current && syncedUserRef.current && canEditTeam(userRoleRef.current)) {
         syncQueue.enqueue({
           kind: 'putTeam',
           teamId: serverTeamIdRef.current,
@@ -477,6 +603,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const streamLap = useCallback(
     async (driverIndex: number, lap: Lap) => {
       if (!serverTeamIdRef.current) return;
+      // Only owner/admin/member may record; viewers never stream laps.
+      if (!canRecord(userRoleRef.current)) return;
       let live = liveSessionRef.current;
       if (!live) {
         live = await startLiveSessionInternal();
@@ -566,6 +694,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         hasSeenWelcome,
         setHasSeenWelcome,
         syncStatus,
+        memberships,
+        userRole,
+        activeServerTeamId,
+        switchTeam,
+        refreshMemberships,
+        joinTeam,
         saveSessionToS3,
         loadSessionsFromS3,
         liveSession,
