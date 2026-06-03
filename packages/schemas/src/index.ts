@@ -206,3 +206,32 @@ export const updateTeamInputSchema = z.object({
   lapTypeValues: lapTypeValuesSchema.optional(),
 });
 export type UpdateTeamInput = z.infer<typeof updateTeamInputSchema>;
+
+// --- Team membership & invitations ---
+
+export const teamRoleSchema = z.enum(['owner', 'admin', 'member', 'viewer']);
+export type TeamRole = z.infer<typeof teamRoleSchema>;
+
+/** Roles that may be granted at invite time or via a role change (never 'owner'
+ * — ownership moves only through an explicit transfer). */
+export const assignableRoleSchema = z.enum(['admin', 'member', 'viewer']);
+export type AssignableRole = z.infer<typeof assignableRoleSchema>;
+
+export const createInviteSchema = z.object({
+  role: assignableRoleSchema.default('member'),
+  expiresInDays: z.number().int().min(1).max(90).optional(),
+  maxUses: z.number().int().min(1).max(1000).optional(),
+  email: z.string().trim().email().max(200).optional(),
+});
+export type CreateInviteInput = z.infer<typeof createInviteSchema>;
+
+export const acceptInviteSchema = z
+  .object({
+    token: z.string().trim().min(1).max(200).optional(),
+    code: z.string().trim().min(1).max(40).optional(),
+  })
+  .refine((d) => !!(d.token || d.code), { message: 'token or code is required' });
+export type AcceptInviteInput = z.infer<typeof acceptInviteSchema>;
+
+export const updateMemberRoleSchema = z.object({ role: assignableRoleSchema });
+export type UpdateMemberRoleInput = z.infer<typeof updateMemberRoleSchema>;

@@ -2,6 +2,7 @@ import { and, asc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import {
   teams,
+  teamMembers,
   drivers,
   raceSessions,
   sessionDrivers,
@@ -10,6 +11,7 @@ import {
   type SessionDriverRow,
   type RaceSessionRow,
   type TeamRow,
+  type TeamMemberRole,
 } from '@regularity/db';
 import {
   calculateLapType,
@@ -20,34 +22,74 @@ import {
   type LapTypeValues,
 } from '@regularity/core';
 
-/** Ensure the user has a team (lazily create a default one on first access). */
+// ---------------------------------------------------------------------------
+// Membership-based authorization. Access is resolved through team_members
+// (a user may belong to multiple teams with different roles). teams.owner_id is
+// kept only as a denormalized "primary owner" pointer.
+// ---------------------------------------------------------------------------
+
+export const ROLE_RANK: Record<TeamMemberRole, number> = { viewer: 0, member: 1, admin: 2, owner: 3 };
+
+/** True if `role` is at least as privileged as `min`. */
+export function roleAtLeast(role: TeamMemberRole, min: TeamMemberRole): boolean {
+  return ROLE_RANK[role] >= ROLE_RANK[min];
+}
+
+/** Idempotently ensure `userId` is an owner member of `teamId`. */
+async function ensureOwnerMembership(teamId: string, userId: string): Promise<void> {
+  await db.insert(teamMembers).values({ teamId, userId, role: 'owner' }).onConflictDoNothing();
+}
+
+/** Ensure the user has a (personal) team — lazily create one + owner membership. */
 export async function getOrCreateTeam(userId: string): Promise<TeamRow> {
   const existing = await db.select().from(teams).where(eq(teams.ownerId, userId)).limit(1);
-  if (existing[0]) return existing[0];
+  if (existing[0]) {
+    await ensureOwnerMembership(existing[0].id, userId);
+    return existing[0];
+  }
 
   const [created] = await db
     .insert(teams)
     .values({ ownerId: userId, name: 'My Team' })
     .returning();
+  await ensureOwnerMembership(created.id, userId);
   return created;
 }
 
-/** The team owned by `userId`, or null. */
+/** The caller's primary owned team (used by the legacy single-team nav helpers). */
 export async function getOwnedTeam(userId: string): Promise<TeamRow | null> {
   const rows = await db.select().from(teams).where(eq(teams.ownerId, userId)).limit(1);
   return rows[0] ?? null;
 }
 
-/** Load a session and confirm it belongs to a team owned by `userId`. */
+/** The team + the caller's role within it, or null if they are not a member. */
+export async function getMembership(
+  teamId: string,
+  userId: string,
+): Promise<{ team: TeamRow; role: TeamMemberRole } | null> {
+  const rows = await db
+    .select({ team: teams, role: teamMembers.role })
+    .from(teamMembers)
+    .innerJoin(teams, eq(teams.id, teamMembers.teamId))
+    .where(and(eq(teamMembers.teamId, teamId), eq(teamMembers.userId, userId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/** Load a session with the caller's membership role, or null if not a member. */
 export async function getOwnedSession(
   sessionId: string,
   userId: string,
-): Promise<{ session: RaceSessionRow; team: TeamRow } | null> {
+): Promise<{ session: RaceSessionRow; team: TeamRow; role: TeamMemberRole } | null> {
   const rows = await db
-    .select({ session: raceSessions, team: teams })
+    .select({ session: raceSessions, team: teams, role: teamMembers.role })
     .from(raceSessions)
     .innerJoin(teams, eq(teams.id, raceSessions.teamId))
-    .where(and(eq(raceSessions.id, sessionId), eq(teams.ownerId, userId)))
+    .innerJoin(
+      teamMembers,
+      and(eq(teamMembers.teamId, teams.id), eq(teamMembers.userId, userId)),
+    )
+    .where(eq(raceSessions.id, sessionId))
     .limit(1);
   return rows[0] ?? null;
 }

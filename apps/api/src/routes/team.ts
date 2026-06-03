@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { and, asc, desc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { requireAuth, type AppVariables } from '../middleware';
-import { getOrCreateTeam, getOwnedTeam } from '../lib/domain';
+import { getOrCreateTeam, getOwnedTeam, getMembership, roleAtLeast } from '../lib/domain';
 import { teams, drivers, raceSessions, sessionDrivers, laps } from '@regularity/db';
 import {
   updateTeamInputSchema,
@@ -141,12 +141,13 @@ teamRouter.get('/me/live', async (c) => {
   return c.json({ live: s ?? null });
 });
 
-// PATCH /api/teams/:id
+// PATCH /api/teams/:id — settings/scoring/meta (owner|admin).
 teamRouter.patch('/:id', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  const team = await getOwnedTeam(user.id);
-  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
 
   const body = await c.req.json().catch(() => null);
   const parsed = updateTeamInputSchema.safeParse(body);
@@ -160,12 +161,13 @@ teamRouter.patch('/:id', async (c) => {
   return c.json({ team: updated });
 });
 
-// POST /api/teams/:id/drivers
+// POST /api/teams/:id/drivers — add a roster driver (owner|admin).
 teamRouter.post('/:id/drivers', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  const team = await getOwnedTeam(user.id);
-  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
 
   const body = await c.req.json().catch(() => null);
   const parsed = createDriverInputSchema.safeParse(body);
@@ -184,12 +186,14 @@ teamRouter.post('/:id/drivers', async (c) => {
   return c.json({ driver: created }, 201);
 });
 
-// PUT /api/teams/:id — bulk meta update + roster replace (debounced client sync).
+// PUT /api/teams/:id — bulk meta update + roster replace (owner|admin). Legacy
+// single-writer sync path; multi-member clients use granular driver endpoints.
 teamRouter.put('/:id', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  const team = await getOwnedTeam(user.id);
-  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
 
   const body = await c.req.json().catch(() => null);
   const parsed = teamStateSchema.safeParse(body);
@@ -232,8 +236,9 @@ teamRouter.put('/:id', async (c) => {
 teamRouter.post('/:id/sessions/complete', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  const team = await getOwnedTeam(user.id);
-  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'member')) return c.json({ error: 'forbidden' }, 403);
 
   const body = await c.req.json().catch(() => null);
   const parsed = sessionSnapshotSchema.safeParse(body);
@@ -296,12 +301,12 @@ teamRouter.post('/:id/sessions/complete', async (c) => {
   return c.json({ session: created });
 });
 
-// GET /api/teams/:id/sessions — history (newest first).
+// GET /api/teams/:id/sessions — history (newest first). Any member.
 teamRouter.get('/:id/sessions', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  const team = await getOwnedTeam(user.id);
-  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
 
   const list = await db
     .select()
@@ -316,8 +321,10 @@ teamRouter.get('/:id/sessions', async (c) => {
 teamRouter.post('/:id/sessions', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
-  const team = await getOwnedTeam(user.id);
-  if (!team || team.id !== id) return c.json({ error: 'not_found' }, 404);
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+  const team = m.team;
 
   const body = await c.req.json().catch(() => undefined);
   const parsed = startSessionInputSchema.safeParse(body ?? undefined);

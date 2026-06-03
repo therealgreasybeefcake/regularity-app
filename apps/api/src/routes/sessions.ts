@@ -6,8 +6,9 @@ import {
   buildSessionPayload,
   computeLap,
   getOwnedSession,
+  roleAtLeast,
 } from '../lib/domain';
-import { laps, raceSessions, sessionDrivers, teams } from '@regularity/db';
+import { laps, raceSessions, sessionDrivers, teams, teamMembers } from '@regularity/db';
 import { appendLapInputSchema } from '@regularity/schemas';
 import { rooms } from '../rooms';
 
@@ -23,12 +24,13 @@ sessionRouter.get('/:id', async (c) => {
   return c.json(payload);
 });
 
-// POST /api/sessions/:id/end
+// POST /api/sessions/:id/end — (owner|admin|member).
 sessionRouter.post('/:id/end', async (c) => {
   const user = c.get('user');
   const sessionId = c.req.param('id');
   const owned = await getOwnedSession(sessionId, user.id);
   if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
 
   const [ended] = await db
     .update(raceSessions)
@@ -47,6 +49,7 @@ sessionRouter.delete('/:id', async (c) => {
   const sessionId = c.req.param('id');
   const owned = await getOwnedSession(sessionId, user.id);
   if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
   rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
   await db.delete(raceSessions).where(eq(raceSessions.id, sessionId));
   return c.json({ ok: true });
@@ -58,6 +61,7 @@ sessionRouter.post('/:id/laps', async (c) => {
   const sessionId = c.req.param('id');
   const owned = await getOwnedSession(sessionId, user.id);
   if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
   if (owned.session.status !== 'live') return c.json({ error: 'session_not_live' }, 409);
 
   const body = await c.req.json().catch(() => null);
@@ -133,25 +137,27 @@ sessionRouter.post('/:id/laps', async (c) => {
 export const lapRouter = new Hono<{ Variables: AppVariables }>();
 lapRouter.use('*', requireAuth);
 
-/** Resolve a lap with its owning session + team, scoped to the caller. */
+/** Resolve a lap with its session + team and the caller's membership role. */
 async function ownLap(lapId: string, userId: string) {
   const rows = await db
-    .select({ lap: laps, sd: sessionDrivers, session: raceSessions, team: teams })
+    .select({ lap: laps, sd: sessionDrivers, session: raceSessions, team: teams, role: teamMembers.role })
     .from(laps)
     .innerJoin(sessionDrivers, eq(sessionDrivers.id, laps.sessionDriverId))
     .innerJoin(raceSessions, eq(raceSessions.id, sessionDrivers.sessionId))
     .innerJoin(teams, eq(teams.id, raceSessions.teamId))
-    .where(and(eq(laps.id, lapId), eq(teams.ownerId, userId)))
+    .innerJoin(teamMembers, and(eq(teamMembers.teamId, teams.id), eq(teamMembers.userId, userId)))
+    .where(eq(laps.id, lapId))
     .limit(1);
   return rows[0] ?? null;
 }
 
-// PATCH /api/laps/:id — correct a lap's time; recompute derived fields server-side.
+// PATCH /api/laps/:id — correct a lap's time; recompute derived fields (owner|admin|member).
 lapRouter.patch('/:id', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
   const owned = await ownLap(id, user.id);
   if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
 
   const body = await c.req.json().catch(() => null);
   const time = Number(body?.time);
@@ -177,12 +183,13 @@ lapRouter.patch('/:id', async (c) => {
   return c.json({ lap: updated });
 });
 
-// DELETE /api/laps/:id
+// DELETE /api/laps/:id — (owner|admin|member).
 lapRouter.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
   const owned = await ownLap(id, user.id);
   if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
 
   await db.delete(laps).where(eq(laps.id, id));
   rooms.broadcast(owned.session.publicToken, { type: 'lapDeleted', lapId: id });

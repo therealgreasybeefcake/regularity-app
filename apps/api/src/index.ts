@@ -6,6 +6,7 @@ import { auth } from './auth';
 import { env } from './env';
 import { requireAuth, type AppVariables } from './middleware';
 import { teamRouter } from './routes/team';
+import { memberRouter, inviteRouter } from './routes/members';
 import { driverRouter } from './routes/drivers';
 import { sessionRouter, lapRouter } from './routes/sessions';
 import { liveRouter } from './routes/live';
@@ -31,6 +32,8 @@ app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 app.get('/api/me', requireAuth, (c) => c.json({ user: c.get('user') }));
 
 app.route('/api/teams', teamRouter);
+app.route('/api/teams', memberRouter);
+app.route('/api/invites', inviteRouter);
 app.route('/api/drivers', driverRouter);
 app.route('/api/sessions', sessionRouter);
 app.route('/api/laps', lapRouter);
