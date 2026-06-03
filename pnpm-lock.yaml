@@ -44,6 +44,9 @@ importers:
       hono:
         specifier: ^4.6.14
         version: 4.12.23
+      tsx:
+        specifier: ^4.19.2
+        version: 4.22.4
       zod:
         specifier: ^3.23.8
         version: 3.25.76
@@ -51,9 +54,6 @@ importers:
       '@types/node':
         specifier: ^22.10.2
         version: 22.19.19
-      tsx:
-        specifier: ^4.19.2
-        version: 4.22.4
       typescript:
         specifier: ~5.9.2
         version: 5.9.3
