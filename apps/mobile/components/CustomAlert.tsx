@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useRef, useCallback } from 'react';
+import React, { createContext, useContext, useState, useRef, useCallback, useEffect } from 'react';
 import {
   View,
   Text,
@@ -46,9 +46,32 @@ export function useAlert(): AlertContextType {
 export function AlertProvider({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
   const [config, setConfig] = useState<AlertConfig | null>(null);
-  const [queue, setQueue] = useState<AlertConfig[]>([]);
   const scaleAnim = useRef(new Animated.Value(0.9)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Refs (not state) so rapid showAlert/hideAlert calls read the current value
+  // synchronously and never act on a stale closure.
+  const visibleRef = useRef(false);
+  const queueRef = useRef<AlertConfig[]>([]);
+  const timeoutsRef = useRef<Set<ReturnType<typeof setTimeout>>>(new Set());
+
+  // Track every timeout so none can fire (and setState) after unmount.
+  const schedule = useCallback((fn: () => void, ms: number) => {
+    const id = setTimeout(() => {
+      timeoutsRef.current.delete(id);
+      fn();
+    }, ms);
+    timeoutsRef.current.add(id);
+    return id;
+  }, []);
+
+  useEffect(() => {
+    const timeouts = timeoutsRef.current;
+    return () => {
+      timeouts.forEach(clearTimeout);
+      timeouts.clear();
+    };
+  }, []);
 
   const animateIn = useCallback(() => {
     scaleAnim.setValue(0.9);
@@ -59,42 +82,43 @@ export function AlertProvider({ children }: { children: React.ReactNode }) {
     ]).start();
   }, [scaleAnim, opacityAnim]);
 
+  const present = useCallback((cfg: AlertConfig) => {
+    visibleRef.current = true;
+    setConfig(cfg);
+    setVisible(true);
+    schedule(animateIn, 10);
+  }, [animateIn, schedule]);
+
   const showAlert = useCallback((newConfig: AlertConfig) => {
-    if (visible) {
-      setQueue(q => [...q, newConfig]);
+    if (visibleRef.current) {
+      queueRef.current.push(newConfig);
       return;
     }
-    setConfig(newConfig);
-    setVisible(true);
-    setTimeout(animateIn, 10);
-  }, [visible, animateIn]);
+    present(newConfig);
+  }, [present]);
 
   const hideAlert = useCallback(() => {
+    if (!visibleRef.current) return;
     Animated.timing(opacityAnim, { toValue: 0, duration: 150, useNativeDriver: true }).start(() => {
+      visibleRef.current = false;
       setVisible(false);
       setConfig(null);
-      // Show next in queue
-      setQueue(q => {
-        if (q.length > 0) {
-          const [next, ...rest] = q;
-          setTimeout(() => {
-            setConfig(next);
-            setVisible(true);
-            setTimeout(animateIn, 10);
-          }, 100);
-          return rest;
-        }
-        return q;
-      });
+      // Present the next queued alert only after this one finished closing.
+      const next = queueRef.current.shift();
+      if (next) {
+        schedule(() => present(next), 100);
+      }
     });
-  }, [opacityAnim, animateIn]);
+  }, [opacityAnim, present, schedule]);
 
   const handlePress = useCallback((button: AlertButton) => {
+    // Dismiss first, then run the action once the dialog is gone (so an
+    // onPress that opens another alert isn't dropped by the visibility guard).
     hideAlert();
     if (button.onPress) {
-      setTimeout(button.onPress, 200);
+      schedule(button.onPress, 200);
     }
-  }, [hideAlert]);
+  }, [hideAlert, schedule]);
 
   return (
     <AlertContext.Provider value={{ showAlert, hideAlert }}>

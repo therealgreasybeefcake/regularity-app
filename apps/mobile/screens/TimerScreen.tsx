@@ -73,7 +73,7 @@ export default function TimerScreen() {
   const [setupSessionDuration, setSetupSessionDuration] = useState('120');
 
   const startTimeRef = useRef<number | null>(null);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const lastLapTimeRef = useRef<number | null>(null);
   const beforeTargetBeepPlayedRef = useRef(false);
   const afterStartBeepPlayedRef = useRef(false);

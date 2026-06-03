@@ -1,4 +1,4 @@
-import { Driver, Lap, LapType, LapTypeValues, DriverStats, Team, TeamStats } from '../types';
+import { Driver, Lap, LapType, LapTypeValues, DriverStats, Team, TeamStats } from './types';
 
 export const formatTime = (seconds: number): string => {
   const mins = Math.floor(seconds / 60);
@@ -10,15 +10,29 @@ export const formatTimeWithMilliseconds = (seconds: number): string => {
   return `${seconds.toFixed(3)}s`;
 };
 
+/**
+ * Parse a user-entered time string into seconds.
+ * Accepts "SS.mmm" or "M:SS.mmm". Returns null on any invalid / non-finite /
+ * negative input (never NaN), so corrupt times can't enter a Lap. Uses Number()
+ * (not parseFloat) so trailing garbage like "90abc" is rejected rather than
+ * silently truncated to 90.
+ */
 export const parseTimeInput = (timeString: string): number | null => {
   if (!timeString) return null;
-  const parts = timeString.split(':');
+  const trimmed = timeString.trim();
+  if (!trimmed) return null;
+
+  const parts = trimmed.split(':');
   if (parts.length === 2) {
-    const mins = parseInt(parts[0]) || 0;
-    const secs = parseFloat(parts[1]) || 0;
+    const mins = Number(parts[0]);
+    const secs = Number(parts[1]);
+    if (!Number.isFinite(mins) || !Number.isFinite(secs)) return null;
+    if (mins < 0 || secs < 0) return null;
     return mins * 60 + secs;
   } else if (parts.length === 1) {
-    return parseFloat(timeString);
+    const secs = Number(parts[0]);
+    if (!Number.isFinite(secs) || secs < 0) return null;
+    return secs;
   }
   return null;
 };

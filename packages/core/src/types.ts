@@ -1,3 +1,6 @@
+// Pure domain types shared across the mobile app, the web live-view, and the API.
+// MUST stay free of any React Native / Expo imports so the Node API can import it.
+
 export type LapType = 'bonus' | 'base' | 'broken' | 'changeover' | 'safety';
 
 export interface Lap {
@@ -79,21 +82,3 @@ export interface TeamStats {
 }
 
 export type SyncStatus = 'synced' | 'syncing' | 'error' | 'offline';
-
-export interface ThemeColors {
-  background: import('react-native').ColorValue;
-  card: import('react-native').ColorValue;
-  text: import('react-native').ColorValue;
-  textSecondary: import('react-native').ColorValue;
-  border: import('react-native').ColorValue;
-  primary: import('react-native').ColorValue;
-  bonus: import('react-native').ColorValue;
-  base: import('react-native').ColorValue;
-  broken: import('react-native').ColorValue;
-  changeover: import('react-native').ColorValue;
-  safety: import('react-native').ColorValue;
-  warning: import('react-native').ColorValue;
-  surface: import('react-native').ColorValue;
-  surfaceElevated: import('react-native').ColorValue;
-  surfaceMuted: import('react-native').ColorValue;
-}

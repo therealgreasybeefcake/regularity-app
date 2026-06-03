@@ -1,0 +1,55 @@
+import { Hono } from 'hono';
+import { and, eq } from 'drizzle-orm';
+import { db } from '../db';
+import { requireAuth, type AppVariables } from '../middleware';
+import { drivers, teams } from '@regularity/db';
+import { updateDriverInputSchema } from '@regularity/schemas';
+
+export const driverRouter = new Hono<{ Variables: AppVariables }>();
+driverRouter.use('*', requireAuth);
+
+/** Load a driver only if it belongs to a team owned by the caller. */
+async function ownDriver(driverId: string, userId: string) {
+  const rows = await db
+    .select({ driver: drivers })
+    .from(drivers)
+    .innerJoin(teams, eq(teams.id, drivers.teamId))
+    .where(and(eq(drivers.id, driverId), eq(teams.ownerId, userId)))
+    .limit(1);
+  return rows[0]?.driver ?? null;
+}
+
+// PATCH /api/drivers/:id
+driverRouter.patch('/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const owned = await ownDriver(id, user.id);
+  if (!owned) return c.json({ error: 'not_found' }, 404);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = updateDriverInputSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+
+  const { targetTime, ...rest } = parsed.data;
+  const [updated] = await db
+    .update(drivers)
+    .set({
+      ...rest,
+      ...(targetTime !== undefined ? { targetTimeSec: targetTime } : {}),
+      updatedAt: new Date(),
+    })
+    .where(eq(drivers.id, id))
+    .returning();
+  return c.json({ driver: updated });
+});
+
+// DELETE /api/drivers/:id
+driverRouter.delete('/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const owned = await ownDriver(id, user.id);
+  if (!owned) return c.json({ error: 'not_found' }, 404);
+
+  await db.delete(drivers).where(eq(drivers.id, id));
+  return c.json({ ok: true });
+});
