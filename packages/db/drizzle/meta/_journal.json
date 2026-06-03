@@ -15,6 +15,13 @@
       "when": 1780489929971,
       "tag": "0001_nervous_amphibian",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780526411771,
+      "tag": "0002_right_scrambler",
+      "breakpoints": true
     }
   ]
 }

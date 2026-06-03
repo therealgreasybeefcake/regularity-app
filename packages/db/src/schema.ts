@@ -9,6 +9,7 @@ import {
   uuid,
   pgEnum,
   uniqueIndex,
+  index,
 } from 'drizzle-orm/pg-core';
 import type { LapTypeValues } from '@regularity/core';
 
@@ -82,6 +83,14 @@ export const lapTypeEnum = pgEnum('lap_type', [
 
 export const sessionStatusEnum = pgEnum('session_status', ['live', 'ended']);
 
+// Shared-team membership roles (highest → lowest privilege).
+export const teamMemberRoleEnum = pgEnum('team_member_role', [
+  'owner',
+  'admin',
+  'member',
+  'viewer',
+]);
+
 const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
   bonus: 2,
   base: 1,
@@ -123,6 +132,9 @@ export const drivers = pgTable('drivers', {
   targetTimeSec: doublePrecision('target_time_sec').notNull(),
   penaltyLaps: integer('penalty_laps').notNull().default(0),
   sortOrder: integer('sort_order').notNull().default(0),
+  // Optional tag linking a roster driver to a member account (decoupled — a
+  // driver need not be an account, and a member need not be a driver).
+  linkedUserId: text('linked_user_id').references(() => user.id, { onDelete: 'set null' }),
   createdAt: timestamp('created_at').notNull().defaultNow(),
   updatedAt: timestamp('updated_at').notNull().defaultNow(),
 });
@@ -200,6 +212,56 @@ export const laps = pgTable(
   }),
 );
 
+/**
+ * Team membership — links user accounts to teams with a role. Shared-team
+ * access control resolves through this table. `teams.owner_id` remains a
+ * denormalized pointer to the primary owner (kept in sync on ownership transfer);
+ * the row here with role='owner' is the source of truth for authorization.
+ */
+export const teamMembers = pgTable(
+  'team_members',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    teamId: uuid('team_id')
+      .notNull()
+      .references(() => teams.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    role: teamMemberRoleEnum('role').notNull().default('member'),
+    createdAt: timestamp('created_at').notNull().defaultNow(),
+    updatedAt: timestamp('updated_at').notNull().defaultNow(),
+  },
+  (t) => ({
+    teamUserUnique: uniqueIndex('team_members_team_user_uq').on(t.teamId, t.userId),
+    byUser: index('team_members_user_idx').on(t.userId),
+  }),
+);
+
+/**
+ * Shareable join invitations. The opaque `token` backs the deep link
+ * (regularity://join/<token> + web /join/<token>); the short `code` is for
+ * manual entry. Accepting creates a team_members row with the invite's role.
+ */
+export const teamInvitations = pgTable('team_invitations', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  teamId: uuid('team_id')
+    .notNull()
+    .references(() => teams.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  code: text('code').unique(),
+  role: teamMemberRoleEnum('role').notNull().default('member'),
+  invitedBy: text('invited_by')
+    .notNull()
+    .references(() => user.id, { onDelete: 'cascade' }),
+  email: text('email'),
+  maxUses: integer('max_uses').notNull().default(1),
+  uses: integer('uses').notNull().default(0),
+  expiresAt: timestamp('expires_at').notNull(),
+  revokedAt: timestamp('revoked_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+});
+
 // Convenience inferred types for the API layer.
 export type UserRow = typeof user.$inferSelect;
 export type TeamRow = typeof teams.$inferSelect;
@@ -207,3 +269,6 @@ export type DriverRow = typeof drivers.$inferSelect;
 export type RaceSessionRow = typeof raceSessions.$inferSelect;
 export type SessionDriverRow = typeof sessionDrivers.$inferSelect;
 export type LapRow = typeof laps.$inferSelect;
+export type TeamMemberRow = typeof teamMembers.$inferSelect;
+export type TeamInvitationRow = typeof teamInvitations.$inferSelect;
+export type TeamMemberRole = TeamMemberRow['role'];
