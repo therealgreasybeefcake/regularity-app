@@ -1,9 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useColorScheme, Alert } from 'react-native';
+import { useColorScheme } from 'react-native';
 import { Team, AudioSettings, LapTypeValues, Session, SyncStatus } from '../types';
-import { useAuth } from './AuthContext';
-import { S3SyncService } from '../services/S3SyncService';
 
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -25,6 +23,10 @@ interface AppContextType {
   hasSeenWelcome: boolean;
   setHasSeenWelcome: (value: boolean) => void;
   syncStatus: SyncStatus;
+  // NOTE: cloud persistence was removed with AWS. In Phase 3 these are replaced
+  // by API-backed, offline-first queries/mutations. For now sessions live in
+  // local AsyncStorage (team.sessionHistory) and these are no-op shims so the
+  // existing screens keep compiling/working.
   saveSessionToS3: (session: Session) => Promise<void>;
   loadSessionsFromS3: () => Promise<Session[]>;
 }
@@ -71,7 +73,6 @@ const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const { isAuthenticated, getCredentials } = useAuth();
   const systemColorScheme = useColorScheme();
   const [teams, setTeams] = useState<Team[]>(DEFAULT_TEAMS);
   const [activeTeam, setActiveTeam] = useState(0);
@@ -81,9 +82,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
-  const s3SyncTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const initialLoadDoneRef = useRef(false);
+  const [syncStatus] = useState<SyncStatus>('offline');
 
   // Calculate isDarkMode based on theme mode and system preference
   const isDarkMode = themeMode === 'auto'
@@ -170,121 +169,25 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [isLoading]);
 
-  // S3 sync: load from S3 after local data is ready
-  useEffect(() => {
-    if (!isLoading && isAuthenticated && !initialLoadDoneRef.current) {
-      initialLoadDoneRef.current = true;
-      (async () => {
-        try {
-          setSyncStatus('syncing');
-          const creds = await getCredentials();
-          if (!creds) {
-            console.warn('[S3Sync] No credentials on initial load');
-            setSyncStatus('offline');
-            return;
-          }
-
-          // Try new format first
-          console.log('[S3Sync] Loading team from S3...');
-          let s3Team = await S3SyncService.loadTeam(creds);
-
-          if (!s3Team) {
-            // Fall back to legacy migration
-            console.log('[S3Sync] No team.json found, trying legacy migration...');
-            const migratedTeam = await S3SyncService.migrateFromLegacy(creds);
-            if (migratedTeam) {
-              setTeams([migratedTeam]);
-              setSyncStatus('synced');
-              return;
-            }
-          }
-
-          if (s3Team) {
-            // Merge with local sessionHistory — sessions are loaded lazily from S3 via loadSessionsFromS3
-            const localTeam = teams[0];
-            const fullTeam: Team = {
-              ...s3Team,
-              sessionHistory: localTeam?.sessionHistory || [],
-            };
-            setTeams([fullTeam]);
-          }
-          setSyncStatus('synced');
-        } catch (error: any) {
-          console.error('[S3Sync] Load error:', error);
-          setSyncStatus('error');
-        }
-      })();
-    }
-  }, [isLoading, isAuthenticated]);
-
-  // Save teams to AsyncStorage + debounced S3 sync
+  // Persist teams locally (debounced). Cloud sync is reintroduced in Phase 3.
   useEffect(() => {
     if (!isLoading) {
       const timeout = setTimeout(() => {
         AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
       }, 300);
-
-      // Debounced S3 sync (2 seconds) — saves team data only (no sessionHistory)
-      if (isAuthenticated) {
-        if (s3SyncTimeoutRef.current) clearTimeout(s3SyncTimeoutRef.current);
-        s3SyncTimeoutRef.current = setTimeout(async () => {
-          try {
-            setSyncStatus('syncing');
-            const creds = await getCredentials();
-            if (!creds) {
-              console.warn('[S3Sync] No credentials available');
-              setSyncStatus('offline');
-              return;
-            }
-            const team = teams[0]; // Single-team app
-            if (team) {
-              console.log('[S3Sync] Saving team to S3...');
-              await S3SyncService.saveTeam(creds, team);
-              console.log('[S3Sync] Save successful');
-            }
-            setSyncStatus('synced');
-          } catch (error: any) {
-            console.error('[S3Sync] Error:', error);
-            Alert.alert('S3 Sync Error', error?.message || String(error));
-            setSyncStatus('error');
-          }
-        }, 2000);
-      } else {
-        console.log('[S3Sync] Not authenticated, skipping sync');
-      }
-
-      return () => {
-        clearTimeout(timeout);
-      };
+      return () => clearTimeout(timeout);
     }
-  }, [teams, isLoading, isAuthenticated]);
+  }, [teams, isLoading]);
 
-  // Save a single session to S3
-  const saveSessionToS3 = useCallback(async (session: Session) => {
-    if (!isAuthenticated) return;
-    try {
-      const creds = await getCredentials();
-      if (!creds) return;
-      await S3SyncService.saveSession(creds, session);
-      console.log('[S3Sync] Session saved:', session.id);
-    } catch (error: any) {
-      console.error('[S3Sync] Error saving session:', error);
-      Alert.alert('S3 Sync Error', `Failed to save session: ${error?.message || String(error)}`);
-    }
-  }, [isAuthenticated, getCredentials]);
+  // Phase 3 will replace these with API-backed, offline-first persistence.
+  const saveSessionToS3 = useCallback(async (_session: Session) => {
+    // no-op until the API data layer lands (Phase 3)
+  }, []);
 
-  // Load all sessions from S3
   const loadSessionsFromS3 = useCallback(async (): Promise<Session[]> => {
-    if (!isAuthenticated) return [];
-    try {
-      const creds = await getCredentials();
-      if (!creds) return [];
-      return await S3SyncService.loadSessions(creds);
-    } catch (error: any) {
-      console.error('[S3Sync] Error loading sessions:', error);
-      return [];
-    }
-  }, [isAuthenticated, getCredentials]);
+    // Sessions currently live in local team.sessionHistory.
+    return [];
+  }, []);
 
   // Save active indices
   useEffect(() => {

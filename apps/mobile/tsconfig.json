@@ -2,18 +2,23 @@
   "extends": "expo/tsconfig.base",
   "compilerOptions": {
     "strict": true,
-    "baseUrl": ".",
     "paths": {
-      "@regularity/core": ["../../packages/core/src"],
-      "@regularity/core/*": ["../../packages/core/src/*"],
-      "@regularity/schemas": ["../../packages/schemas/src"],
-      "@regularity/schemas/*": ["../../packages/schemas/src/*"]
+      "@regularity/core": [
+        "../../packages/core/src"
+      ],
+      "@regularity/core/*": [
+        "../../packages/core/src/*"
+      ],
+      "@regularity/schemas": [
+        "../../packages/schemas/src"
+      ],
+      "@regularity/schemas/*": [
+        "../../packages/schemas/src/*"
+      ]
     }
   },
   "include": [
     "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
+    "**/*.tsx"
   ]
 }

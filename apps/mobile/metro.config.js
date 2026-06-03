@@ -18,7 +18,4 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, 'node_modules'),
 ];
 
-// 3. Avoid pulling duplicate copies of hoisted packages.
-config.resolver.disableHierarchicalLookup = true;
-
 module.exports = config;

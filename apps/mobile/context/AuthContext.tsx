@@ -1,86 +1,69 @@
-import React, { createContext, useContext, useState, useEffect, useRef, ReactNode } from 'react';
-import { AuthService, AWSCredentials, hydrateCognitoStorage } from '../services/AuthService';
+import React, { createContext, useContext, ReactNode } from 'react';
+import { authClient } from '../lib/auth-client';
+
+export type OAuthProvider = 'google' | 'apple';
+
+interface AuthResult {
+  success: boolean;
+  error?: string;
+}
 
 interface AuthContextType {
+  /** The signed-in user's email (kept as a string for existing consumers). */
   user: string | null;
+  userName: string | null;
   isAuthenticated: boolean;
   isAuthLoading: boolean;
-  signIn: (email: string, password: string) => Promise<{ success: boolean; challenge?: string; error?: string }>;
-  completeNewPasswordChallenge: (newPassword: string) => Promise<{ success: boolean; error?: string }>;
+  signIn: (email: string, password: string) => Promise<AuthResult>;
+  signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
+  signInWithProvider: (provider: OAuthProvider) => Promise<AuthResult>;
   signOut: () => Promise<void>;
-  getCredentials: () => Promise<AWSCredentials | null>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [user, setUser] = useState<string | null>(null);
-  const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const cachedCredentials = useRef<AWSCredentials | null>(null);
+  // BetterAuth's reactive session hook drives auth state across the app.
+  const { data: session, isPending } = authClient.useSession();
 
-  useEffect(() => {
-    const checkSession = async () => {
-      try {
-        await hydrateCognitoStorage();
-        const session = await AuthService.getSession();
-        if (session) {
-          setUser(session.email);
-        }
-      } catch {
-        // No valid session
-      } finally {
-        setIsAuthLoading(false);
-      }
-    };
-    checkSession();
-  }, []);
+  const user = session?.user?.email ?? null;
+  const userName = session?.user?.name ?? null;
+  const isAuthenticated = !!session?.user;
 
-  const signIn = async (email: string, password: string) => {
-    const result = await AuthService.signIn(email, password);
-    if (result.success) {
-      setUser(email);
-    }
-    return result;
+  const signIn = async (email: string, password: string): Promise<AuthResult> => {
+    const res = await authClient.signIn.email({ email, password });
+    return { success: !res.error, error: res.error?.message };
   };
 
-  const completeNewPasswordChallenge = async (newPassword: string) => {
-    const result = await AuthService.completeNewPasswordChallenge(newPassword);
-    if (result.success) {
-      const session = await AuthService.getSession();
-      if (session) setUser(session.email);
+  const signUp = async (name: string, email: string, password: string): Promise<AuthResult> => {
+    const res = await authClient.signUp.email({ name, email, password });
+    return { success: !res.error, error: res.error?.message };
+  };
+
+  const signInWithProvider = async (provider: OAuthProvider): Promise<AuthResult> => {
+    try {
+      const res = await authClient.signIn.social({ provider, callbackURL: '/' });
+      return { success: !res?.error, error: res?.error?.message };
+    } catch (e: any) {
+      return { success: false, error: e?.message ?? 'Sign-in failed' };
     }
-    return result;
   };
 
   const signOut = async () => {
-    await AuthService.signOut();
-    setUser(null);
-    cachedCredentials.current = null;
-  };
-
-  const getCredentials = async (): Promise<AWSCredentials | null> => {
-    // Return cached if not expired (with 5 min buffer)
-    if (cachedCredentials.current?.expiration) {
-      const buffer = 5 * 60 * 1000;
-      if (cachedCredentials.current.expiration.getTime() - buffer > Date.now()) {
-        return cachedCredentials.current;
-      }
-    }
-    const creds = await AuthService.getAWSCredentials();
-    cachedCredentials.current = creds;
-    return creds;
+    await authClient.signOut();
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
-        isAuthenticated: !!user,
-        isAuthLoading,
+        userName,
+        isAuthenticated,
+        isAuthLoading: isPending,
         signIn,
-        completeNewPasswordChallenge,
+        signUp,
+        signInWithProvider,
         signOut,
-        getCredentials,
       }}
     >
       {children}
