@@ -4,6 +4,7 @@ import { expo } from '@better-auth/expo';
 import { db } from './db';
 import { schema } from '@regularity/db';
 import { env, isRealSecret } from './env';
+import { sendResetPasswordEmail } from './email';
 
 // Only register a social provider when real credentials are present, so the
 // server boots cleanly with placeholder OAuth creds (email/password still works).
@@ -56,7 +57,14 @@ export const auth = betterAuth({
       verification: schema.verification,
     },
   }),
-  emailAndPassword: { enabled: true },
+  emailAndPassword: {
+    enabled: true,
+    // "Forgot password" — BetterAuth generates a 1-hour reset link and hands it
+    // to us to deliver. Without a Resend key the link is logged (see email.ts).
+    sendResetPassword: async ({ user, url }) => {
+      await sendResetPasswordEmail(user.email, url);
+    },
+  },
   socialProviders,
   // Apple's web "Sign in with Apple" posts the OAuth callback (response_mode=
   // form_post) to /api/auth/callback/apple with Origin: https://appleid.apple.com.

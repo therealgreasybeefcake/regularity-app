@@ -59,12 +59,16 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
     const onWelcome = segments[0] === 'welcome';
     const onLive = segments[0] === 'live';
     const onJoin = segments[0] === 'join';
+    const onReset = segments[0] === 'reset-password';
 
     // Public, shareable live-view — no auth required, never redirect away.
     if (onLive) return;
 
     // Invite deep-link — the route handles auth/redirects itself.
     if (onJoin) return;
+
+    // Password-reset link (emailed) — public; the route handles its own flow.
+    if (onReset) return;
 
     if (!isAuthenticated) {
       // Not signed in — go to login (unless already there)
@@ -128,6 +132,7 @@ export default function RootLayout() {
                     <Stack.Screen name="(app)" />
                     <Stack.Screen name="live/[publicToken]" />
                     <Stack.Screen name="join/[token]" />
+                    <Stack.Screen name="reset-password" />
                   </Stack>
                 </NavigationGuard>
               </AlertProvider>

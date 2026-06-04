@@ -36,4 +36,9 @@ export const env = {
   APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID,
   APPLE_CLIENT_SECRET: process.env.APPLE_CLIENT_SECRET,
   APPLE_BUNDLE_ID: process.env.APPLE_BUNDLE_ID ?? 'com.regularity.racetimer',
+  // Transactional email (password reset, later: team invites) via Resend. Without
+  // a real key the email is logged instead of sent (the reset link still works in
+  // dev — copy it from the server logs).
+  RESEND_API_KEY: process.env.RESEND_API_KEY,
+  EMAIL_FROM: process.env.EMAIL_FROM ?? 'Regularity Race Timer <noreply@pademelonsoftware.com.au>',
 };

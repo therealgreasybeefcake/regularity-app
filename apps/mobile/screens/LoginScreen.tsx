@@ -16,7 +16,7 @@ import { Label, Card, Button, TextField, Divider } from '../components/ui';
 type Mode = 'signin' | 'signup';
 
 export default function LoginScreen() {
-  const { signIn, signUp, signInWithProvider } = useAuth();
+  const { signIn, signUp, signInWithProvider, requestPasswordReset } = useAuth();
   const { theme, isDark: isDarkMode } = useTheme();
 
   const [mode, setMode] = useState<Mode>('signin');
@@ -26,6 +26,7 @@ export default function LoginScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const [error, setError] = useState('');
+  const [info, setInfo] = useState('');
 
   const handleSubmit = async () => {
     if (!email.trim() || !password.trim() || (mode === 'signup' && !name.trim())) {
@@ -39,6 +40,7 @@ export default function LoginScreen() {
 
     setIsLoading(true);
     setError('');
+    setInfo('');
     const result =
       mode === 'signin'
         ? await signIn(email.trim(), password)
@@ -58,6 +60,24 @@ export default function LoginScreen() {
       setError(result.error);
     }
     setPendingProvider(null);
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email.trim()) {
+      setInfo('');
+      setError('Enter your email above, then tap Forgot password.');
+      return;
+    }
+    setIsLoading(true);
+    setError('');
+    setInfo('');
+    const result = await requestPasswordReset(email.trim());
+    setIsLoading(false);
+    if (result.success) {
+      setInfo("If that email is registered, a reset link is on its way. Check your inbox (and spam).");
+    } else {
+      setError(result.error || 'Could not send the reset email. Please try again.');
+    }
   };
 
   const busy = isLoading || pendingProvider !== null;
@@ -115,6 +135,19 @@ export default function LoginScreen() {
               containerStyle={styles.field}
             />
 
+            {mode === 'signin' && (
+              <Button
+                variant="ghost"
+                onPress={handleForgotPassword}
+                disabled={busy}
+                style={styles.forgotBtn}
+              >
+                <Text style={[styles.forgotText, { color: theme.primary as string }]}>
+                  Forgot password?
+                </Text>
+              </Button>
+            )}
+
             <Button
               title={mode === 'signin' ? 'Sign In' : 'Sign Up'}
               variant="primary"
@@ -162,6 +195,13 @@ export default function LoginScreen() {
                 <Text style={[styles.error, { color: theme.broken as string }]}>{error}</Text>
               </View>
             )}
+
+            {!!info && (
+              <View style={[styles.infoBox, { backgroundColor: `${String(theme.success)}1a`, borderColor: theme.success }]}>
+                <Ionicons name="checkmark-circle" size={16} color={theme.success as string} />
+                <Text style={[styles.info, { color: theme.success as string }]}>{info}</Text>
+              </View>
+            )}
           </Card>
 
           <Button
@@ -169,6 +209,7 @@ export default function LoginScreen() {
             onPress={() => {
               setMode(mode === 'signin' ? 'signup' : 'signin');
               setError('');
+              setInfo('');
             }}
             style={styles.switchModeButton}
           >
@@ -224,6 +265,20 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
   },
   error: { flex: 1, fontSize: typography.caption, fontWeight: fontWeights.medium },
+
+  forgotBtn: { alignSelf: 'flex-end', height: undefined, paddingVertical: spacing.xs, marginTop: -spacing.xs, marginBottom: spacing.xs },
+  forgotText: { fontSize: typography.caption, fontWeight: fontWeights.semibold },
+
+  infoBox: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginTop: spacing.lg,
+  },
+  info: { flex: 1, fontSize: typography.caption, fontWeight: fontWeights.medium },
 
   switchModeButton: { marginTop: spacing.xl, alignSelf: 'center', height: undefined, paddingVertical: spacing.md },
   switchModeText: { fontSize: typography.body },

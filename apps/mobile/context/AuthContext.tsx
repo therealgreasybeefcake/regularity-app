@@ -4,6 +4,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authClient } from '../lib/auth-client';
 import { api } from '../lib/api';
 import { signInWithAppleNative, signInWithGoogleNative } from '../lib/nativeAuth';
+import { WEB_URL } from '../constants/config';
 
 export type OAuthProvider = 'google' | 'apple';
 
@@ -21,6 +22,10 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<AuthResult>;
   signUp: (name: string, email: string, password: string) => Promise<AuthResult>;
   signInWithProvider: (provider: OAuthProvider) => Promise<AuthResult>;
+  /** Email a password-reset link (always resolves success to avoid email enumeration). */
+  requestPasswordReset: (email: string) => Promise<AuthResult>;
+  /** Complete a reset with the token from the emailed link. */
+  resetPassword: (token: string, newPassword: string) => Promise<AuthResult>;
   signOut: () => Promise<void>;
   /** Permanently delete the account, then sign out + wipe local data. */
   deleteAccount: () => Promise<AuthResult>;
@@ -66,6 +71,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  const requestPasswordReset = async (email: string): Promise<AuthResult> => {
+    try {
+      const res = await authClient.requestPasswordReset({
+        email,
+        redirectTo: `${WEB_URL}/reset-password`,
+      });
+      return { success: !res?.error, error: res?.error?.message };
+    } catch (e: any) {
+      return { success: false, error: e?.message ?? 'Could not send reset email' };
+    }
+  };
+
+  const resetPassword = async (token: string, newPassword: string): Promise<AuthResult> => {
+    try {
+      const res = await authClient.resetPassword({ newPassword, token });
+      return { success: !res?.error, error: res?.error?.message };
+    } catch (e: any) {
+      return { success: false, error: e?.message ?? 'Could not reset password' };
+    }
+  };
+
   const signOut = async () => {
     await authClient.signOut();
   };
@@ -91,6 +117,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         signIn,
         signUp,
         signInWithProvider,
+        requestPasswordReset,
+        resetPassword,
         signOut,
         deleteAccount,
       }}
