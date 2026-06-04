@@ -52,8 +52,33 @@ app.route('/api/live', liveRouter);
 // routes like /live/<token> and /login resolve.
 const webDist = process.env.WEB_DIST;
 if (webDist) {
-  app.use('/*', serveStatic({ root: webDist }));
-  app.get('*', serveStatic({ root: webDist, path: 'index.html' }));
+  // Content-hashed assets (entry-<hash>.js, fonts, images) never change, so cache
+  // them for a year. index.html (and the SPA fallback) must NOT be cached, or
+  // browsers keep loading an old bundle after a deploy (stale web).
+  app.use(
+    '/*',
+    serveStatic({
+      root: webDist,
+      onFound: (filePath, c) => {
+        if (
+          /\/_expo\/static\//.test(filePath) ||
+          /\.(js|css|woff2?|ttf|otf|png|jpe?g|gif|svg|ico|webp)$/i.test(filePath)
+        ) {
+          c.header('Cache-Control', 'public, max-age=31536000, immutable');
+        } else {
+          c.header('Cache-Control', 'no-cache');
+        }
+      },
+    }),
+  );
+  app.get(
+    '*',
+    serveStatic({
+      root: webDist,
+      path: 'index.html',
+      onFound: (_filePath, c) => c.header('Cache-Control', 'no-cache'),
+    }),
+  );
 }
 
 serve({ fetch: app.fetch, port: env.PORT }, (info) => {
