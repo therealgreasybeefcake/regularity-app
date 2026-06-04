@@ -4,7 +4,7 @@ import { and, asc, desc, eq } from 'drizzle-orm';
 import { db } from '../db';
 import { requireAuth, type AppVariables } from '../middleware';
 import { rooms, teamRoom } from '../rooms';
-import { getOrCreateTeam, getOwnedTeam, getMembership, roleAtLeast } from '../lib/domain';
+import { getOrCreateTeam, getOwnedTeam, getMembership, roleAtLeast, buildSessionPayload } from '../lib/domain';
 import { teams, drivers, raceSessions, sessionDrivers, laps } from '@regularity/db';
 import {
   updateTeamInputSchema,
@@ -382,6 +382,38 @@ teamRouter.get('/:id/sessions', async (c) => {
     .where(eq(raceSessions.teamId, id))
     .orderBy(desc(raceSessions.startedAt));
   return c.json({ sessions: list });
+});
+
+// GET /api/teams/:id/trends — cross-session percentage-factor time series (the key
+// longitudinal metric). Any member. Computed via @regularity/core so it matches
+// the live-view + Stats numbers exactly.
+teamRouter.get('/:id/trends', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+
+  const sessions = await db
+    .select()
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, id), eq(raceSessions.status, 'ended')))
+    .orderBy(asc(raceSessions.startedAt));
+
+  const trends = await Promise.all(
+    sessions.map(async (s) => {
+      const payload = await buildSessionPayload(s, m.team.lapTypeValues);
+      return {
+        sessionId: s.id,
+        raceName: s.raceName,
+        sessionNumber: s.sessionNumber,
+        endedAt: (s.endedAt ?? s.startedAt).toISOString(),
+        percentageFactor: payload.teamStats.percentageFactor,
+        achievedLaps: payload.teamStats.achievedLaps,
+        goalLaps: payload.teamStats.goalLaps,
+      };
+    }),
+  );
+  return c.json({ trends });
 });
 
 // POST /api/teams/:id/sessions — start a live session. Accepts optional
