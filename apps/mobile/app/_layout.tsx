@@ -14,6 +14,9 @@ import ErrorBoundary from '../components/ErrorBoundary';
 LogBox.ignoreLogs([
   'The native view manager for module(ExpoLinearGradient)',
   'setLayoutAnimationEnabledExperimental is currently a no-op in the New Architecture',
+  // react-native-gifted-charts passes RN responder props to SVG <circle> data
+  // points; harmless on web, dev-only (stripped in production builds).
+  'Unknown event handler property',
 ]);
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {

@@ -250,14 +250,6 @@ export default function StatsScreen() {
       <Card padding="lg" style={[styles.panel, cardStyle]}>
         <View style={styles.panelHeader}>
           <Label size={13}>Team Information</Label>
-          {!selectedSession && !isEditing ? (
-            <Button title="Edit" icon="create-outline" size="sm" variant="ghost" onPress={() => setIsEditing(true)} />
-          ) : !selectedSession && isEditing ? (
-            <View style={styles.editActions}>
-              <Button title="Cancel" size="sm" variant="secondary" onPress={handleCancel} />
-              <Button title="Save" icon="checkmark" size="sm" variant="primary" onPress={handleSave} />
-            </View>
-          ) : null}
         </View>
 
         {editable ? (
