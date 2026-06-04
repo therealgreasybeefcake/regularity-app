@@ -158,6 +158,22 @@ teamRouter.get('/:id', async (c) => {
   return c.json({ team: m.team, drivers: roster, role: m.role });
 });
 
+// GET /api/teams/:id/live — the active live session for a team the user belongs
+// to (drives the "a teammate is recording" banner). Any member.
+teamRouter.get('/:id/live', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  const [s] = await db
+    .select({ id: raceSessions.id, publicToken: raceSessions.publicToken, raceName: raceSessions.raceName })
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, id), eq(raceSessions.status, 'live')))
+    .orderBy(desc(raceSessions.startedAt))
+    .limit(1);
+  return c.json({ live: s ?? null });
+});
+
 // GET /api/teams/:id/events — authenticated per-team SSE. Peers are notified of
 // roster/settings edits (`teamChanged`) and when a teammate starts recording
 // (`sessionStarted`), so a shared team stays in sync without a manual reload.

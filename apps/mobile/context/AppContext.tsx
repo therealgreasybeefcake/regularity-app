@@ -48,6 +48,8 @@ interface AppContextType {
   refreshMemberships: () => Promise<void>;
   /** Accept an invite (token or code), then switch to the joined team. */
   joinTeam: (opts: { token?: string; code?: string }) => Promise<{ ok: boolean; error?: string; teamName?: string }>;
+  /** Public token of the active team's current live session (any member's), or null. */
+  teamLivePublicToken: string | null;
   // Persist a finished session to the API (durable offline queue). Kept under
   // the original name so existing callers (StatsScreen) don't change.
   saveSessionToS3: (session: Session) => Promise<void>;
@@ -223,6 +225,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [memberships, setMemberships] = useState<TeamMembership[]>([]);
   const [userRole, setUserRole] = useState<TeamRole | null>(null);
   const [activeServerTeamId, setActiveServerTeamId] = useState<string | null>(null);
+  const [teamLivePublicToken, setTeamLivePublicToken] = useState<string | null>(null);
 
   const [liveSession, setLiveSession] = useState<{ id: string; publicToken: string } | null>(null);
 
@@ -435,23 +438,40 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, []);
 
-  // Web: instant peer roster/settings sync via the team SSE channel.
+  // Whether the active team currently has a live session (any member's).
+  const refreshTeamLive = useCallback(async () => {
+    const id = serverTeamIdRef.current;
+    if (!id) {
+      setTeamLivePublicToken(null);
+      return;
+    }
+    try {
+      const { live } = await api.get<{ live: { publicToken: string } | null }>(`/api/teams/${id}/live`);
+      setTeamLivePublicToken(live?.publicToken ?? null);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+
+  // Web: instant peer roster/settings sync + live-session awareness via SSE.
   useEffect(() => {
     if (!activeServerTeamId) return;
+    void refreshTeamLive();
     const unsub = subscribeTeamEvents(activeServerTeamId, {
-      onTeamChanged: () => { void reloadActiveTeam(); },
+      onTeamChanged: () => { void reloadActiveTeam(); void refreshTeamLive(); },
+      onSessionStarted: (publicToken) => setTeamLivePublicToken(publicToken),
     });
     return unsub;
-  }, [activeServerTeamId, reloadActiveTeam]);
+  }, [activeServerTeamId, reloadActiveTeam, refreshTeamLive]);
 
   // Both platforms (covers native, where there is no EventSource): refresh the
-  // active team when the app returns to the foreground.
+  // active team + its live status when the app returns to the foreground.
   useEffect(() => {
     const sub = AppState.addEventListener('change', (s) => {
-      if (s === 'active') void reloadActiveTeam();
+      if (s === 'active') { void reloadActiveTeam(); void refreshTeamLive(); }
     });
     return () => sub.remove();
-  }, [reloadActiveTeam]);
+  }, [reloadActiveTeam, refreshTeamLive]);
 
   // --- Initial server sync / first-login migration (runs once per user) ---
   useEffect(() => {
@@ -714,6 +734,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const state: LiveSessionState = { id, publicToken, sessionDriverIds };
     liveSessionRef.current = state;
     setLiveSession({ id, publicToken });
+    setTeamLivePublicToken(publicToken);
     await AsyncStorage.setItem('liveSessionState', JSON.stringify(state));
     await syncQueue.enqueue({
       kind: 'startSession',
@@ -740,6 +761,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!live) return;
     liveSessionRef.current = null;
     setLiveSession(null);
+    setTeamLivePublicToken(null);
     streamedKeysRef.current.clear();
     await AsyncStorage.removeItem('liveSessionState');
     await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
@@ -752,6 +774,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const live = liveSessionRef.current;
     liveSessionRef.current = null;
     setLiveSession(null);
+    setTeamLivePublicToken(null);
     streamedKeysRef.current.clear();
     await AsyncStorage.removeItem('liveSessionState');
     if (live) await syncQueue.enqueue({ kind: 'deleteSession', sessionId: live.id });
@@ -857,6 +880,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         switchTeam,
         refreshMemberships,
         joinTeam,
+        teamLivePublicToken,
         saveSessionToS3,
         loadSessionsFromS3,
         liveSession,

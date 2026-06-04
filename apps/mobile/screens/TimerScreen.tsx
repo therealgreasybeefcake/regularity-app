@@ -11,6 +11,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
 
@@ -47,7 +48,10 @@ export default function TimerScreen() {
     lapTypeValues,
     discardLiveSession,
     endLiveSession,
+    liveSession,
+    teamLivePublicToken,
   } = useApp();
+  const router = useRouter();
 
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
@@ -677,6 +681,17 @@ export default function TimerScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+          {/* A teammate is recording the team's live session (single-recorder model). */}
+          {teamLivePublicToken && teamLivePublicToken !== liveSession?.publicToken ? (
+            <Pressable
+              onPress={() => router.push(`/live/${teamLivePublicToken}` as any)}
+              style={[styles.peerLive, { borderColor: theme.livePulse, backgroundColor: theme.surfaceElevated }]}
+            >
+              <LiveDot size={8} color={theme.livePulse} />
+              <Text style={[styles.peerLiveText, { color: theme.text }]}>A teammate is recording live</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.textSecondary as string} />
+            </Pressable>
+          ) : null}
           {/* Header */}
           <View style={styles.header}>
             <View style={{ flex: 1 }}>
@@ -913,6 +928,8 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: 110, maxWidth: 760, width: '100%', alignSelf: 'center' },
 
+  peerLive: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.lg },
+  peerLiveText: { flex: 1, fontSize: typography.body, fontWeight: fontWeights.semibold },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2 },
   headerTitle: { fontSize: typography.heading, fontWeight: fontWeights.heavy, letterSpacing: 0.2, flexShrink: 1 },

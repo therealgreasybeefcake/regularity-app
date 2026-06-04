@@ -10,7 +10,7 @@ import {
 } from '../lib/domain';
 import { laps, raceSessions, sessionDrivers, teams, teamMembers } from '@regularity/db';
 import { appendLapInputSchema } from '@regularity/schemas';
-import { rooms } from '../rooms';
+import { rooms, teamRoom } from '../rooms';
 
 export const sessionRouter = new Hono<{ Variables: AppVariables }>();
 sessionRouter.use('*', requireAuth);
@@ -39,6 +39,7 @@ sessionRouter.post('/:id/end', async (c) => {
     .returning();
 
   rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
+  rooms.broadcast(teamRoom(owned.session.teamId), { type: 'teamChanged' });
   return c.json({ session: ended });
 });
 
@@ -51,6 +52,7 @@ sessionRouter.delete('/:id', async (c) => {
   if (!owned) return c.json({ error: 'not_found' }, 404);
   if (!roleAtLeast(owned.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
   rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
+  rooms.broadcast(teamRoom(owned.session.teamId), { type: 'teamChanged' });
   await db.delete(raceSessions).where(eq(raceSessions.id, sessionId));
   return c.json({ ok: true });
 });
