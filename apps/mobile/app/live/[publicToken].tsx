@@ -56,7 +56,7 @@ export default function LiveView() {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (snap?.status !== 'live') return;
-    const id = setInterval(() => setNow(Date.now()), 100);
+    const id = setInterval(() => setNow(Date.now()), 50);
     return () => clearInterval(id);
   }, [snap?.status]);
 
@@ -275,12 +275,12 @@ export default function LiveView() {
   );
 }
 
-// Elapsed current-lap time, ticking. "S.s" under a minute, "M:SS.s" beyond.
+// Elapsed current-lap time, ticking. "S.ss" under a minute, "M:SS.ss" beyond.
 function fmtElapsed(ms: number): string {
   const s = Math.max(0, ms) / 1000;
-  if (s < 60) return `${s.toFixed(1)}s`;
+  if (s < 60) return `${s.toFixed(2)}s`;
   const m = Math.floor(s / 60);
-  return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`;
+  return `${m}:${(s - m * 60).toFixed(2).padStart(5, '0')}`;
 }
 
 function Metric({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof makeStyles> }) {
