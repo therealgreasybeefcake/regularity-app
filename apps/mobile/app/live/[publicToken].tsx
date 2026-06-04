@@ -6,38 +6,40 @@ import { calculateDriverStats, formatTime, type Driver as CoreDriver } from '@re
 import { subscribeLive, normalizeLap, type LiveSnapshot } from '../../lib/liveClient';
 import { ensureLiveAudio, playLapTone } from '../../lib/liveSounds';
 import { fonts } from '../../constants/theme';
+import { useTheme } from '../../hooks/useTheme';
 import { LiveDot } from '../../components/ui';
 
-// Public broadcast view — intentionally always-dark "Pit Wall", independent of the
-// viewer's app theme. Palette mirrors the dark theme tokens in constants/theme.ts.
-const C = {
-  bg: '#070a11',
-  panel: '#121826',
-  panelHi: '#18202f',
-  border: 'rgba(255,255,255,0.08)',
-  borderFaint: 'rgba(255,255,255,0.05)',
-  text: '#e8eef7',
-  dim: '#8a97ab',
-  muted: '#5d6a7e',
-  green: '#22c55e',
-  red: '#ef4444',
-  blue: '#3b82f6',
-  amber: '#f59e0b',
-  accent: '#22d3ee',
-  live: '#22d36b',
-};
 const monoBold = fonts.monoBold;
 const monoMed = fonts.monoMedium;
 
-function deltaColor(delta: number): string {
-  if (delta < 0) return C.red;
-  if (delta < 1) return C.green;
-  return C.blue;
+// Palette derived from the active app theme so the live view follows light/dark.
+type LivePalette = ReturnType<typeof palette>;
+function palette(theme: ReturnType<typeof useTheme>['theme']) {
+  return {
+    bg: String(theme.background),
+    panel: String(theme.card),
+    elevated: String(theme.surfaceElevated),
+    border: String(theme.border),
+    borderFaint: String(theme.borderFaint),
+    text: String(theme.text),
+    dim: String(theme.textSecondary),
+    muted: String(theme.textMuted),
+    green: String(theme.bonus),
+    red: String(theme.broken),
+    blue: String(theme.base),
+    accent: String(theme.accent),
+    live: String(theme.livePulse),
+  };
 }
 
 export default function LiveView() {
   const { publicToken } = useLocalSearchParams<{ publicToken: string }>();
   const router = useRouter();
+  const { theme } = useTheme();
+  const C = useMemo(() => palette(theme), [theme]);
+  const styles = useMemo(() => makeStyles(C), [C]);
+  const deltaColor = (delta: number) => (delta < 0 ? C.red : delta < 1 ? C.green : C.blue);
+
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [notFound, setNotFound] = useState(false);
@@ -170,12 +172,12 @@ export default function LiveView() {
         </View>
         <Pressable
           onPress={toggleSound}
-          style={[styles.soundBtn, { borderColor: C.border, backgroundColor: C.panel }]}
+          style={styles.soundBtn}
           accessibilityLabel={soundOn ? 'Mute lap sounds' : 'Enable lap sounds'}
         >
           <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={16} color={soundOn ? C.accent : C.dim} />
         </Pressable>
-        <View style={[styles.badge, { backgroundColor: isLive ? 'rgba(34,211,107,0.14)' : 'rgba(138,151,171,0.14)', borderColor: isLive ? 'rgba(34,211,107,0.4)' : C.border }]}>
+        <View style={[styles.badge, isLive && { borderColor: C.live }]}>
           <LiveDot size={8} color={isLive ? C.live : C.dim} active={isLive} />
           <Text style={[styles.badgeText, { color: isLive ? C.live : C.dim }]}>{isLive ? 'LIVE' : 'ENDED'}</Text>
         </View>
@@ -206,9 +208,9 @@ export default function LiveView() {
               )}
             </View>
             <View style={styles.metrics}>
-              <Metric label="AVG Δ" value={`${stats.averageDelta >= 0 ? '+' : ''}${stats.averageDelta.toFixed(2)}`} />
-              <Metric label="3-LAP" value={stats.threelapAvg == null ? '—' : `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(2)}`} />
-              <Metric label="ACHIEVED" value={stats.achievedLaps.toFixed(0)} />
+              <Metric styles={styles} label="AVG Δ" value={`${stats.averageDelta >= 0 ? '+' : ''}${stats.averageDelta.toFixed(2)}`} />
+              <Metric styles={styles} label="3-LAP" value={stats.threelapAvg == null ? '—' : `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(2)}`} />
+              <Metric styles={styles} label="ACHIEVED" value={stats.achievedLaps.toFixed(0)} />
             </View>
           </View>
         </View>
@@ -236,7 +238,7 @@ export default function LiveView() {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof makeStyles> }) {
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
@@ -245,36 +247,38 @@ function Metric({ label, value }: { label: string; value: string }) {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-  container: { padding: 16, maxWidth: 720, width: '100%', alignSelf: 'center' },
-  kicker: { color: C.accent, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 3 },
-  title: { color: C.text, fontSize: 24, fontWeight: '800', letterSpacing: 0.2 },
-  dim: { color: C.dim, fontSize: 13 },
-  headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginTop: 8 },
-  badge: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
-  soundBtn: { width: 36, height: 36, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-  badgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
-  factorCard: { backgroundColor: C.panel, borderRadius: 18, padding: 22, alignItems: 'center', borderWidth: 1, borderColor: C.border, marginBottom: 16 },
-  factorLabel: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700' },
-  factorValue: { color: C.text, fontSize: 60, fontFamily: fonts.monoExtraBold, marginVertical: 6, letterSpacing: -2 },
-  driverCard: { backgroundColor: C.panel, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border, marginBottom: 12 },
-  driverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-  driverName: { color: C.text, fontSize: 18, fontWeight: '700', flex: 1 },
-  lapCount: { color: C.dim, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-  driverBody: { flexDirection: 'row', alignItems: 'center' },
-  lastLap: { flex: 1 },
-  lapTime: { fontSize: 32, fontFamily: monoBold, letterSpacing: -1 },
-  lapDelta: { fontSize: 16, fontFamily: monoBold, marginTop: 2 },
-  metrics: { flexDirection: 'row', gap: 16 },
-  metric: { alignItems: 'flex-end', minWidth: 56 },
-  metricLabel: { color: C.muted, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
-  metricValue: { color: C.text, fontSize: 16, fontFamily: monoBold, marginTop: 3 },
-  sectionTitle: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700', marginTop: 10, marginBottom: 8, marginLeft: 4 },
-  feed: { backgroundColor: C.panel, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-  feedRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.borderFaint },
-  feedDriver: { color: C.text, flex: 1, fontSize: 14, fontWeight: '600' },
-  feedTime: { color: C.text, fontFamily: monoMed, fontSize: 14, width: 92, textAlign: 'right' },
-  feedDelta: { fontFamily: monoBold, fontSize: 14, width: 64, textAlign: 'right' },
-  feedType: { fontSize: 10, fontWeight: '800', width: 80, textAlign: 'right', letterSpacing: 0.5 },
-});
+function makeStyles(C: LivePalette) {
+  return StyleSheet.create({
+    center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
+    container: { padding: 16, maxWidth: 720, width: '100%', alignSelf: 'center' },
+    kicker: { color: C.accent, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 3 },
+    title: { color: C.text, fontSize: 24, fontWeight: '800', letterSpacing: 0.2 },
+    dim: { color: C.dim, fontSize: 13 },
+    headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginTop: 8 },
+    badge: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.elevated },
+    soundBtn: { width: 36, height: 36, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.elevated, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+    badgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
+    factorCard: { backgroundColor: C.panel, borderRadius: 18, padding: 22, alignItems: 'center', borderWidth: 1, borderColor: C.border, marginBottom: 16 },
+    factorLabel: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700' },
+    factorValue: { color: C.text, fontSize: 60, fontFamily: fonts.monoExtraBold, marginVertical: 6, letterSpacing: -2 },
+    driverCard: { backgroundColor: C.panel, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border, marginBottom: 12 },
+    driverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+    driverName: { color: C.text, fontSize: 18, fontWeight: '700', flex: 1 },
+    lapCount: { color: C.dim, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
+    driverBody: { flexDirection: 'row', alignItems: 'center' },
+    lastLap: { flex: 1 },
+    lapTime: { fontSize: 32, fontFamily: monoBold, letterSpacing: -1 },
+    lapDelta: { fontSize: 16, fontFamily: monoBold, marginTop: 2 },
+    metrics: { flexDirection: 'row', gap: 16 },
+    metric: { alignItems: 'flex-end', minWidth: 56 },
+    metricLabel: { color: C.muted, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
+    metricValue: { color: C.text, fontSize: 16, fontFamily: monoBold, marginTop: 3 },
+    sectionTitle: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700', marginTop: 10, marginBottom: 8, marginLeft: 4 },
+    feed: { backgroundColor: C.panel, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
+    feedRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.borderFaint },
+    feedDriver: { color: C.text, flex: 1, fontSize: 14, fontWeight: '600' },
+    feedTime: { color: C.text, fontFamily: monoMed, fontSize: 14, width: 92, textAlign: 'right' },
+    feedDelta: { fontFamily: monoBold, fontSize: 14, width: 64, textAlign: 'right' },
+    feedType: { fontSize: 10, fontWeight: '800', width: 80, textAlign: 'right', letterSpacing: 0.5 },
+  });
+}
