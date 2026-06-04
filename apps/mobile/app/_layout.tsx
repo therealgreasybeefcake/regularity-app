@@ -45,6 +45,8 @@ function NavigationGuard({ children }: { children: React.ReactNode }) {
       return;
     }
     if (teamLivePublicToken === liveSession?.publicToken) return; // this device is recording
+    // Never yank the user out of the public auth / reset / invite flows.
+    if (segments[0] === 'reset-password' || segments[0] === 'join' || segments[0] === '(auth)') return;
     if (segments[0] === 'live') { autoJoinedForRef.current = teamLivePublicToken; return; }
     if (autoJoinedForRef.current === teamLivePublicToken) return; // already auto-opened
     autoJoinedForRef.current = teamLivePublicToken;

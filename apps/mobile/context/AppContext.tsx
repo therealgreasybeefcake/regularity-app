@@ -229,7 +229,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
-  const [autoJoinLive, setAutoJoinLive] = useState(true);
+  const [autoJoinLive, setAutoJoinLive] = useState(false);
   const [liveSoundDefault, setLiveSoundDefault] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
   const [memberships, setMemberships] = useState<TeamMembership[]>([]);

@@ -16,7 +16,7 @@ RUN pnpm install --frozen-lockfile
 # Build the Expo web bundle. Empty API base -> the web app calls /api on its own
 # origin (same-origin, no CORS); WEB_URL backs shareable live links.
 ENV EXPO_PUBLIC_API_URL=""
-ENV EXPO_PUBLIC_WEB_URL="https://api-production-341fc.up.railway.app"
+ENV EXPO_PUBLIC_WEB_URL="https://regularity.pademelonsoftware.com.au"
 RUN pnpm --filter @regularity/mobile exec expo export --platform web --output-dir dist
 
 # The API serves the built web bundle from here (see apps/api/src/index.ts).
