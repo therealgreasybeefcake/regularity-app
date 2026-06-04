@@ -52,6 +52,12 @@ interface AppContextType {
   teamLivePublicToken: string | null;
   /** Re-check whether the active team currently has a live session. */
   refreshTeamLive: () => Promise<void>;
+  /** Auto-open a teammate's live session when one starts (user preference). */
+  autoJoinLive: boolean;
+  setAutoJoinLive: (v: boolean) => void;
+  /** Default sound state for the live spectator view (user preference). */
+  liveSoundDefault: boolean;
+  setLiveSoundDefault: (v: boolean) => void;
   // Persist a finished session to the API (durable offline queue). Kept under
   // the original name so existing callers (StatsScreen) don't change.
   saveSessionToS3: (session: Session) => Promise<void>;
@@ -223,6 +229,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
+  const [autoJoinLive, setAutoJoinLive] = useState(true);
+  const [liveSoundDefault, setLiveSoundDefault] = useState(true);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
   const [memberships, setMemberships] = useState<TeamMembership[]>([]);
   const [userRole, setUserRole] = useState<TeamRole | null>(null);
@@ -856,6 +864,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!isLoading) AsyncStorage.setItem('hasSeenWelcome', JSON.stringify(hasSeenWelcome));
   }, [hasSeenWelcome, isLoading]);
 
+  useEffect(() => {
+    AsyncStorage.getItem('autoJoinLive').then((v) => {
+      if (v !== null) setAutoJoinLive(JSON.parse(v));
+    });
+    AsyncStorage.getItem('liveSoundDefault').then((v) => {
+      if (v !== null) setLiveSoundDefault(JSON.parse(v));
+    });
+  }, []);
+  useEffect(() => {
+    if (!isLoading) AsyncStorage.setItem('autoJoinLive', JSON.stringify(autoJoinLive));
+  }, [autoJoinLive, isLoading]);
+  useEffect(() => {
+    if (!isLoading) AsyncStorage.setItem('liveSoundDefault', JSON.stringify(liveSoundDefault));
+  }, [liveSoundDefault, isLoading]);
+
   return (
     <AppContext.Provider
       value={{
@@ -884,6 +907,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         joinTeam,
         teamLivePublicToken,
         refreshTeamLive,
+        autoJoinLive,
+        setAutoJoinLive,
+        liveSoundDefault,
+        setLiveSoundDefault,
         saveSessionToS3,
         loadSessionsFromS3,
         liveSession,

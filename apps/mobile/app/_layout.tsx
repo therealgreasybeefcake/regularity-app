@@ -1,5 +1,5 @@
 import 'react-native-get-random-values';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { ActivityIndicator, View, LogBox } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -18,9 +18,25 @@ LogBox.ignoreLogs([
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isAuthLoading } = useAuth();
-  const { isLoading, hasSeenWelcome } = useApp();
+  const { isLoading, hasSeenWelcome, teamLivePublicToken, liveSession, autoJoinLive } = useApp();
   const router = useRouter();
   const segments = useSegments();
+  const autoJoinedForRef = useRef<string | null>(null);
+
+  // Auto-open a teammate's live session once when it starts (if the user opted in).
+  // Redirect-once per token so they can still navigate back to the app afterwards.
+  useEffect(() => {
+    if (isAuthLoading || isLoading || !isAuthenticated || !hasSeenWelcome) return;
+    if (!autoJoinLive || !teamLivePublicToken) {
+      autoJoinedForRef.current = teamLivePublicToken ?? null;
+      return;
+    }
+    if (teamLivePublicToken === liveSession?.publicToken) return; // this device is recording
+    if (segments[0] === 'live') { autoJoinedForRef.current = teamLivePublicToken; return; }
+    if (autoJoinedForRef.current === teamLivePublicToken) return; // already auto-opened
+    autoJoinedForRef.current = teamLivePublicToken;
+    router.push(`/live/${teamLivePublicToken}` as any);
+  }, [teamLivePublicToken, liveSession, autoJoinLive, isAuthenticated, isAuthLoading, isLoading, hasSeenWelcome, segments, router]);
 
   useEffect(() => {
     if (isAuthLoading || isLoading) return;

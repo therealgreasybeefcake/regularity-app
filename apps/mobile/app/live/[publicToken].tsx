@@ -7,6 +7,7 @@ import { subscribeLive, normalizeLap, type LiveSnapshot } from '../../lib/liveCl
 import { ensureLiveAudio, playLapTone } from '../../lib/liveSounds';
 import { fonts } from '../../constants/theme';
 import { useTheme } from '../../hooks/useTheme';
+import { useApp } from '../../context/AppContext';
 import { LiveDot } from '../../components/ui';
 
 const monoBold = fonts.monoBold;
@@ -36,6 +37,7 @@ export default function LiveView() {
   const { publicToken } = useLocalSearchParams<{ publicToken: string }>();
   const router = useRouter();
   const { theme } = useTheme();
+  const { liveSoundDefault } = useApp();
   const C = useMemo(() => palette(theme), [theme]);
   const styles = useMemo(() => makeStyles(C), [C]);
   const deltaColor = (delta: number) => (delta < 0 ? C.red : delta < 1 ? C.green : C.blue);
@@ -43,7 +45,7 @@ export default function LiveView() {
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [notFound, setNotFound] = useState(false);
-  const [soundOn, setSoundOn] = useState(true); // unmuted by default
+  const [soundOn, setSoundOn] = useState(liveSoundDefault); // default from user preference
   const snapRef = useRef<LiveSnapshot | null>(null);
   snapRef.current = snap;
   const soundOnRef = useRef(false);

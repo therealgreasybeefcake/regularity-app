@@ -471,6 +471,10 @@ export default function SettingsScreen() {
     setLapTypeValues,
     setHasSeenWelcome,
     syncStatus,
+    autoJoinLive,
+    setAutoJoinLive,
+    liveSoundDefault,
+    setLiveSoundDefault,
   } = useApp();
   const { user, signOut, deleteAccount } = useAuth();
   const { showAlert } = useAlert();
@@ -802,6 +806,23 @@ export default function SettingsScreen() {
             ]}
             value={themeMode}
             onChange={setThemeMode}
+          />
+        </Collapsible>
+
+        {/* Live Sessions */}
+        <Collapsible title="Live Sessions" defaultOpen={false} icon="radio-outline">
+          <ToggleRow
+            title="Auto-open teammate's live session"
+            subtitle="Jump to the live view when a teammate starts recording"
+            value={autoJoinLive}
+            onValueChange={setAutoJoinLive}
+          />
+          <Divider faint />
+          <ToggleRow
+            title="Live sound on by default"
+            subtitle="Start the live view with per-lap sounds enabled"
+            value={liveSoundDefault}
+            onValueChange={setLiveSoundDefault}
           />
         </Collapsible>
 
