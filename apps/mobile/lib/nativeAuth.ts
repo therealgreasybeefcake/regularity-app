@@ -23,6 +23,7 @@ export interface NativeAuthResult {
   fallback?: boolean;
 }
 
+
 /** Native Sign in with Apple (iOS 13+). Falls back to the browser flow elsewhere. */
 export async function signInWithAppleNative(): Promise<NativeAuthResult> {
   if (Platform.OS !== 'ios') return { success: false, fallback: true };

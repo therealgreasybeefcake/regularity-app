@@ -58,6 +58,24 @@ export const auth = betterAuth({
   }),
   emailAndPassword: { enabled: true },
   socialProviders,
+  // Let a verified Google/Apple identity link to an existing same-email account
+  // so a user who signed up with email/password (or one provider) can also use
+  // the others and land in the SAME account. Both providers verify the email, so
+  // they're trusted. We have no email-verification infra yet, so email/password
+  // accounts are emailVerified:false — `requireLocalEmailVerified:false` lets the
+  // link proceed anyway (otherwise social sign-in is permanently blocked for any
+  // email that already has a password account).
+  // TRADE-OFF: a pre-registered *unverified* email/password account could be
+  // claimed by the real email owner's later OAuth sign-in (account-squatting).
+  // Low risk for this app; tighten by requiring email verification once email
+  // infra (Resend) lands, then set requireLocalEmailVerified back to true.
+  account: {
+    accountLinking: {
+      enabled: true,
+      trustedProviders: ['google', 'apple'],
+      requireLocalEmailVerified: false,
+    },
+  },
   trustedOrigins: env.TRUSTED_ORIGINS,
   ...(isProd
     ? { advanced: { defaultCookieAttributes: { sameSite: 'none' as const, secure: true } } }
