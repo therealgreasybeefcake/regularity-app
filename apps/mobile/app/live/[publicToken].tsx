@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { calculateDriverStats, formatTime, type Driver as CoreDriver } from '@regularity/core';
 import { subscribeLive, normalizeLap, type LiveSnapshot } from '../../lib/liveClient';
+import { ensureLiveAudio, playLapTone } from '../../lib/liveSounds';
 import { fonts } from '../../constants/theme';
 import { LiveDot } from '../../components/ui';
 
@@ -35,17 +37,37 @@ function deltaColor(delta: number): string {
 
 export default function LiveView() {
   const { publicToken } = useLocalSearchParams<{ publicToken: string }>();
+  const router = useRouter();
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [soundOn, setSoundOn] = useState(false);
   const snapRef = useRef<LiveSnapshot | null>(null);
   snapRef.current = snap;
+  const soundOnRef = useRef(false);
+  soundOnRef.current = soundOn;
+  const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // When a session ends (or its link is gone), return to the portal after a beat.
+  const goToPortal = () => {
+    if (redirectTimer.current) return;
+    redirectTimer.current = setTimeout(() => router.replace('/(app)/(tabs)' as any), 2200);
+  };
+
+  const toggleSound = () => {
+    const next = !soundOn;
+    setSoundOn(next);
+    if (next) ensureLiveAudio(); // this tap is the user gesture that unlocks audio
+  };
 
   useEffect(() => {
     if (!publicToken) return;
     let gotData = false;
     const timeout = setTimeout(() => {
-      if (!gotData) setNotFound(true);
+      if (!gotData) {
+        setNotFound(true);
+        goToPortal();
+      }
     }, 8000);
 
     const unsub = subscribeLive(publicToken, {
@@ -54,9 +76,15 @@ export default function LiveView() {
         clearTimeout(timeout);
         setNotFound(false);
         setSnap(s);
+        if (s.status === 'ended') goToPortal();
       },
       onLap: (lap) => {
         const n = normalizeLap(lap);
+        // Sound only for genuinely new laps (server may re-send on reconnect).
+        const already = snapRef.current?.drivers
+          .find((d) => d.id === n.sessionDriverId)
+          ?.laps.some((l) => l.number === n.number);
+        if (!already && soundOnRef.current) playLapTone(n.lapType);
         setSnap((prev) => {
           if (!prev) return prev;
           return {
@@ -69,11 +97,15 @@ export default function LiveView() {
           };
         });
       },
-      onEnded: () => setSnap((prev) => (prev ? { ...prev, status: 'ended' } : prev)),
+      onEnded: () => {
+        setSnap((prev) => (prev ? { ...prev, status: 'ended' } : prev));
+        goToPortal();
+      },
       onStatus: setConnected,
     });
     return () => {
       clearTimeout(timeout);
+      if (redirectTimer.current) clearTimeout(redirectTimer.current);
       unsub();
     };
   }, [publicToken]);
@@ -111,8 +143,9 @@ export default function LiveView() {
   if (notFound) {
     return (
       <View style={[styles.center, { backgroundColor: C.bg }]}>
-        <Text style={styles.title}>Session not found</Text>
-        <Text style={styles.dim}>This live link is invalid or has expired.</Text>
+        <Text style={styles.title}>Session ended</Text>
+        <Text style={styles.dim}>This live session has ended or its link expired.</Text>
+        <Text style={[styles.dim, { marginTop: 12 }]}>Returning to the portal…</Text>
       </View>
     );
   }
@@ -135,6 +168,13 @@ export default function LiveView() {
           <Text style={styles.kicker}>{snap.sessionNumber ? `SESSION ${snap.sessionNumber}` : 'LIVE TIMING'}</Text>
           <Text style={styles.title} numberOfLines={1}>{snap.raceName || 'Regularity Session'}</Text>
         </View>
+        <Pressable
+          onPress={toggleSound}
+          style={[styles.soundBtn, { borderColor: C.border, backgroundColor: C.panel }]}
+          accessibilityLabel={soundOn ? 'Mute lap sounds' : 'Enable lap sounds'}
+        >
+          <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={16} color={soundOn ? C.accent : C.dim} />
+        </Pressable>
         <View style={[styles.badge, { backgroundColor: isLive ? 'rgba(34,211,107,0.14)' : 'rgba(138,151,171,0.14)', borderColor: isLive ? 'rgba(34,211,107,0.4)' : C.border }]}>
           <LiveDot size={8} color={isLive ? C.live : C.dim} active={isLive} />
           <Text style={[styles.badgeText, { color: isLive ? C.live : C.dim }]}>{isLive ? 'LIVE' : 'ENDED'}</Text>
@@ -213,6 +253,7 @@ const styles = StyleSheet.create({
   dim: { color: C.dim, fontSize: 13 },
   headerRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginTop: 8 },
   badge: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, borderWidth: 1 },
+  soundBtn: { width: 36, height: 36, borderRadius: 999, borderWidth: 1, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
   badgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
   factorCard: { backgroundColor: C.panel, borderRadius: 18, padding: 22, alignItems: 'center', borderWidth: 1, borderColor: C.border, marginBottom: 16 },
   factorLabel: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700' },
