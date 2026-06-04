@@ -5,21 +5,19 @@ import {
   StyleSheet,
   KeyboardAvoidingView,
   Platform,
-  useColorScheme,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth, type OAuthProvider } from '../context/AuthContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../constants/theme';
+import { spacing, radius, typography, fontWeights } from '../constants/theme';
+import { useTheme } from '../hooks/useTheme';
 import { Label, Card, Button, TextField, Divider } from '../components/ui';
 
 type Mode = 'signin' | 'signup';
 
 export default function LoginScreen() {
   const { signIn, signUp, signInWithProvider } = useAuth();
-  const systemColorScheme = useColorScheme();
-  const isDarkMode = systemColorScheme === 'dark';
-  const theme = isDarkMode ? darkTheme : lightTheme;
+  const { theme, isDark: isDarkMode } = useTheme();
 
   const [mode, setMode] = useState<Mode>('signin');
   const [name, setName] = useState('');
