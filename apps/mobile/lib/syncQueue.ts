@@ -12,6 +12,11 @@ import { api, ApiError } from './api';
 
 export type SyncOp =
   | { kind: 'putTeam'; teamId: string; payload: unknown }
+  // Granular, id-keyed roster ops (concurrent-editor safe — no full-roster replace).
+  | { kind: 'patchTeamSettings'; teamId: string; payload: unknown }
+  | { kind: 'createDriver'; teamId: string; driverId: string; payload: unknown }
+  | { kind: 'patchDriver'; driverId: string; payload: unknown }
+  | { kind: 'deleteDriver'; driverId: string }
   | { kind: 'completeSession'; teamId: string; payload: unknown }
   | { kind: 'startSession'; teamId: string; payload: unknown }
   | { kind: 'appendLap'; sessionId: string; payload: unknown }
@@ -90,6 +95,17 @@ class SyncQueue {
         (i) => !(i.op.kind === 'putTeam' && i.op.teamId === op.teamId),
       );
     }
+    // Collapse repeated settings patches / per-driver patches — latest wins.
+    if (op.kind === 'patchTeamSettings') {
+      this.items = this.items.filter(
+        (i) => !(i.op.kind === 'patchTeamSettings' && i.op.teamId === op.teamId),
+      );
+    }
+    if (op.kind === 'patchDriver') {
+      this.items = this.items.filter(
+        (i) => !(i.op.kind === 'patchDriver' && i.op.driverId === op.driverId),
+      );
+    }
     this.items.push({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       op,
@@ -135,6 +151,18 @@ class SyncQueue {
     switch (op.kind) {
       case 'putTeam':
         await api.put(`/api/teams/${op.teamId}`, op.payload);
+        break;
+      case 'patchTeamSettings':
+        await api.patch(`/api/teams/${op.teamId}`, op.payload);
+        break;
+      case 'createDriver':
+        await api.post(`/api/teams/${op.teamId}/drivers`, op.payload);
+        break;
+      case 'patchDriver':
+        await api.patch(`/api/drivers/${op.driverId}`, op.payload);
+        break;
+      case 'deleteDriver':
+        await api.del(`/api/drivers/${op.driverId}`);
         break;
       case 'completeSession':
         await api.post(`/api/teams/${op.teamId}/sessions/complete`, op.payload);

@@ -218,15 +218,22 @@ teamRouter.post('/:id/drivers', async (c) => {
   const [created] = await db
     .insert(drivers)
     .values({
+      ...(parsed.data.id ? { id: parsed.data.id } : {}),
       teamId: id,
       name: parsed.data.name,
       targetTimeSec: parsed.data.targetTime,
+      penaltyLaps: parsed.data.penaltyLaps ?? 0,
       linkedUserId: parsed.data.linkedUserId ?? null,
       sortOrder: existing.length,
     })
+    .onConflictDoNothing()
     .returning();
+  // Idempotent replay (same client id) — return the already-stored row.
+  const driver =
+    created ??
+    (await db.select().from(drivers).where(eq(drivers.id, parsed.data.id!)).limit(1))[0];
   rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
-  return c.json({ driver: created }, 201);
+  return c.json({ driver }, created ? 201 : 200);
 });
 
 // PUT /api/teams/:id — bulk meta update + roster replace (owner|admin). Legacy

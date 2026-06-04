@@ -112,8 +112,12 @@ export const updateDriverInputSchema = z.object({
 export type UpdateDriverInput = z.infer<typeof updateDriverInputSchema>;
 
 export const createDriverInputSchema = z.object({
+  // Optional client-generated UUID so granular roster sync is idempotent + the
+  // client knows the id before the server round-trip (mirrors session/lap ids).
+  id: z.string().uuid().optional(),
   name: z.string().trim().min(1).max(80),
   targetTime: targetTimeSchema,
+  penaltyLaps: penaltyLapsSchema.optional(),
   linkedUserId: linkedUserIdSchema,
 });
 export type CreateDriverInput = z.infer<typeof createDriverInputSchema>;

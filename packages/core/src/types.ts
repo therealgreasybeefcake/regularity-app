@@ -20,6 +20,9 @@ export interface Driver {
   laps: Lap[];
   /** Optional link to a team member's user account (null/undefined = custom driver). */
   linkedUserId?: string | null;
+  /** Server (Postgres) driver UUID once synced — enables granular, conflict-free
+   * roster ops. Undefined for a locally-added driver not yet pushed. */
+  serverId?: string;
 }
 
 export interface Session {

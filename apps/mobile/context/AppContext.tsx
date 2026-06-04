@@ -101,6 +101,46 @@ export function canEditTeam(role: TeamRole | null): boolean {
 export function canRecord(role: TeamRole | null): boolean {
   return !!role && ROLE_RANK[role] >= ROLE_RANK.member;
 }
+
+// --- Granular roster sync helpers (diff the local roster vs the last server
+// state and emit per-driver create/patch/delete ops keyed by server driver id,
+// so two editors never clobber each other via a full-roster replace). ---
+type DriverFields = { name: string; targetTime: number; penaltyLaps: number; linkedUserId: string | null };
+type TeamSettings = { name: string; raceName: string; sessionNumber: string; sessionDuration: number; lapTypeValues: LapTypeValues };
+interface SyncedSnapshot {
+  settings: TeamSettings | null;
+  drivers: Map<string, DriverFields>; // keyed by server driver id
+}
+function driverFields(d: Driver): DriverFields {
+  return { name: d.name, targetTime: d.targetTime, penaltyLaps: d.penaltyLaps, linkedUserId: d.linkedUserId ?? null };
+}
+function driverFieldsEqual(a: DriverFields, b: DriverFields): boolean {
+  return a.name === b.name && a.targetTime === b.targetTime && a.penaltyLaps === b.penaltyLaps && a.linkedUserId === b.linkedUserId;
+}
+function teamSettings(team: Team, ltv: LapTypeValues): TeamSettings {
+  return {
+    name: team.name ?? '',
+    raceName: team.raceName ?? '',
+    sessionNumber: team.sessionNumber ?? '',
+    sessionDuration: team.sessionDuration ?? 120,
+    lapTypeValues: ltv,
+  };
+}
+function settingsEqual(a: TeamSettings, b: TeamSettings): boolean {
+  return (
+    a.name === b.name &&
+    a.raceName === b.raceName &&
+    a.sessionNumber === b.sessionNumber &&
+    a.sessionDuration === b.sessionDuration &&
+    JSON.stringify(a.lapTypeValues) === JSON.stringify(b.lapTypeValues)
+  );
+}
+/** Capture a synced snapshot from a hydrated team whose drivers carry serverId. */
+function snapshotFrom(drivers: Driver[], settings: TeamSettings): SyncedSnapshot {
+  const map = new Map<string, DriverFields>();
+  for (const d of drivers) if (d.serverId) map.set(d.serverId, driverFields(d));
+  return { settings, drivers: map };
+}
 interface ServerSessionRow {
   id: string;
   clientSessionId: string | null;
@@ -191,6 +231,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // Suppresses the next debounced roster push when a teams change came from a
   // remote sync (reloadActiveTeam) — prevents an A↔B push/broadcast ping-pong.
   const suppressPushRef = useRef(false);
+  // Last roster/settings state we've synced to the server, for diffing.
+  const lastSyncedRef = useRef<SyncedSnapshot>({ settings: null, drivers: new Map() });
   const serverTeamIdRef = useRef<string | null>(null);
   const syncedUserRef = useRef<string | null>(null);
   const teamsRef = useRef(teams);
@@ -287,24 +329,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [isLoading]);
 
-  // Build the bulk team payload (meta + roster) the API expects.
-  const buildTeamPayload = useCallback(() => {
-    const team = teamsRef.current[0];
-    return {
-      name: team?.name ?? '',
-      raceName: team?.raceName ?? '',
-      sessionNumber: team?.sessionNumber ?? '',
-      sessionDuration: team?.sessionDuration ?? 120,
-      lapTypeValues: lapTypeValuesRef.current,
-      drivers: (team?.drivers ?? []).map((d) => ({
-        name: d.name,
-        targetTime: d.targetTime,
-        penaltyLaps: d.penaltyLaps,
-        linkedUserId: d.linkedUserId ?? null,
-      })),
-    };
-  }, []);
-
   // Hydrate the active team's roster + settings from the server (login + switch).
   // Session history is loaded lazily by StatsScreen via loadSessionsFromS3.
   const loadTeam = useCallback(async (serverTeamId: string) => {
@@ -318,11 +342,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       raceName: res.team.raceName,
       sessionNumber: res.team.sessionNumber,
       sessionDuration: res.team.sessionDurationMin,
-      drivers: res.drivers.length
-        ? res.drivers.map((d, i) => ({ id: i + 1, name: d.name, targetTime: d.targetTimeSec, penaltyLaps: d.penaltyLaps, laps: [], linkedUserId: d.linkedUserId }))
-        : DEFAULT_TEAMS[0].drivers.map((d) => ({ ...d, laps: [] })),
+      drivers: res.drivers.map((d, i) => ({
+        id: i + 1,
+        name: d.name,
+        targetTime: d.targetTimeSec,
+        penaltyLaps: d.penaltyLaps,
+        laps: [],
+        linkedUserId: d.linkedUserId,
+        serverId: d.id,
+      })),
       sessionHistory: [],
     };
+    // Snapshot the synced state so the diff sync treats this hydrate as a no-op.
+    lastSyncedRef.current = snapshotFrom(hydrated.drivers, teamSettings(hydrated, res.team.lapTypeValues));
     setTeams([hydrated]);
     setLapTypeValues(res.team.lapTypeValues);
   }, []);
@@ -376,29 +408,28 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       const res = await api.get<TeamByIdResponse>(`/api/teams/${id}`);
       setUserRole(res.role);
       setLapTypeValues(res.team.lapTypeValues);
+      const cur = teamsRef.current[0];
+      const mergedDrivers: Driver[] = res.drivers.map((d, i) => ({
+        id: i + 1,
+        name: d.name,
+        targetTime: d.targetTimeSec,
+        penaltyLaps: d.penaltyLaps,
+        linkedUserId: d.linkedUserId,
+        serverId: d.id,
+        laps: cur?.drivers[i]?.laps ?? [], // preserve in-progress laps by position
+      }));
+      const merged: Team = {
+        id: 1,
+        name: res.team.name,
+        raceName: res.team.raceName,
+        sessionNumber: res.team.sessionNumber,
+        sessionDuration: res.team.sessionDurationMin,
+        drivers: res.drivers.length ? mergedDrivers : (cur?.drivers ?? []),
+        sessionHistory: cur?.sessionHistory ?? [],
+      };
+      lastSyncedRef.current = snapshotFrom(merged.drivers, teamSettings(merged, res.team.lapTypeValues));
       suppressPushRef.current = true; // this change is a remote sync, not a local edit
-      setTeams((prev) => {
-        const cur = prev[0];
-        const merged: Team = {
-          id: 1,
-          name: res.team.name,
-          raceName: res.team.raceName,
-          sessionNumber: res.team.sessionNumber,
-          sessionDuration: res.team.sessionDurationMin,
-          drivers: res.drivers.length
-            ? res.drivers.map((d, i) => ({
-                id: i + 1,
-                name: d.name,
-                targetTime: d.targetTimeSec,
-                penaltyLaps: d.penaltyLaps,
-                linkedUserId: d.linkedUserId,
-                laps: cur?.drivers[i]?.laps ?? [],
-              }))
-            : (cur?.drivers ?? []),
-          sessionHistory: cur?.sessionHistory ?? [],
-        };
-        return [merged];
-      });
+      setTeams([merged]);
     } catch (e) {
       console.warn('[teams] reloadActiveTeam failed:', e);
     }
@@ -498,13 +529,31 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
                 penaltyLaps: d.penaltyLaps,
                 laps: [],
                 linkedUserId: d.linkedUserId,
+                serverId: d.id,
               })),
               sessionHistory: teamsRef.current[0]?.sessionHistory ?? [],
             };
+            lastSyncedRef.current = snapshotFrom(hydrated.drivers, teamSettings(hydrated, fresh.team.lapTypeValues));
             setTeams([hydrated]);
             setLapTypeValues(fresh.team.lapTypeValues);
           } else {
-            await syncQueue.enqueue({ kind: 'putTeam', teamId: fresh.team.id, payload: buildTeamPayload() });
+            // Fresh owned team with no server roster — seed it with granular ops
+            // so local drivers get server ids and future edits diff cleanly.
+            const local = teamsRef.current[0];
+            const settings = teamSettings(local ?? ({} as Team), lapTypeValuesRef.current);
+            await syncQueue.enqueue({ kind: 'patchTeamSettings', teamId: fresh.team.id, payload: settings });
+            const withIds: Driver[] = (local?.drivers ?? []).map((d) => ({ ...d, serverId: randomUuid() }));
+            for (const d of withIds) {
+              await syncQueue.enqueue({
+                kind: 'createDriver',
+                teamId: fresh.team.id,
+                driverId: d.serverId!,
+                payload: { id: d.serverId, name: d.name, targetTime: d.targetTime, penaltyLaps: d.penaltyLaps, linkedUserId: d.linkedUserId ?? null },
+              });
+            }
+            lastSyncedRef.current = snapshotFrom(withIds, settings);
+            suppressPushRef.current = true;
+            if (local) setTeams([{ ...local, drivers: withIds }]);
           }
         } else {
           // A shared team the user joined — load its roster/settings.
@@ -524,13 +573,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setSyncStatus('offline');
       }
     })();
-  }, [isLoading, isAuthenticated, user, buildTeamPayload, loadTeam, joinTeam]);
+  }, [isLoading, isAuthenticated, user, loadTeam, joinTeam]);
 
   // Reset sync gate on sign-out so a different user re-syncs.
   useEffect(() => {
     if (!isAuthenticated) {
       syncedUserRef.current = null;
       serverTeamIdRef.current = null;
+      lastSyncedRef.current = { settings: null, drivers: new Map() };
       setMemberships([]);
       setUserRole(null);
       setActiveServerTeamId(null);
@@ -538,27 +588,66 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
   }, [isAuthenticated]);
 
-  // Persist teams locally (debounced) + push meta/roster to the API.
+  // Persist teams locally (debounced) + sync roster/settings via granular,
+  // id-keyed ops. Diffing the local roster against the last synced state and
+  // emitting per-driver create/patch/delete means two editors never clobber each
+  // other (the old full-roster `putTeam` replace did).
   useEffect(() => {
     if (isLoading) return;
     const timeout = setTimeout(() => {
       AsyncStorage.setItem('blindFreddyRaceTeams', JSON.stringify(teams));
-      // Skip the push if this change was a remote sync (avoids a push/broadcast loop).
+      // Skip if this change was a remote sync (avoids a push/broadcast loop).
       if (suppressPushRef.current) {
         suppressPushRef.current = false;
         return;
       }
-      // Only owner/admin push roster+settings; members/viewers never clobber them.
-      if (serverTeamIdRef.current && syncedUserRef.current && canEditTeam(userRoleRef.current)) {
-        syncQueue.enqueue({
-          kind: 'putTeam',
-          teamId: serverTeamIdRef.current,
-          payload: buildTeamPayload(),
-        });
+      const teamId = serverTeamIdRef.current;
+      const team = teamsRef.current[0];
+      // Only owner/admin write roster/settings; members/viewers never do.
+      if (!teamId || !syncedUserRef.current || !canEditTeam(userRoleRef.current) || !team) return;
+      const last = lastSyncedRef.current;
+
+      // Settings diff.
+      const settings = teamSettings(team, lapTypeValuesRef.current);
+      if (!last.settings || !settingsEqual(last.settings, settings)) {
+        syncQueue.enqueue({ kind: 'patchTeamSettings', teamId, payload: settings });
+        last.settings = settings;
+      }
+
+      // Roster diff — create / patch / delete keyed by server driver id.
+      let assignedIds = false;
+      const seen = new Set<string>();
+      const nextDrivers = team.drivers.map((d) => {
+        let sid = d.serverId;
+        const fields = driverFields(d);
+        if (!sid) {
+          sid = randomUuid();
+          assignedIds = true;
+          syncQueue.enqueue({ kind: 'createDriver', teamId, driverId: sid, payload: { id: sid, ...fields } });
+          last.drivers.set(sid, fields);
+        } else {
+          const prev = last.drivers.get(sid);
+          if (!prev || !driverFieldsEqual(prev, fields)) {
+            syncQueue.enqueue({ kind: 'patchDriver', driverId: sid, payload: fields });
+            last.drivers.set(sid, fields);
+          }
+        }
+        seen.add(sid);
+        return d.serverId ? d : { ...d, serverId: sid };
+      });
+      for (const sid of Array.from(last.drivers.keys())) {
+        if (!seen.has(sid)) {
+          syncQueue.enqueue({ kind: 'deleteDriver', driverId: sid });
+          last.drivers.delete(sid);
+        }
+      }
+      if (assignedIds) {
+        suppressPushRef.current = true;
+        setTeams([{ ...team, drivers: nextDrivers }]);
       }
     }, 800);
     return () => clearTimeout(timeout);
-  }, [teams, lapTypeValues, isLoading, buildTeamPayload]);
+  }, [teams, lapTypeValues, isLoading]);
 
   // Persist a finished session to the API (durable, idempotent on session.id).
   const saveSessionToS3 = useCallback(async (session: Session) => {
