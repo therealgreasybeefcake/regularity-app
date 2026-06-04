@@ -53,11 +53,18 @@ export default function LiveView() {
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Ticking clock so the live "current lap" timer counts up (only while live).
+  // requestAnimationFrame (≈60fps) instead of a fixed interval, so the 2nd
+  // decimal moves smoothly rather than stepping in coarse 0.05s jumps.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (snap?.status !== 'live') return;
-    const id = setInterval(() => setNow(Date.now()), 50);
-    return () => clearInterval(id);
+    let raf = 0;
+    const tick = () => {
+      setNow(Date.now());
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
   }, [snap?.status]);
 
   // When a session ends (or its link is gone), return to the portal after a beat.
