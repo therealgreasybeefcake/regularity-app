@@ -58,6 +58,11 @@ export const auth = betterAuth({
   }),
   emailAndPassword: { enabled: true },
   socialProviders,
+  // Apple's web "Sign in with Apple" posts the OAuth callback (response_mode=
+  // form_post) to /api/auth/callback/apple with Origin: https://appleid.apple.com.
+  // That origin must be trusted or BetterAuth's CSRF check rejects it
+  // (INVALID_ORIGIN). Added here so it survives independent of TRUSTED_ORIGINS.
+  trustedOrigins: [...env.TRUSTED_ORIGINS, 'https://appleid.apple.com'],
   // Let a verified Google/Apple identity link to an existing same-email account
   // so a user who signed up with email/password (or one provider) can also use
   // the others and land in the SAME account. Both providers verify the email, so
@@ -76,7 +81,6 @@ export const auth = betterAuth({
       requireLocalEmailVerified: false,
     },
   },
-  trustedOrigins: env.TRUSTED_ORIGINS,
   ...(isProd
     ? { advanced: { defaultCookieAttributes: { sameSite: 'none' as const, secure: true } } }
     : {}),
