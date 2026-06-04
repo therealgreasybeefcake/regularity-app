@@ -711,12 +711,22 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    // Allow the title + action buttons to wrap onto a second line on narrow
+    // phones so the last button (e.g. "Team PDF") never spills off-screen.
+    flexWrap: 'wrap',
+    rowGap: spacing.sm,
     marginBottom: spacing.lg,
     gap: spacing.md,
   },
   buttonGroup: {
     flexDirection: 'row',
     alignItems: 'center',
+    // Wrap buttons within the group too, and let it shrink so it stays within
+    // the header rather than forcing the row wider than the screen.
+    flexWrap: 'wrap',
+    flexShrink: 1,
+    justifyContent: 'flex-end',
+    rowGap: spacing.sm,
     gap: spacing.sm,
   },
   editActions: {

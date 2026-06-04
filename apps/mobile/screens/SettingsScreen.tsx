@@ -496,6 +496,31 @@ export default function SettingsScreen() {
   const [showExportModal, setShowExportModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deletingAccount, setDeletingAccount] = useState(false);
+
+  const canConfirmDelete = deleteConfirmText.trim() === 'DELETE';
+
+  const closeDeleteModal = () => {
+    setShowDeleteModal(false);
+    setDeleteConfirmText('');
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!canConfirmDelete || deletingAccount) return;
+    setDeletingAccount(true);
+    const res = await deleteAccount();
+    setDeletingAccount(false);
+    if (!res.success) {
+      // Keep the sheet open so the user can retry; surface the error.
+      showAlert({ title: 'Error', message: res.error ?? 'Could not delete account.' });
+      return;
+    }
+    // Success: deleteAccount() already signed out + cleared storage; the
+    // navigation guard handles the redirect. Just tidy up local sheet state.
+    closeDeleteModal();
+  };
 
   const convertToCSV = (teams: any[]) => {
     const rows: string[] = [];
@@ -1056,28 +1081,9 @@ export default function SettingsScreen() {
             title="Delete Account"
             icon="trash-outline"
             variant="secondary"
-            onPress={() => {
-              showAlert({
-                title: 'Delete Account',
-                message:
-                  'This permanently deletes your account and all teams you solely own (drivers, sessions, laps). Teams you own that have other members are handed to a co-owner. This cannot be undone.',
-                buttons: [
-                  { text: 'Cancel', style: 'cancel' },
-                  {
-                    text: 'Delete Account',
-                    style: 'destructive',
-                    onPress: async () => {
-                      const res = await deleteAccount();
-                      if (!res.success) {
-                        showAlert({ title: 'Error', message: res.error ?? 'Could not delete account.' });
-                      }
-                    },
-                  },
-                ],
-              });
-            }}
+            onPress={() => setShowDeleteModal(true)}
             fullWidth
-            style={styles.accountBtn}
+            style={[styles.accountBtn, { marginTop: spacing.xl }]}
             textStyle={{ color: theme.danger }}
           />
         </Collapsible>
@@ -1229,6 +1235,48 @@ export default function SettingsScreen() {
           })}
         </View>
       </Sheet>
+
+      {/* Delete Account — type-to-confirm */}
+      <Sheet
+        visible={showDeleteModal}
+        onClose={closeDeleteModal}
+        title="Delete account"
+        scroll={false}
+      >
+        <View style={{ gap: spacing.md }}>
+          <Text style={[styles.deleteWarn, { color: theme.textSecondary }]}>
+            This permanently deletes your account and all teams you solely own (drivers, sessions,
+            laps). Teams you own that have other members are handed to a co-owner. This cannot be
+            undone.
+          </Text>
+          <Text style={[styles.deleteWarn, { color: theme.text, fontWeight: fontWeights.semibold }]}>
+            Type DELETE to confirm.
+          </Text>
+          <TextField
+            placeholder="DELETE"
+            value={deleteConfirmText}
+            onChangeText={setDeleteConfirmText}
+            autoCapitalize="characters"
+            autoCorrect={false}
+          />
+          <Button
+            title="Delete Account"
+            icon="trash-outline"
+            variant="danger"
+            fullWidth
+            loading={deletingAccount}
+            disabled={!canConfirmDelete || deletingAccount}
+            onPress={handleDeleteAccount}
+          />
+          <Button
+            title="Cancel"
+            variant="secondary"
+            fullWidth
+            disabled={deletingAccount}
+            onPress={closeDeleteModal}
+          />
+        </View>
+      </Sheet>
     </SafeAreaView>
   );
 }
@@ -1296,6 +1344,10 @@ const styles = StyleSheet.create({
   },
   accountBtn: {
     marginTop: spacing.md,
+  },
+  deleteWarn: {
+    fontSize: typography.body,
+    lineHeight: 20,
   },
   aboutMeta: {
     marginTop: spacing.md,

@@ -81,7 +81,7 @@ export function Button({
         <View style={styles.row}>
           {icon && iconPosition === 'left' && <Ionicons name={icon} size={s.icon} color={fg[variant] as string} />}
           {(title || children) != null && (
-            <Text style={[{ color: fg[variant], fontSize: s.font, fontWeight: fontWeights.semibold }, textStyle]}>
+            <Text numberOfLines={1} style={[{ color: fg[variant], fontSize: s.font, fontWeight: fontWeights.semibold }, textStyle]}>
               {title ?? children}
             </Text>
           )}
