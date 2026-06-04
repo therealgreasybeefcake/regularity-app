@@ -5,11 +5,21 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useFonts } from 'expo-font';
+import { StatusBar } from 'expo-status-bar';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { AppProvider, useApp } from '../context/AppContext';
 import { AlertProvider } from '../components/CustomAlert';
 import ErrorBoundary from '../components/ErrorBoundary';
+import { useTheme } from '../hooks/useTheme';
+
+// Status bar icons (clock/wifi/battery) must contrast the app background and
+// follow the app's OWN theme (not the system scheme, which can differ when the
+// user overrides the mode): dark icons on the light theme, light icons on dark.
+function ThemedStatusBar() {
+  const { isDark } = useTheme();
+  return <StatusBar style={isDark ? 'light' : 'dark'} />;
+}
 
 LogBox.ignoreLogs([
   'The native view manager for module(ExpoLinearGradient)',
@@ -109,6 +119,7 @@ export default function RootLayout() {
           <AuthProvider>
             <AppProvider>
               <AlertProvider>
+                <ThemedStatusBar />
                 <NavigationGuard>
                   <Stack screenOptions={{ headerShown: false }}>
                     <Stack.Screen name="index" />
