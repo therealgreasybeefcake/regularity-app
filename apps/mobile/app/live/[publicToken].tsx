@@ -52,6 +52,14 @@ export default function LiveView() {
   soundOnRef.current = soundOn;
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Ticking clock so the live "current lap" timer counts up (only while live).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (snap?.status !== 'live') return;
+    const id = setInterval(() => setNow(Date.now()), 100);
+    return () => clearInterval(id);
+  }, [snap?.status]);
+
   // When a session ends (or its link is gone), return to the portal after a beat.
   const goToPortal = () => {
     if (redirectTimer.current) return;
@@ -214,14 +222,26 @@ export default function LiveView() {
           </View>
           <View style={styles.driverBody}>
             <View style={styles.lastLap}>
-              <Text style={[styles.lapTime, { color: C.text }]}>{last ? formatTime(last.time) : '—'}</Text>
-              {last ? (
-                <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]}>
-                  {last.delta >= 0 ? '+' : ''}
-                  {last.delta.toFixed(2)}s
-                </Text>
+              <Text style={styles.metricLabel}>{isLive && last ? 'CURRENT LAP' : 'LAST LAP'}</Text>
+              {isLive && last ? (
+                <>
+                  <Text style={[styles.lapTime, { color: C.live }]}>{fmtElapsed(now - last.timestamp)}</Text>
+                  <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]}>
+                    last {formatTime(last.time)} · {last.delta >= 0 ? '+' : ''}{last.delta.toFixed(2)}s
+                  </Text>
+                </>
+              ) : last ? (
+                <>
+                  <Text style={[styles.lapTime, { color: C.text }]}>{formatTime(last.time)}</Text>
+                  <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]}>
+                    {last.delta >= 0 ? '+' : ''}{last.delta.toFixed(2)}s
+                  </Text>
+                </>
               ) : (
-                <Text style={styles.dim}>no laps yet</Text>
+                <>
+                  <Text style={[styles.lapTime, { color: C.text }]}>—</Text>
+                  <Text style={styles.dim}>no laps yet</Text>
+                </>
               )}
             </View>
             <View style={styles.metrics}>
@@ -253,6 +273,14 @@ export default function LiveView() {
       <View style={{ height: 40 }} />
     </ScrollView>
   );
+}
+
+// Elapsed current-lap time, ticking. "S.s" under a minute, "M:SS.s" beyond.
+function fmtElapsed(ms: number): string {
+  const s = Math.max(0, ms) / 1000;
+  if (s < 60) return `${s.toFixed(1)}s`;
+  const m = Math.floor(s / 60);
+  return `${m}:${(s - m * 60).toFixed(1).padStart(4, '0')}`;
 }
 
 function Metric({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof makeStyles> }) {
