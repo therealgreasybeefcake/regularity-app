@@ -18,6 +18,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.regularity.racetimer",
       "buildNumber": "1",
+      "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -40,7 +41,8 @@
       "expo-audio",
       "expo-sharing",
       "expo-font",
-      "expo-asset"
+      "expo-asset",
+      "expo-apple-authentication"
     ],
     "web": {
       "favicon": "./assets/favicon.png"

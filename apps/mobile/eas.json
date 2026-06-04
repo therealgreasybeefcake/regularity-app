@@ -6,19 +6,44 @@
   "build": {
     "development": {
       "developmentClient": true,
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://regularity.pademelonsoftware.com.au",
+        "EXPO_PUBLIC_WEB_URL": "https://regularity.pademelonsoftware.com.au",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "816959617046-h09q2b43gv610phm7rrbdtb56udot0kc.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "816959617046-7o5aarjmjqij57fd51v7bq6d57k77abj.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.816959617046-7o5aarjmjqij57fd51v7bq6d57k77abj"
+      }
     },
     "preview": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://regularity.pademelonsoftware.com.au",
+        "EXPO_PUBLIC_WEB_URL": "https://regularity.pademelonsoftware.com.au",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "816959617046-h09q2b43gv610phm7rrbdtb56udot0kc.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "816959617046-7o5aarjmjqij57fd51v7bq6d57k77abj.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.816959617046-7o5aarjmjqij57fd51v7bq6d57k77abj"
+      }
     },
     "production": {
       "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
+      },
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://regularity.pademelonsoftware.com.au",
+        "EXPO_PUBLIC_WEB_URL": "https://regularity.pademelonsoftware.com.au",
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "816959617046-h09q2b43gv610phm7rrbdtb56udot0kc.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "816959617046-7o5aarjmjqij57fd51v7bq6d57k77abj.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_IOS_URL_SCHEME": "com.googleusercontent.apps.816959617046-7o5aarjmjqij57fd51v7bq6d57k77abj"
       }
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "ascAppId": "6753737677"
+      }
+    }
   }
 }

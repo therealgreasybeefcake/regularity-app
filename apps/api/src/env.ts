@@ -24,8 +24,16 @@ export const env = {
   BETTER_AUTH_SECRET: required('BETTER_AUTH_SECRET'),
   DATABASE_URL: required('DATABASE_URL'),
   TRUSTED_ORIGINS,
+  // Google web OAuth client (browser flow) + native iOS/Android client IDs so
+  // that id_tokens minted by the native Google SDK (whose `aud` is the iOS/Android
+  // client id, not the web one) also verify. The web client id stays primary.
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID,
   GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET,
+  GOOGLE_IOS_CLIENT_ID: process.env.GOOGLE_IOS_CLIENT_ID,
+  GOOGLE_ANDROID_CLIENT_ID: process.env.GOOGLE_ANDROID_CLIENT_ID,
+  // Apple Services ID (web flow) + native app bundle id. Native Sign in with
+  // Apple id_tokens carry the bundle id as `aud`; both must be accepted.
   APPLE_CLIENT_ID: process.env.APPLE_CLIENT_ID,
   APPLE_CLIENT_SECRET: process.env.APPLE_CLIENT_SECRET,
+  APPLE_BUNDLE_ID: process.env.APPLE_BUNDLE_ID ?? 'com.regularity.racetimer',
 };

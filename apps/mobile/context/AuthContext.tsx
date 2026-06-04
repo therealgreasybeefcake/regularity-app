@@ -1,7 +1,9 @@
 import React, { createContext, useContext, ReactNode } from 'react';
+import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { authClient } from '../lib/auth-client';
 import { api } from '../lib/api';
+import { signInWithAppleNative, signInWithGoogleNative } from '../lib/nativeAuth';
 
 export type OAuthProvider = 'google' | 'apple';
 
@@ -46,6 +48,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
   const signInWithProvider = async (provider: OAuthProvider): Promise<AuthResult> => {
     try {
+      // On device, use the native id-token flow (no browser bounce). It returns
+      // `fallback: true` when it can't run natively (web; Apple on Android;
+      // missing Google config), in which case we use the browser redirect flow.
+      if (Platform.OS !== 'web') {
+        const native =
+          provider === 'apple'
+            ? await signInWithAppleNative()
+            : await signInWithGoogleNative();
+        if (native.cancelled) return { success: false };
+        if (!native.fallback) return { success: native.success, error: native.error };
+      }
       const res = await authClient.signIn.social({ provider, callbackURL: '/' });
       return { success: !res?.error, error: res?.error?.message };
     } catch (e: any) {

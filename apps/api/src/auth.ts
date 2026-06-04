@@ -7,17 +7,35 @@ import { env, isRealSecret } from './env';
 
 // Only register a social provider when real credentials are present, so the
 // server boots cleanly with placeholder OAuth creds (email/password still works).
-const socialProviders: Record<string, { clientId: string; clientSecret: string }> = {};
+type SocialProviders = NonNullable<Parameters<typeof betterAuth>[0]['socialProviders']>;
+const socialProviders: SocialProviders = {};
+
 if (isRealSecret(env.GOOGLE_CLIENT_ID) && isRealSecret(env.GOOGLE_CLIENT_SECRET)) {
+  // Accept the web client id (browser flow) plus any native iOS/Android client
+  // ids — a native Google id_token's `aud` is the platform client id, so all
+  // valid client ids must be listed. The web client id is kept first (BetterAuth
+  // uses clientId[0] as the primary for the redirect/secret flow).
+  const googleClientIds = [
+    env.GOOGLE_CLIENT_ID,
+    env.GOOGLE_IOS_CLIENT_ID,
+    env.GOOGLE_ANDROID_CLIENT_ID,
+  ].filter(isRealSecret);
   socialProviders.google = {
-    clientId: env.GOOGLE_CLIENT_ID,
+    clientId: googleClientIds.length > 1 ? googleClientIds : env.GOOGLE_CLIENT_ID,
     clientSecret: env.GOOGLE_CLIENT_SECRET,
   };
 }
+
 if (isRealSecret(env.APPLE_CLIENT_ID) && isRealSecret(env.APPLE_CLIENT_SECRET)) {
+  // `audience` (checked first by BetterAuth's verifier) lists BOTH the web
+  // Services ID and the native app bundle id, so the browser flow (aud = Services
+  // ID) and native Sign in with Apple (aud = bundle id) both verify. clientId
+  // stays the Services ID for the web redirect/secret flow.
   socialProviders.apple = {
     clientId: env.APPLE_CLIENT_ID,
     clientSecret: env.APPLE_CLIENT_SECRET,
+    appBundleIdentifier: env.APPLE_BUNDLE_ID,
+    audience: [env.APPLE_CLIENT_ID, env.APPLE_BUNDLE_ID],
   };
 }
 

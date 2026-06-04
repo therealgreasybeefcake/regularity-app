@@ -53,9 +53,9 @@ export default function LoginScreen() {
     setPendingProvider(provider);
     setError('');
     const result = await signInWithProvider(provider);
-    if (!result.success) {
-      const label = provider === 'google' ? 'Google' : 'Apple';
-      setError(result.error || `${label} sign-in isn't available yet.`);
+    // A silent cancel returns success:false with no error — don't surface a message.
+    if (!result.success && result.error) {
+      setError(result.error);
     }
     setPendingProvider(null);
   };
