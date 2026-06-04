@@ -50,6 +50,8 @@ interface AppContextType {
   joinTeam: (opts: { token?: string; code?: string }) => Promise<{ ok: boolean; error?: string; teamName?: string }>;
   /** Public token of the active team's current live session (any member's), or null. */
   teamLivePublicToken: string | null;
+  /** Re-check whether the active team currently has a live session. */
+  refreshTeamLive: () => Promise<void>;
   // Persist a finished session to the API (durable offline queue). Kept under
   // the original name so existing callers (StatsScreen) don't change.
   saveSessionToS3: (session: Session) => Promise<void>;
@@ -881,6 +883,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         refreshMemberships,
         joinTeam,
         teamLivePublicToken,
+        refreshTeamLive,
         saveSessionToS3,
         loadSessionsFromS3,
         liveSession,

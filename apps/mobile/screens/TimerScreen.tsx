@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -11,7 +11,7 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
 
@@ -50,8 +50,17 @@ export default function TimerScreen() {
     endLiveSession,
     liveSession,
     teamLivePublicToken,
+    refreshTeamLive,
   } = useApp();
   const router = useRouter();
+
+  // Re-check the team's live status whenever the Timer regains focus (e.g. after
+  // being redirected back here when a session ends) so the peer banner clears.
+  useFocusEffect(
+    useCallback(() => {
+      refreshTeamLive();
+    }, [refreshTeamLive]),
+  );
 
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;

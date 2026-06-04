@@ -43,7 +43,7 @@ export default function LiveView() {
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [notFound, setNotFound] = useState(false);
-  const [soundOn, setSoundOn] = useState(false);
+  const [soundOn, setSoundOn] = useState(true); // unmuted by default
   const snapRef = useRef<LiveSnapshot | null>(null);
   snapRef.current = snap;
   const soundOnRef = useRef(false);
@@ -61,6 +61,21 @@ export default function LiveView() {
     setSoundOn(next);
     if (next) ensureLiveAudio(); // this tap is the user gesture that unlocks audio
   };
+
+  // Unmuted by default — but browsers block audio until a user gesture, so unlock
+  // the Web Audio context on the first interaction anywhere on the page.
+  useEffect(() => {
+    ensureLiveAudio();
+    const doc = (globalThis as any).document;
+    if (!doc) return;
+    const unlock = () => ensureLiveAudio();
+    doc.addEventListener('pointerdown', unlock, { once: true });
+    doc.addEventListener('keydown', unlock, { once: true });
+    return () => {
+      doc.removeEventListener('pointerdown', unlock);
+      doc.removeEventListener('keydown', unlock);
+    };
+  }, []);
 
   useEffect(() => {
     if (!publicToken) return;
