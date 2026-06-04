@@ -3,6 +3,7 @@ import * as Sharing from 'expo-sharing';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Driver, Session, Team, LapTypeValues } from '../types';
 import { calculateDriverStats, calculateTeamStats, formatTime } from './calculations';
+import { calculateConsistency, analyzePaceTrend, segmentStints } from '@regularity/core';
 
 interface PDFExportOptions {
   team: Team;
@@ -44,6 +45,48 @@ const generateDriverLapsTable = (driver: Driver, lapTypeValues: LapTypeValues): 
     .join('');
 };
 
+const titleCase = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const generateStintTable = (driver: Driver): string => {
+  const stints = segmentStints(driver);
+  if (stints.length === 0) {
+    return '';
+  }
+  const rows = stints
+    .map((stint) => {
+      const avgSign = stint.avgDelta >= 0 ? '+' : '';
+      const best = stint.best
+        ? `Lap ${stint.best.number} (${stint.best.delta >= 0 ? '+' : ''}${stint.best.delta.toFixed(3)}s)`
+        : 'N/A';
+      const worst = stint.worst
+        ? `Lap ${stint.worst.number} (${stint.worst.delta >= 0 ? '+' : ''}${stint.worst.delta.toFixed(3)}s)`
+        : 'N/A';
+      return `
+        <tr>
+          <td>${stint.index + 1}</td>
+          <td>${stint.count}</td>
+          <td>${avgSign}${stint.avgDelta.toFixed(3)}s</td>
+          <td style="color: #10b981;">${best}</td>
+          <td style="color: #ef4444;">${worst}</td>
+        </tr>
+      `;
+    })
+    .join('');
+  return `
+      <h3>Stints</h3>
+      <table width="100%" cellpadding="6" cellspacing="0" border="1">
+        <tr>
+          <th><strong>Stint #</strong></th>
+          <th><strong>Laps</strong></th>
+          <th><strong>Avg Delta</strong></th>
+          <th><strong>Best</strong></th>
+          <th><strong>Worst</strong></th>
+        </tr>
+        ${rows}
+      </table>
+  `;
+};
+
 const generateDriverSection = (
   driver: Driver,
   lapTypeValues: LapTypeValues,
@@ -51,6 +94,9 @@ const generateDriverSection = (
   allDrivers: Driver[]
 ): string => {
   const stats = calculateDriverStats(driver, lapTypeValues, allDrivers, sessionDuration);
+  const consistency = calculateConsistency(driver.laps);
+  const pace = analyzePaceTrend(driver.laps);
+  const projectedNext = pace.projectedNext !== null ? formatTime(pace.projectedNext) : 'N/A';
 
   return `
       <h2>${driver.name}</h2>
@@ -99,7 +145,20 @@ const generateDriverSection = (
             <strong>Penalty Laps:</strong> ${driver.penaltyLaps}
           </td>
         </tr>
+        <tr>
+          <td style="background-color: #f3f4f6;">
+            <strong>Consistency:</strong> &plusmn;${consistency.deltaStdDev.toFixed(3)}s
+          </td>
+          <td style="background-color: #f3f4f6;">
+            <strong>Pace Trend:</strong> ${titleCase(pace.direction)}
+          </td>
+          <td style="background-color: #f3f4f6;">
+            <strong>Projected Next:</strong> ${projectedNext}
+          </td>
+        </tr>
       </table>
+
+      ${generateStintTable(driver)}
 
       <h3>Lap History</h3>
       <table width="100%" cellpadding="6" cellspacing="0" border="1">

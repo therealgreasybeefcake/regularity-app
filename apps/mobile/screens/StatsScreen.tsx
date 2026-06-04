@@ -1,20 +1,36 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions, ColorValue } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { LineChart } from 'react-native-gifted-charts';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, fonts } from '../constants/theme';
 import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/calculations';
+import { calculateConsistency, analyzePaceTrend, segmentStints, detectOutliers } from '@regularity/core';
 import { Session } from '../types';
 import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
 import { generatePDF } from '../utils/pdfExport';
+import { exportLapsCsv } from '../lib/csvExport';
+import { api } from '../lib/api';
 import { useAlert } from '../components/CustomAlert';
 import { Mono, Label, Card, Surface, Divider, Button, IconButton, StatTile, TextField, Sheet } from '../components/ui';
+
+interface TrendPoint {
+  sessionId: string;
+  raceName: string;
+  sessionNumber: string;
+  endedAt: string;
+  percentageFactor: number;
+  achievedLaps: number;
+  goalLaps: number;
+}
+
+const cs = (color: ColorValue): string => color as string;
 
 const isWeb = Platform.OS === 'web';
 
 export default function StatsScreen() {
-  const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues, loadSessionsFromS3 } = useApp();
+  const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues, loadSessionsFromS3, activeServerTeamId } = useApp();
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
@@ -31,6 +47,30 @@ export default function StatsScreen() {
   // Measured width of the driver-grid container (exact — avoids scrollbar/rounding
   // estimation errors that caused 2-up cards to wrap to a single column).
   const [gridW, setGridW] = useState(0);
+
+  // Cross-session percentage-factor trend (team-level; pulled from the API).
+  const [trends, setTrends] = useState<TrendPoint[]>([]);
+  // Measured width of the trend chart container (gifted-charts needs an explicit width).
+  const [trendW, setTrendW] = useState(0);
+
+  useEffect(() => {
+    if (!activeServerTeamId) {
+      setTrends([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<{ trends: TrendPoint[] }>(`/api/teams/${activeServerTeamId}/trends`)
+      .then((res) => {
+        if (!cancelled) setTrends(res?.trends ?? []);
+      })
+      .catch(() => {
+        // Trends are best-effort — ignore errors (offline, not yet synced, etc.)
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeServerTeamId]);
 
   // Use selected session if available, otherwise use current team data
   const displayData = selectedSession || {
@@ -110,6 +150,25 @@ export default function StatsScreen() {
     for (const s of s3Sessions) map.set(s.id, s);
     return Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
   }, [team.sessionHistory, s3Sessions]);
+
+  const handleExportCsv = async () => {
+    try {
+      const raceName = displayData.raceName ? displayData.raceName.replace(/\s+/g, '-') : 'Race';
+      const sessionNumber = displayData.sessionNumber || 'Session';
+      const date = new Date().toISOString().split('T')[0];
+      await exportLapsCsv(
+        {
+          raceName: displayData.raceName,
+          sessionNumber: displayData.sessionNumber,
+          drivers: displayData.drivers || [],
+        },
+        `${raceName}-${sessionNumber}-laps-${date}`,
+      );
+    } catch (error) {
+      showAlert({ title: 'Error', message: 'Failed to export CSV. Please try again.' });
+      console.error('CSV export error:', error);
+    }
+  };
 
   const handleOpenSessionPicker = async () => {
     setShowSessionPicker(true);
@@ -258,6 +317,13 @@ export default function StatsScreen() {
             />
           )}
           <Button
+            title="CSV"
+            icon="download-outline"
+            size="sm"
+            variant="secondary"
+            onPress={handleExportCsv}
+          />
+          <Button
             title="Team PDF"
             icon="stats-chart"
             size="sm"
@@ -275,6 +341,69 @@ export default function StatsScreen() {
       </View>
     </Card>
   );
+
+  const TrendSection = () => {
+    // Only meaningful for the live team (not a historical session view).
+    if (selectedSession) return null;
+    const ended = trends.filter((t) => t.percentageFactor != null);
+    const factors = ended.map((t) => t.percentageFactor);
+    const latest = factors.length > 0 ? factors[factors.length - 1] : null;
+
+    return (
+      <Card padding="lg" style={styles.panel}>
+        <View style={styles.panelHeader}>
+          <Label size={13}>Percentage Factor Trend</Label>
+          {latest !== null && (
+            <Mono size={typography.bodyLg} weight="bold" color={theme.accent}>
+              {`${latest.toFixed(2)}%`}
+            </Mono>
+          )}
+        </View>
+        {factors.length < 2 ? (
+          <Text style={[styles.trendEmpty, { color: theme.textMuted }]}>
+            Not enough sessions yet
+          </Text>
+        ) : (
+          <View
+            onLayout={(e) => setTrendW(e.nativeEvent.layout.width)}
+          >
+            {trendW > 0 && (
+              <LineChart
+                data={ended.map((t, i) => ({
+                  value: t.percentageFactor,
+                  label: t.sessionNumber ? String(t.sessionNumber) : `${i + 1}`,
+                  dataPointColor: i === ended.length - 1 ? cs(theme.accent) : cs(theme.primary),
+                  dataPointRadius: i === ended.length - 1 ? 6 : 4,
+                }))}
+                height={180}
+                width={Math.max(trendW - spacing.xl, 240)}
+                initialSpacing={12}
+                spacing={ended.length > 8 ? 28 : 44}
+                thickness={2.5}
+                color={cs(theme.primary)}
+                hideDataPoints={false}
+                dataPointsColor={cs(theme.primary)}
+                dataPointsRadius={4}
+                textColor={cs(theme.textSecondary)}
+                textFontSize={10}
+                yAxisTextStyle={{ color: cs(theme.textMuted), fontSize: 10, fontFamily: fonts.mono }}
+                xAxisLabelTextStyle={{ color: cs(theme.textSecondary), fontSize: 9, fontFamily: fonts.mono }}
+                yAxisColor={cs(theme.border)}
+                xAxisColor={cs(theme.border)}
+                rulesColor={cs(theme.border)}
+                rulesType="solid"
+                yAxisThickness={1}
+                xAxisThickness={1}
+                noOfSections={4}
+                formatYLabel={(value) => `${parseFloat(value).toFixed(0)}%`}
+                curved={false}
+              />
+            )}
+          </View>
+        )}
+      </Card>
+    );
+  };
 
   const DriverSelector = (cardStyle?: any) => {
     if (displayData.drivers.length === 0) return null;
@@ -318,10 +447,23 @@ export default function StatsScreen() {
     );
   };
 
+  // Pace-trend label + color (improving=bonus, fading=broken, steady=muted).
+  const paceLabel = (dir: 'improving' | 'fading' | 'steady') =>
+    dir === 'improving' ? 'Improving' : dir === 'fading' ? 'Fading' : 'Steady';
+  const paceColor = (dir: 'improving' | 'fading' | 'steady') =>
+    dir === 'improving' ? theme.bonus : dir === 'fading' ? theme.broken : theme.textSecondary;
+  // Consistency color by quality (lower deltaStdDev = steadier).
+  const consistencyColor = (sd: number) =>
+    sd < 0.3 ? theme.bonus : sd < 0.7 ? theme.base : theme.broken;
+
   const DriverDetail = ({ driverIndex }: { driverIndex: number }) => {
     const driver = displayData.drivers[driverIndex];
     const stats = calculateDriverStats(driver, lapTypeValues, displayData.drivers, displayData.sessionDuration);
-    const grid: Array<{ label: string; value: string; color?: typeof theme.text }> = [
+    const consistency = calculateConsistency(driver.laps);
+    const pace = analyzePaceTrend(driver.laps);
+    const stints = segmentStints(driver);
+    const outlierCount = detectOutliers(driver.laps).length;
+    const grid: Array<{ label: string; value: string; color?: ColorValue }> = [
       { label: 'Achieved Laps', value: stats.achievedLaps.toFixed(1) },
       { label: 'Goal Laps', value: stats.goalLaps.toFixed(1) },
       { label: 'Net Score', value: `${stats.netScore > 0 ? '+' : ''}${stats.netScore}` },
@@ -334,6 +476,10 @@ export default function StatsScreen() {
       { label: '3-Lap Avg', value: stats.threelapAvg !== null ? `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(3)}s` : 'N/A', color: stats.threelapAvg !== null ? deltaColor(stats.threelapAvg) : undefined },
       { label: 'Avg Lap Time', value: formatTime(stats.averageLapTime) },
       { label: 'Penalty Laps', value: String(driver.penaltyLaps) },
+      { label: 'Consistency', value: `±${consistency.deltaStdDev.toFixed(3)}s`, color: consistencyColor(consistency.deltaStdDev) },
+      { label: 'Pace Trend', value: paceLabel(pace.direction), color: paceColor(pace.direction) },
+      { label: 'Stints', value: String(stints.length) },
+      { label: 'Outliers', value: String(outlierCount), color: outlierCount > 0 ? theme.warning : undefined },
     ];
     return (
       <Card padding="lg" style={styles.panel}>
@@ -370,6 +516,39 @@ export default function StatsScreen() {
             </View>
           ))}
         </View>
+
+        {/* Stint breakdown — one compact row per stint. */}
+        {stints.length > 1 && (
+          <View style={styles.stintTable}>
+            <Label size={13} style={styles.stintTitle}>Stints</Label>
+            <View style={styles.stintHeaderRow}>
+              <Label muted style={styles.stintColStint}>Stint</Label>
+              <Label muted style={styles.stintColLaps}>Laps</Label>
+              <Label muted style={styles.stintColDelta}>Avg Δ</Label>
+              <Label muted style={styles.stintColConsist}>±σ</Label>
+            </View>
+            <Divider faint />
+            {stints.map((stint, i) => (
+              <View key={stint.index}>
+                <View style={styles.stintRow}>
+                  <Mono size={13} weight="medium" color={theme.textSecondary} style={styles.stintColStint}>
+                    {String(stint.index + 1)}
+                  </Mono>
+                  <Mono size={13} weight="medium" color={theme.text} style={styles.stintColLaps}>
+                    {String(stint.count)}
+                  </Mono>
+                  <Mono size={13} weight="medium" color={deltaColor(stint.avgDelta)} style={styles.stintColDelta}>
+                    {`${stint.avgDelta >= 0 ? '+' : ''}${stint.avgDelta.toFixed(3)}`}
+                  </Mono>
+                  <Mono size={13} weight="medium" color={consistencyColor(stint.consistency)} style={styles.stintColConsist}>
+                    {stint.consistency.toFixed(3)}
+                  </Mono>
+                </View>
+                {i < stints.length - 1 && <Divider faint />}
+              </View>
+            ))}
+          </View>
+        )}
 
         {/* Charts inline (web shows them in-panel; native uses the Charts sheet) */}
         {isWeb && (
@@ -408,6 +587,8 @@ export default function StatsScreen() {
             <View style={threeColTop ? styles.flex1 : undefined}>{TeamStatsSection(threeColTop, threeColTop ? styles.fillCard : undefined)}</View>
             <View style={threeColTop ? styles.flex1 : undefined}>{DriverSelector(threeColTop ? styles.fillCard : undefined)}</View>
           </View>
+
+          {TrendSection()}
 
           {detailDriverIndexes.length > 0 ? (
             <View
@@ -623,6 +804,33 @@ const styles = StyleSheet.create({
 
   chartsWrap: {
     marginTop: spacing.lg,
+  },
+
+  stintTable: {
+    marginTop: spacing.lg,
+  },
+  stintTitle: {
+    marginBottom: spacing.sm,
+  },
+  stintHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingBottom: spacing.xs,
+  },
+  stintRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.sm,
+  },
+  stintColStint: { width: 48 },
+  stintColLaps: { width: 56, textAlign: 'right' },
+  stintColDelta: { flex: 1, textAlign: 'right' },
+  stintColConsist: { width: 72, textAlign: 'right' },
+
+  trendEmpty: {
+    fontSize: typography.body,
+    fontStyle: 'italic',
+    paddingVertical: spacing.sm,
   },
 
   sessionSelector: {
