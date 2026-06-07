@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme, AppState } from 'react-native';
 import { Team, Driver, AudioSettings, LapTypeValues, Session, Lap, SyncStatus } from '../types';
 import { useAuth } from './AuthContext';
-import { api } from '../lib/api';
+import { api, ApiError } from '../lib/api';
 import { subscribeTeamEvents } from '../lib/teamEvents';
 import { syncQueue, type SyncState } from '../lib/syncQueue';
 import { randomUuid, deterministicUuid } from '../lib/uuid';
@@ -238,6 +238,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [userRole, setUserRole] = useState<TeamRole | null>(null);
   const [activeServerTeamId, setActiveServerTeamId] = useState<string | null>(null);
   const [teamLivePublicToken, setTeamLivePublicToken] = useState<string | null>(null);
+  // Mirror the token to a ref, and remember the publicToken we just ended
+  // locally, so a team-live refresh that races the server-side end can't
+  // resurrect the "live" banner for an already-finished session.
+  const teamLivePublicTokenRef = useRef<string | null>(null);
+  teamLivePublicTokenRef.current = teamLivePublicToken;
+  const endedLiveTokenRef = useRef<string | null>(null);
 
   const [liveSession, setLiveSession] = useState<{ id: string; publicToken: string } | null>(null);
 
@@ -459,7 +465,15 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     }
     try {
       const { live } = await api.get<{ live: { publicToken: string } | null }>(`/api/teams/${id}/live`);
-      setTeamLivePublicToken(live?.publicToken ?? null);
+      const token = live?.publicToken ?? null;
+      // A session we just ended can briefly still read as 'live' before the end
+      // is processed server-side — don't let that resurrect the peer banner.
+      if (token && token === endedLiveTokenRef.current) {
+        setTeamLivePublicToken(null);
+        return;
+      }
+      endedLiveTokenRef.current = null;
+      setTeamLivePublicToken(token);
     } catch {
       /* ignore */
     }
@@ -722,17 +736,37 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // --- Live session (real-time web view) ---
 
-  // Restore an in-progress live session across app restarts.
+  // Restore an in-progress live session across app restarts — but only if it's
+  // still live on the server. Otherwise a session that was ended/deleted while
+  // we were away would be re-adopted and leave the live banner stuck on (the
+  // banner is driven by local liveSession, so a server refresh can't clear it).
   useEffect(() => {
-    AsyncStorage.getItem('liveSessionState').then((raw) => {
+    AsyncStorage.getItem('liveSessionState').then(async (raw) => {
       if (!raw) return;
+      let s: LiveSessionState;
       try {
-        const s: LiveSessionState = JSON.parse(raw);
-        liveSessionRef.current = s;
-        setLiveSession({ id: s.id, publicToken: s.publicToken });
+        s = JSON.parse(raw);
       } catch {
-        // ignore corrupt state
+        await AsyncStorage.removeItem('liveSessionState'); // corrupt
+        return;
       }
+      try {
+        // Public snapshot returns the session's current status (no auth needed).
+        const snap = await api.get<{ status?: string }>(`/api/live/${s.publicToken}/snapshot`);
+        if (snap?.status && snap.status !== 'live') {
+          await AsyncStorage.removeItem('liveSessionState'); // already ended
+          return;
+        }
+      } catch (e) {
+        // 404 → the session was deleted; drop it. Other errors (offline) → keep
+        // it optimistically so an active session survives a flaky launch.
+        if (e instanceof ApiError && e.status === 404) {
+          await AsyncStorage.removeItem('liveSessionState');
+          return;
+        }
+      }
+      liveSessionRef.current = s;
+      setLiveSession({ id: s.id, publicToken: s.publicToken });
     });
   }, []);
 
@@ -771,6 +805,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const endLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
     if (!live) return;
+    endedLiveTokenRef.current = live.publicToken;
     liveSessionRef.current = null;
     setLiveSession(null);
     setTeamLivePublicToken(null);
@@ -784,6 +819,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // effect runs so it doesn't also auto-end the (now deleted) session.
   const discardLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
+    if (live) endedLiveTokenRef.current = live.publicToken;
     liveSessionRef.current = null;
     setLiveSession(null);
     setTeamLivePublicToken(null);
@@ -799,6 +835,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const endActiveLiveSession = useCallback(async () => {
     const teamId = serverTeamIdRef.current;
     if (!teamId) return;
+    endedLiveTokenRef.current = teamLivePublicTokenRef.current;
     await api.post(`/api/teams/${teamId}/live/end`);
     liveSessionRef.current = null;
     setLiveSession(null);
