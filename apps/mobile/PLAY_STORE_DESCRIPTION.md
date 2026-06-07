@@ -65,7 +65,7 @@ Professional lap timing app for regularity racing with multi-driver support.
 
 ### 100% FREE
 
-This app is completely free with no ads, no subscriptions, and no hidden costs. All features are available to everyone. If you find it helpful and want to support development, you can buy me a coffee!
+This app is completely free with no ads, no subscriptions, and no hidden costs. All features are available to everyone.
 
 ### PRIVACY FIRST
 

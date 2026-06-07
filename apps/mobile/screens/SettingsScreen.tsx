@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
-  Linking,
   Platform,
   Pressable,
   Share,
@@ -20,7 +19,7 @@ import { useApp, ThemeMode, TeamRole } from '../context/AppContext';
 import { useAuth } from '../context/AuthContext';
 import { useAlert } from '../components/CustomAlert';
 import { api, ApiError } from '../lib/api';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, brandColors } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../constants/theme';
 import {
   Mono,
   Label,
@@ -1032,21 +1031,6 @@ export default function SettingsScreen() {
           />
         </Collapsible>
 
-        {/* Support Development */}
-        <Collapsible title="Support Development" defaultOpen={false} icon="heart-outline">
-          <Text style={[styles.rowSubtitle, { color: theme.textSecondary, marginBottom: spacing.md }]}>
-            This app is free to use. If you find it helpful, consider supporting its development!
-          </Text>
-          <Button
-            title="Buy Me a Coffee"
-            icon="cafe"
-            onPress={() => Linking.openURL('https://buymeacoffee.com/greasybeefcake')}
-            fullWidth
-            style={[styles.coffeeBtn, { backgroundColor: brandColors.coffee }]}
-            textStyle={{ color: '#000' }}
-          />
-        </Collapsible>
-
         {/* Account */}
         <Collapsible title="Account" defaultOpen={false} icon="person-circle-outline">
           <View style={styles.accountRow}>
@@ -1322,9 +1306,6 @@ const styles = StyleSheet.create({
   },
   cardBtn: {
     marginBottom: spacing.md,
-  },
-  coffeeBtn: {
-    borderWidth: 0,
   },
   accountRow: {
     flexDirection: 'row',

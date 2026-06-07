@@ -43,7 +43,6 @@ export const glass = {
 } as const;
 
 export const brandColors = {
-  coffee: '#FFDD00',
   chartPurple: '#9333ea',
 } as const;
 

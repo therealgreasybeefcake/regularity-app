@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useApp } from '../context/AppContext';
-import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, brandColors } from '../constants/theme';
+import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../constants/theme';
 import { Mono, Label, Button } from '../components/ui';
 
 const PAGES = [
@@ -63,15 +63,6 @@ const PAGES = [
       'CSV/JSON data export',
     ],
   },
-  {
-    icon: 'cafe' as const,
-    title: 'Support Development',
-    description: 'This app is 100% free with no ads or subscriptions. If you find it valuable, consider supporting development.',
-    features: [
-      'Optional - enjoy the app either way!',
-      'All support helps with improvements',
-    ],
-  },
 ];
 
 export default function WelcomeScreen() {
@@ -101,10 +92,6 @@ export default function WelcomeScreen() {
     if (currentPage > 0) {
       setCurrentPage(currentPage - 1);
     }
-  };
-
-  const handleBuyMeACoffee = () => {
-    Linking.openURL('https://buymeacoffee.com/greasybeefcake');
   };
 
   const page = PAGES[currentPage];
@@ -155,19 +142,6 @@ export default function WelcomeScreen() {
               </View>
             ))}
           </View>
-
-          {/* Buy Me A Coffee Button - only on last page */}
-          {isLast && (
-            <Button
-              title="Buy Me A Coffee"
-              icon="cafe"
-              onPress={handleBuyMeACoffee}
-              fullWidth
-              size="lg"
-              style={[styles.coffeeButton, { backgroundColor: brandColors.coffee }]}
-              textStyle={styles.coffeeButtonText}
-            />
-          )}
         </ScrollView>
 
         {/* Footer */}
@@ -205,9 +179,6 @@ export default function WelcomeScreen() {
     </SafeAreaView>
   );
 }
-
-// Coffee button keeps the brand-yellow swatch, so its label uses a fixed dark ink (allowed literal).
-const COFFEE_INK = '#1a1300';
 
 const styles = StyleSheet.create({
   container: {
@@ -303,13 +274,5 @@ const styles = StyleSheet.create({
   dot: {
     height: 8,
     borderRadius: radius.full,
-  },
-  coffeeButton: {
-    marginTop: spacing.xl,
-    marginBottom: spacing.sm,
-  },
-  coffeeButtonText: {
-    color: COFFEE_INK,
-    fontWeight: fontWeights.bold,
   },
 });

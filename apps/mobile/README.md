@@ -296,8 +296,8 @@ The app only requests permissions needed for core functionality:
 - **File System Access**: For importing/exporting race data
 - **Volume Button Controls**: Optional feature to record laps using hardware buttons
 
-### Support Development
-This app is completely free with no ads or subscriptions. If you find it valuable, consider supporting development: [Buy Me a Coffee](https://buymeacoffee.com/greasybeefcake)
+### Pricing
+This app is completely free with no ads, no subscriptions, and no hidden costs.
 
 For the complete privacy policy, see [PRIVACY_POLICY.MD](PRIVACY_POLICY.MD).
 

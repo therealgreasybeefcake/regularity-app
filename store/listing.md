@@ -72,7 +72,7 @@ PERFECT FOR
 - Performance analysis & team coordination
 
 100% FREE
-Completely free — no ads, no subscriptions, no hidden costs. Every feature is available to everyone. If it helps you and you'd like to support development, you can buy me a coffee!
+Completely free — no ads, no subscriptions, no hidden costs. Every feature is available to everyone.
 
 YOUR DATA & PRIVACY
 - Create an account (email, Google, or Apple) to sync your data and share with your team.
@@ -166,7 +166,7 @@ DESIGNED FOR THE PIT WALL
 
 PERFECT FOR regularity racing teams, endurance events, track days, and anyone serious about lap consistency.
 
-100% FREE — no ads, no subscriptions, no hidden costs. If it helps and you'd like to support development, you can buy me a coffee.
+100% FREE — no ads, no subscriptions, no hidden costs.
 
 YOUR DATA & PRIVACY
 Create an account to sync your data and share with your team. Your racing data and account details are stored securely and used only to run the app. No ads, no third-party tracking, no data selling.

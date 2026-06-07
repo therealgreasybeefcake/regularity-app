@@ -69,9 +69,9 @@ Since we do not collect or store any personal data:
 - All your data remains under your control on your device
 - You can delete all app data by uninstalling the App or using the "Clear All Data" function in Settings
 
-## Support Development
+## Pricing
 
-This app is completely free with no ads or subscriptions. If you find it valuable and want to support development, you can buy me a coffee at: https://buymeacoffee.com/greasybeefcake
+This app is completely free with no ads, no subscriptions, and no hidden costs.
 
 ---
 
