@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { calculateDriverStats, formatTime, type Driver as CoreDriver } from '@regularity/core';
@@ -36,6 +37,7 @@ function palette(theme: ReturnType<typeof useTheme>['theme']) {
 export default function LiveView() {
   const { publicToken } = useLocalSearchParams<{ publicToken: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { theme } = useTheme();
   const { liveSoundDefault } = useApp();
   const C = useMemo(() => palette(theme), [theme]);
@@ -196,7 +198,10 @@ export default function LiveView() {
   const isLive = snap.status === 'live';
 
   return (
-    <ScrollView style={{ backgroundColor: C.bg }} contentContainerStyle={styles.container}>
+    <ScrollView
+      style={{ backgroundColor: C.bg }}
+      contentContainerStyle={[styles.container, { paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24 }]}
+    >
       <View style={styles.headerRow}>
         <View style={{ flex: 1 }}>
           <Text style={styles.kicker}>{snap.sessionNumber ? `SESSION ${snap.sessionNumber}` : 'LIVE TIMING'}</Text>
@@ -232,15 +237,15 @@ export default function LiveView() {
               <Text style={styles.metricLabel}>{isLive && last ? 'CURRENT LAP' : 'LAST LAP'}</Text>
               {isLive && last ? (
                 <>
-                  <Text style={[styles.lapTime, { color: C.live }]}>{fmtElapsed(now - last.timestamp)}</Text>
-                  <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]}>
+                  <Text style={[styles.lapTime, { color: C.live }]} numberOfLines={1} adjustsFontSizeToFit>{fmtElapsed(now - last.timestamp)}</Text>
+                  <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]} numberOfLines={1}>
                     last {formatTime(last.time)} · {last.delta >= 0 ? '+' : ''}{last.delta.toFixed(2)}s
                   </Text>
                 </>
               ) : last ? (
                 <>
-                  <Text style={[styles.lapTime, { color: C.text }]}>{formatTime(last.time)}</Text>
-                  <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]}>
+                  <Text style={[styles.lapTime, { color: C.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatTime(last.time)}</Text>
+                  <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]} numberOfLines={1}>
                     {last.delta >= 0 ? '+' : ''}{last.delta.toFixed(2)}s
                   </Text>
                 </>
@@ -293,8 +298,8 @@ function fmtElapsed(ms: number): string {
 function Metric({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof makeStyles> }) {
   return (
     <View style={styles.metric}>
-      <Text style={styles.metricLabel}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricLabel} numberOfLines={1}>{label}</Text>
+      <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
     </View>
   );
 }
@@ -317,12 +322,15 @@ function makeStyles(C: LivePalette) {
     driverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
     driverName: { color: C.text, fontSize: 18, fontWeight: '700', flex: 1 },
     lapCount: { color: C.dim, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-    driverBody: { flexDirection: 'row', alignItems: 'center' },
-    lastLap: { flex: 1 },
+    // Lap time on top, metrics in an evenly-spread row below — stacking avoids
+    // the big mono lap time and the three metrics fighting for width (and
+    // wrapping) on narrow phone screens.
+    driverBody: {},
+    lastLap: {},
     lapTime: { fontSize: 32, fontFamily: monoBold, letterSpacing: -1 },
     lapDelta: { fontSize: 16, fontFamily: monoBold, marginTop: 2 },
-    metrics: { flexDirection: 'row', gap: 16 },
-    metric: { alignItems: 'flex-end', minWidth: 56 },
+    metrics: { flexDirection: 'row', marginTop: 14, gap: 12 },
+    metric: { flex: 1, alignItems: 'flex-start' },
     metricLabel: { color: C.muted, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
     metricValue: { color: C.text, fontSize: 16, fontFamily: monoBold, marginTop: 3 },
     sectionTitle: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700', marginTop: 10, marginBottom: 8, marginLeft: 4 },
