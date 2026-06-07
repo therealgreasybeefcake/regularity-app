@@ -85,6 +85,7 @@ export default function TimerScreen() {
   const [tempRaceName, setTempRaceName] = useState('');
   const [tempSessionNumber, setTempSessionNumber] = useState('');
   const [showSessionSetup, setShowSessionSetup] = useState(false);
+  const [driverPickerVisible, setDriverPickerVisible] = useState(false);
   const [setupTeamName, setSetupTeamName] = useState('');
   const [setupRaceName, setSetupRaceName] = useState('');
   const [setupSessionNumber, setSetupSessionNumber] = useState('');
@@ -348,7 +349,12 @@ export default function TimerScreen() {
   };
 
   const addLap = () => {
-    if (!driver) return;
+    if (!driver) {
+      // No driver selected (or none on the team yet) — prompt to pick/add one
+      // instead of silently doing nothing when the user presses START.
+      setDriverPickerVisible(true);
+      return;
+    }
 
     // Validate all required fields are set
     const currentTeam = teams[activeTeam];
@@ -756,6 +762,16 @@ export default function TimerScreen() {
 
   const lapCount = driver?.laps.length ?? 0;
   const liveDelta = driver ? elapsedTime - driver.targetTime : 0;
+
+  // The server reports a live session for the team. Offer to view it when it
+  // isn't this device's own active stream, and show the "End Live Session" kill
+  // switch whenever there's no working local way to end it — i.e. this device
+  // isn't recording it (orphan/peer) OR has no laps, so the Lap History
+  // End/Clear buttons (which need lapCount > 0) aren't available.
+  const teamHasLive = !!teamLivePublicToken;
+  const liveIsOwnStream = teamHasLive && teamLivePublicToken === liveSession?.publicToken;
+  const showViewLive = teamHasLive && !liveIsOwnStream;
+  const showKillSwitch = teamHasLive && (!liveSession || lapCount === 0);
   const statusColor = getStatusColor();
 
   return (
@@ -768,26 +784,30 @@ export default function TimerScreen() {
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
           {/* A live session is running for the team that this device isn't recording
               (a teammate, or an orphaned session this device lost track of). Offer
-              to view it and a kill switch to end it without needing the DB. */}
-          {teamLivePublicToken && teamLivePublicToken !== liveSession?.publicToken ? (
+              to view it, and a kill switch to end it without needing the DB. */}
+          {showViewLive || showKillSwitch ? (
             <View style={styles.peerLiveWrap}>
-              <Pressable
-                onPress={() => router.push(`/live/${teamLivePublicToken}` as any)}
-                style={[styles.peerLive, { borderColor: theme.livePulse, backgroundColor: theme.surfaceElevated }]}
-              >
-                <LiveDot size={8} color={theme.livePulse} />
-                <Text style={[styles.peerLiveText, { color: theme.text }]}>A live session is running for your team</Text>
-                <Ionicons name="chevron-forward" size={16} color={theme.textSecondary as string} />
-              </Pressable>
-              <Button
-                title="End Live Session"
-                icon="stop-circle-outline"
-                size="sm"
-                variant="secondary"
-                fullWidth
-                onPress={handleEndLiveSession}
-                textStyle={{ color: theme.danger }}
-              />
+              {showViewLive ? (
+                <Pressable
+                  onPress={() => router.push(`/live/${teamLivePublicToken}` as any)}
+                  style={[styles.peerLive, { borderColor: theme.livePulse, backgroundColor: theme.surfaceElevated }]}
+                >
+                  <LiveDot size={8} color={theme.livePulse} />
+                  <Text style={[styles.peerLiveText, { color: theme.text }]}>A live session is running for your team</Text>
+                  <Ionicons name="chevron-forward" size={16} color={theme.textSecondary as string} />
+                </Pressable>
+              ) : null}
+              {showKillSwitch ? (
+                <Button
+                  title="End Live Session"
+                  icon="stop-circle-outline"
+                  size="sm"
+                  variant="secondary"
+                  fullWidth
+                  onPress={handleEndLiveSession}
+                  textStyle={{ color: theme.danger }}
+                />
+              ) : null}
             </View>
           ) : null}
           {/* Header */}
@@ -1016,6 +1036,52 @@ export default function TimerScreen() {
           <TextField label="Session Number" value={setupSessionNumber} onChangeText={setSetupSessionNumber} keyboardType="number-pad" placeholder="e.g., 1, 2, Practice" />
           <TextField mono label="Session Duration (minutes)" value={setupSessionDuration} onChangeText={setSetupSessionDuration} keyboardType="number-pad" placeholder="120" />
         </View>
+      </Sheet>
+
+      {/* Select-driver prompt — shown when START is pressed with no driver selected */}
+      <Sheet
+        visible={driverPickerVisible}
+        onClose={() => setDriverPickerVisible(false)}
+        title="Select a Driver"
+      >
+        {team?.drivers?.length ? (
+          <>
+            <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>
+              Choose a driver to time, then press START.
+            </Text>
+            <View style={styles.sheetFields}>
+              {team.drivers.map((d, index) => (
+                <Button
+                  key={d.id}
+                  title={d.name?.trim() || `Driver ${index + 1}`}
+                  icon="person-outline"
+                  variant="secondary"
+                  fullWidth
+                  onPress={() => {
+                    setActiveDriver(index);
+                    setDriverPickerVisible(false);
+                  }}
+                />
+              ))}
+            </View>
+          </>
+        ) : (
+          <>
+            <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>
+              This team has no drivers yet. Add a driver before starting the timer.
+            </Text>
+            <Button
+              title="Add a Driver"
+              icon="person-add-outline"
+              fullWidth
+              size="lg"
+              onPress={() => {
+                setDriverPickerVisible(false);
+                router.push('/(app)/(tabs)/drivers' as any);
+              }}
+            />
+          </>
+        )}
       </Sheet>
     </SafeAreaView>
   );
