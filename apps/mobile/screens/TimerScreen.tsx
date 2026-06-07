@@ -20,12 +20,15 @@ const isWeb = Platform.OS === 'web';
 let activateKeepAwakeAsync: () => Promise<void> = async () => {};
 let deactivateKeepAwake: () => void = () => {};
 let useAudioPlayerImport: any = null;
+let setAudioModeAsyncImport: ((mode: any) => Promise<void>) | null = null;
 let VolumeManager: any = null;
 if (!isWeb) {
   const keepAwake = require('expo-keep-awake');
   activateKeepAwakeAsync = keepAwake.activateKeepAwakeAsync;
   deactivateKeepAwake = keepAwake.deactivateKeepAwake;
-  useAudioPlayerImport = require('expo-audio').useAudioPlayer;
+  const expoAudio = require('expo-audio');
+  useAudioPlayerImport = expoAudio.useAudioPlayer;
+  setAudioModeAsyncImport = expoAudio.setAudioModeAsync;
   VolumeManager = require('react-native-volume-manager').VolumeManager;
 }
 import { useApp } from '../context/AppContext';
@@ -51,6 +54,7 @@ export default function TimerScreen() {
     liveSession,
     teamLivePublicToken,
     refreshTeamLive,
+    endActiveLiveSession,
   } = useApp();
   const router = useRouter();
 
@@ -96,14 +100,42 @@ export default function TimerScreen() {
   const addLapRef = useRef<(() => void) | undefined>(undefined);
   const volumeAlertShownRef = useRef(false);
 
-  // Audio player for beeps (no-op on web)
+  // Audio player for beeps (no-op on web). The beep is bundled locally so it
+  // plays reliably even when the app is backgrounded — a remote URL would not
+  // load once the app is suspended.
   const beepPlayer = useAudioPlayerImport
-    ? useAudioPlayerImport('https://www.soundjay.com/buttons/sounds/beep-07a.mp3')
+    ? useAudioPlayerImport(require('../assets/audio/beep.wav'))
     : { seekTo: () => {}, play: () => {} };
+
+  // Silent looping keep-alive track. While a timing session is running we keep
+  // this playing so the audio session (configured for background playback) stays
+  // active — this prevents iOS/Android from suspending the JS timer, so the
+  // lap-reminder beeps still fire when the user has switched to another app.
+  const keepAlivePlayer = useAudioPlayerImport
+    ? useAudioPlayerImport(require('../assets/audio/silence.wav'))
+    : null;
+
+  // Beeps can only fire when enabled and at least one reminder is on. We use this
+  // to avoid keeping the app awake in the background when no beep could sound.
+  const beepsActive =
+    audioSettings.enabled &&
+    (audioSettings.beforeTargetEnabled || audioSettings.afterLapStartEnabled);
 
   // Initialize VolumeButtonService
   useEffect(() => {
     VolumeButtonService.initialize();
+  }, []);
+
+  // Configure the audio session for background playback so lap-reminder beeps
+  // keep sounding when the app is backgrounded, and stay audible even when the
+  // ringer switch is set to silent (common during a race).
+  useEffect(() => {
+    if (!setAudioModeAsyncImport) return;
+    setAudioModeAsyncImport({
+      playsInSilentMode: true,
+      shouldPlayInBackground: true,
+      interruptionMode: 'mixWithOthers',
+    }).catch((error) => console.error('Error setting audio mode:', error));
   }, []);
 
   // Check if session setup is needed on mount
@@ -192,6 +224,28 @@ export default function TimerScreen() {
       deactivateKeepAwake();
     };
   }, [isRunning, driver, audioSettings]);
+
+  // Keep the silent track playing while a session is running so the audio
+  // session stays active and the beep interval keeps firing in the background.
+  // Pause it when stopped (or when no beep could sound) to release audio focus
+  // and avoid unnecessary battery drain.
+  useEffect(() => {
+    if (!keepAlivePlayer) return;
+    if (isRunning && beepsActive) {
+      try {
+        keepAlivePlayer.loop = true;
+        keepAlivePlayer.seekTo(0);
+        keepAlivePlayer.play();
+      } catch (error) {
+        console.error('Error starting keep-alive audio:', error);
+      }
+    } else {
+      try { keepAlivePlayer.pause(); } catch {}
+    }
+    return () => {
+      try { keepAlivePlayer.pause(); } catch {}
+    };
+  }, [isRunning, beepsActive]);
 
   // Volume button listener for lap recording
   useEffect(() => {
@@ -678,6 +732,28 @@ export default function TimerScreen() {
           : t === 'safety' ? theme.safety
             : theme.base;
 
+  const handleEndLiveSession = () => {
+    showAlert({
+      title: 'End Live Session',
+      message: 'This ends the live session currently running for your team and disables its public share link. Continue?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'End Live Session',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await endActiveLiveSession();
+              await refreshTeamLive();
+            } catch {
+              showAlert({ title: 'Could not end session', message: 'Check your connection and try again.' });
+            }
+          },
+        },
+      ],
+    });
+  };
+
   const lapCount = driver?.laps.length ?? 0;
   const liveDelta = driver ? elapsedTime - driver.targetTime : 0;
   const statusColor = getStatusColor();
@@ -690,16 +766,29 @@ export default function TimerScreen() {
         style={{ flex: 1 }}
       >
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* A teammate is recording the team's live session (single-recorder model). */}
+          {/* A live session is running for the team that this device isn't recording
+              (a teammate, or an orphaned session this device lost track of). Offer
+              to view it and a kill switch to end it without needing the DB. */}
           {teamLivePublicToken && teamLivePublicToken !== liveSession?.publicToken ? (
-            <Pressable
-              onPress={() => router.push(`/live/${teamLivePublicToken}` as any)}
-              style={[styles.peerLive, { borderColor: theme.livePulse, backgroundColor: theme.surfaceElevated }]}
-            >
-              <LiveDot size={8} color={theme.livePulse} />
-              <Text style={[styles.peerLiveText, { color: theme.text }]}>A teammate is recording live</Text>
-              <Ionicons name="chevron-forward" size={16} color={theme.textSecondary as string} />
-            </Pressable>
+            <View style={styles.peerLiveWrap}>
+              <Pressable
+                onPress={() => router.push(`/live/${teamLivePublicToken}` as any)}
+                style={[styles.peerLive, { borderColor: theme.livePulse, backgroundColor: theme.surfaceElevated }]}
+              >
+                <LiveDot size={8} color={theme.livePulse} />
+                <Text style={[styles.peerLiveText, { color: theme.text }]}>A live session is running for your team</Text>
+                <Ionicons name="chevron-forward" size={16} color={theme.textSecondary as string} />
+              </Pressable>
+              <Button
+                title="End Live Session"
+                icon="stop-circle-outline"
+                size="sm"
+                variant="secondary"
+                fullWidth
+                onPress={handleEndLiveSession}
+                textStyle={{ color: theme.danger }}
+              />
+            </View>
           ) : null}
           {/* Header */}
           <View style={styles.header}>
@@ -937,7 +1026,8 @@ const styles = StyleSheet.create({
   scrollView: { flex: 1 },
   content: { padding: spacing.lg, paddingBottom: 110, maxWidth: 760, width: '100%', alignSelf: 'center' },
 
-  peerLive: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.md, borderWidth: 1, marginBottom: spacing.lg },
+  peerLiveWrap: { gap: spacing.sm, marginBottom: spacing.lg },
+  peerLive: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderRadius: radius.md, borderWidth: 1 },
   peerLiveText: { flex: 1, fontSize: typography.body, fontWeight: fontWeights.semibold },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },
   headerTitleRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: 2 },

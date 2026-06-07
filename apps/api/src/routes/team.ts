@@ -18,6 +18,25 @@ import {
 export const teamRouter = new Hono<{ Variables: AppVariables }>();
 teamRouter.use('*', requireAuth);
 
+/**
+ * End every session a team still has marked `live`. Used to enforce a single
+ * live session per team (on start) and as the explicit "kill switch" for
+ * orphaned live sessions the client lost its local reference to. Notifies any
+ * spectators and the team room. Returns how many sessions were ended.
+ */
+async function endLiveSessionsForTeam(teamId: string): Promise<number> {
+  const ended = await db
+    .update(raceSessions)
+    .set({ status: 'ended', endedAt: new Date() })
+    .where(and(eq(raceSessions.teamId, teamId), eq(raceSessions.status, 'live')))
+    .returning({ publicToken: raceSessions.publicToken, id: raceSessions.id });
+  for (const s of ended) {
+    rooms.broadcast(s.publicToken, { type: 'sessionEnded', sessionId: s.id });
+  }
+  if (ended.length) rooms.broadcast(teamRoom(teamId), { type: 'teamChanged' });
+  return ended.length;
+}
+
 // POST /api/teams/import — one-time first-login migration of the legacy local
 // Team (+ sessionHistory) into Postgres. Idempotent: only runs on an empty team.
 teamRouter.post('/import', async (c) => {
@@ -172,6 +191,20 @@ teamRouter.get('/:id/live', async (c) => {
     .orderBy(desc(raceSessions.startedAt))
     .limit(1);
   return c.json({ live: s ?? null });
+});
+
+// POST /api/teams/:id/live/end — end ALL of a team's live sessions at once.
+// The "kill switch" for orphaned live sessions the app lost track of locally
+// (e.g. after reinstall, sign-out, or a team switch). Any member; safe to call
+// when nothing is live (ends 0).
+teamRouter.post('/:id/live/end', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+  const ended = await endLiveSessionsForTeam(id);
+  return c.json({ ended });
 });
 
 // GET /api/teams/:id/events — authenticated per-team SSE. Peers are notified of
@@ -447,6 +480,11 @@ teamRouter.post('/:id/sessions', async (c) => {
       return c.json({ session: existing, sessionDrivers: sd, existing: true });
     }
   }
+
+  // Enforce one live session per team: end any sessions still marked `live`
+  // before starting a new one, so stale/abandoned sessions can't accumulate and
+  // orphan (the client may have lost its local reference to them).
+  await endLiveSessionsForTeam(id);
 
   const [session] = await db
     .insert(raceSessions)

@@ -68,6 +68,8 @@ interface AppContextType {
   liveShareUrl: string | null;
   endLiveSession: () => Promise<void>;
   discardLiveSession: () => Promise<void>;
+  /** Kill switch: end any live session(s) the server still has for the team. */
+  endActiveLiveSession: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -790,6 +792,21 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (live) await syncQueue.enqueue({ kind: 'deleteSession', sessionId: live.id });
   }, []);
 
+  // Kill switch for orphaned live sessions: ends EVERY session the server still
+  // has marked live for the active team — even when this device lost its local
+  // reference (after a reinstall, sign-out, or team switch) and so can't use
+  // endLiveSession/discardLiveSession. Clears any local live state too.
+  const endActiveLiveSession = useCallback(async () => {
+    const teamId = serverTeamIdRef.current;
+    if (!teamId) return;
+    await api.post(`/api/teams/${teamId}/live/end`);
+    liveSessionRef.current = null;
+    setLiveSession(null);
+    setTeamLivePublicToken(null);
+    streamedKeysRef.current.clear();
+    await AsyncStorage.removeItem('liveSessionState');
+  }, []);
+
   const streamLap = useCallback(
     async (driverIndex: number, lap: Lap) => {
       if (!serverTeamIdRef.current) return;
@@ -917,6 +934,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         liveShareUrl,
         endLiveSession,
         discardLiveSession,
+        endActiveLiveSession,
       }}
     >
       {children}
