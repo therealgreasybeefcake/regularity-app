@@ -40,6 +40,7 @@ class SyncQueue {
   private draining = false;
   private timer: ReturnType<typeof setInterval> | null = null;
   private listeners = new Set<(state: SyncState, pending: number) => void>();
+  private droppedListeners = new Set<(op: SyncOp, status: number) => void>();
   private lastState: SyncState = 'idle';
 
   async init() {
@@ -62,6 +63,19 @@ class SyncQueue {
     this.listeners.add(fn);
     fn(this.lastState, this.items.length);
     return () => this.listeners.delete(fn);
+  }
+
+  /** Notify when a 4xx permanently drops an op (lets callers react to poison ops). */
+  onDropped(fn: (op: SyncOp, status: number) => void): () => void {
+    this.droppedListeners.add(fn);
+    return () => this.droppedListeners.delete(fn);
+  }
+
+  /** True while a startSession op for this session is still queued (offline start). */
+  hasPendingStart(sessionId: string): boolean {
+    return this.items.some(
+      (i) => i.op.kind === 'startSession' && (i.op.payload as { id?: string })?.id === sessionId,
+    );
   }
 
   get pending() {
@@ -133,6 +147,13 @@ class SyncQueue {
             console.warn('[sync] dropping permanently-failed op', item.op.kind, e.status);
             this.items.shift();
             await this.persist();
+            for (const fn of this.droppedListeners) {
+              try {
+                fn(item.op, e.status);
+              } catch {
+                /* listener errors must not break the drain */
+              }
+            }
           } else {
             // Transient (offline / 5xx) — stop and retry later.
             item.attempts += 1;

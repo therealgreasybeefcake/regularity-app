@@ -19,6 +19,7 @@ export interface LiveDriver {
 
 export interface LiveSnapshot {
   id: string;
+  teamId: string;
   status: 'live' | 'ended';
   raceName: string;
   sessionNumber: string;

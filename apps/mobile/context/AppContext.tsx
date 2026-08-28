@@ -266,6 +266,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const isDarkMode =
     themeMode === 'auto' ? systemColorScheme === 'dark' : themeMode === 'dark';
 
+  // Clear all local live-session state (banner, stream keys, storage) WITHOUT
+  // talking to the server — for when the session was ended/deleted elsewhere.
+  // Declared up here because the sync-queue effect below lists it as a dep.
+  const teardownLiveSessionLocal = useCallback(async () => {
+    const live = liveSessionRef.current;
+    if (live) endedLiveTokenRef.current = live.publicToken; // a racing refreshTeamLive can't resurrect the banner
+    liveSessionRef.current = null;
+    setLiveSession(null);
+    setTeamLivePublicToken(null);
+    streamedKeysRef.current.clear();
+    await AsyncStorage.removeItem('liveSessionState');
+  }, []);
+
   // --- Local load + sync queue init ---
   useEffect(() => {
     syncQueue.init();
@@ -273,8 +286,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Only reflect queue state once we're authenticated/synced.
       if (serverTeamIdRef.current) setSyncStatus(mapStatus(state));
     });
-    return unsub;
-  }, []);
+    const unsubDrop = syncQueue.onDropped((op, status) => {
+      const live = liveSessionRef.current;
+      if (!live) return;
+      if (
+        (op.kind === 'appendLap' || op.kind === 'endSession') &&
+        op.sessionId === live.id &&
+        (status === 404 || status === 409)
+      ) {
+        // Session was ended (409 session_not_live) or deleted (404) remotely —
+        // stop the stuck banner and the doomed lap stream.
+        void teardownLiveSessionLocal();
+      }
+    });
+    return () => {
+      unsub();
+      unsubDrop();
+    };
+  }, [teardownLiveSessionLocal]);
 
   useEffect(() => {
     const loadData = async () => {
@@ -474,10 +503,24 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       endedLiveTokenRef.current = null;
       setTeamLivePublicToken(token);
+
+      // Server reports NO live session for the team, but this device still thinks
+      // it's recording one — verify against the public snapshot before believing it
+      // (an offline-started session isn't on the server yet, hence hasPendingStart).
+      const mine = liveSessionRef.current;
+      if (!token && mine && !syncQueue.hasPendingStart(mine.id)) {
+        try {
+          const snap = await api.get<{ status?: string }>(`/api/live/${mine.publicToken}/snapshot`);
+          if (snap?.status && snap.status !== 'live') await teardownLiveSessionLocal();
+        } catch (e) {
+          if (e instanceof ApiError && e.status === 404) await teardownLiveSessionLocal(); // deleted remotely
+          // network/5xx: keep optimistically — an offline recorder must survive
+        }
+      }
     } catch {
       /* ignore */
     }
-  }, []);
+  }, [teardownLiveSessionLocal]);
 
   // Web: instant peer roster/settings sync + live-session awareness via SSE.
   useEffect(() => {
@@ -805,28 +848,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const endLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
     if (!live) return;
-    endedLiveTokenRef.current = live.publicToken;
-    liveSessionRef.current = null;
-    setLiveSession(null);
-    setTeamLivePublicToken(null);
-    streamedKeysRef.current.clear();
-    await AsyncStorage.removeItem('liveSessionState');
+    await teardownLiveSessionLocal();
     await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
-  }, []);
+  }, [teardownLiveSessionLocal]);
 
   // Discard (not save) the current session — deletes it server-side too, so a
   // cleared session leaves nothing in the DB. Nulls the ref BEFORE the lap-diff
   // effect runs so it doesn't also auto-end the (now deleted) session.
   const discardLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
-    if (live) endedLiveTokenRef.current = live.publicToken;
-    liveSessionRef.current = null;
-    setLiveSession(null);
-    setTeamLivePublicToken(null);
-    streamedKeysRef.current.clear();
-    await AsyncStorage.removeItem('liveSessionState');
+    await teardownLiveSessionLocal();
     if (live) await syncQueue.enqueue({ kind: 'deleteSession', sessionId: live.id });
-  }, []);
+  }, [teardownLiveSessionLocal]);
 
   // Kill switch for orphaned live sessions: ends EVERY session the server still
   // has marked live for the active team — even when this device lost its local
@@ -835,14 +868,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const endActiveLiveSession = useCallback(async () => {
     const teamId = serverTeamIdRef.current;
     if (!teamId) return;
-    endedLiveTokenRef.current = teamLivePublicTokenRef.current;
+    endedLiveTokenRef.current = teamLivePublicTokenRef.current; // may be a peer's token, which teardown can't know
     await api.post(`/api/teams/${teamId}/live/end`);
-    liveSessionRef.current = null;
-    setLiveSession(null);
-    setTeamLivePublicToken(null);
-    streamedKeysRef.current.clear();
-    await AsyncStorage.removeItem('liveSessionState');
-  }, []);
+    await teardownLiveSessionLocal();
+  }, [teardownLiveSessionLocal]);
 
   const streamLap = useCallback(
     async (driverIndex: number, lap: Lap) => {
