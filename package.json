@@ -1,6 +1,6 @@
 {
   "name": "regularity-app",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "main": "index.ts",
   "scripts": {
     "start": "expo start",
@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.1.0",
+    "eas-cli": "^24.0.0",
     "typescript": "~5.9.2"
   },
   "private": true
