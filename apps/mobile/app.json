@@ -56,7 +56,18 @@
       "expo-sharing",
       "expo-font",
       "expo-asset",
-      "expo-apple-authentication"
+      "expo-apple-authentication",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "extraPods": [
+              { "name": "GoogleUtilities", "modular_headers": true },
+              { "name": "RecaptchaInterop", "modular_headers": true }
+            ]
+          }
+        }
+      ]
     ],
     "web": {
       "favicon": "./assets/favicon.png"

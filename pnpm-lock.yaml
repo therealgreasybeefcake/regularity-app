@@ -99,6 +99,9 @@ importers:
       expo-audio:
         specifier: ~55.0.8
         version: 55.0.14(expo-asset@55.0.17(expo@55.0.26)(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.16)(react@19.2.0))(react@19.2.0)(typescript@5.9.3))(expo@55.0.26)(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.16)(react@19.2.0))(react@19.2.0)
+      expo-build-properties:
+        specifier: ~55.0.18
+        version: 55.0.18(expo@55.0.26)
       expo-dev-client:
         specifier: ~55.0.11
         version: 55.0.35(expo@55.0.26)
@@ -916,11 +919,11 @@ packages:
 
   '@esbuild-kit/core-utils@3.3.2':
     resolution: {integrity: sha512-sPRAnw9CdSsRmEtnsl2WXWdyquogVpB3yZ3dgwJfe8zrOzTsV7cJvmwrKVa+0ma5BoiGJ+BoqkMvawbayKUsqQ==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild-kit/esm-loader@2.6.5':
     resolution: {integrity: sha512-FxEMIkJKnodyA1OaCUoEvbYRkoZlLZ4d/eXFu9Fh8CbBBgP5EmZxrfTRyN0qpXZ4vOvqnE5YdRdcrmUUXuU+dA==}
-    deprecated: 'Merged into tsx: https://tsx.is'
+    deprecated: 'Merged into tsx: https://tsx.hirok.io'
 
   '@esbuild/aix-ppc64@0.19.12':
     resolution: {integrity: sha512-bmoCYyWdEL3wDQIVbcyzRyeKLgk2WtWLTWz1ZIAZF/EGbNOwSA6ew3PftJ1PqMiOOGu0OyFMzG53L0zqIpPeNA==}
@@ -1636,6 +1639,9 @@ packages:
 
   '@expo/schema-utils@55.0.4':
     resolution: {integrity: sha512-65IdeeE8dAZR3n3J5Eq7LYiQ8BFGeEYCWPBCzycvafL7PkskbCyIclTQarRwf/HXFoRvezKCjaLwy/8v9Prk6g==}
+
+  '@expo/schema-utils@55.0.5':
+    resolution: {integrity: sha512-wdV4SzWJ/l+6y/r9vDaqPqXGyfxUD1igbX8rRbRBfkVXenAUY2qenq6HF4S0iJ0pjpVDNTANn5aQY7VV55hhsA==}
 
   '@expo/sdk-runtime-versions@1.0.0':
     resolution: {integrity: sha512-Doz2bfiPndXYFPMRwPyGa1k5QaKDVpY806UJj570epIiMzWaYyCtobasyfC++qfIXVb5Ocy7r3tP9d62hAQ7IQ==}
@@ -2380,10 +2386,12 @@ packages:
   '@xmldom/xmldom@0.8.13':
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
+    deprecated: this version has critical issues, please update to the latest version
 
   '@xmldom/xmldom@0.9.10':
     resolution: {integrity: sha512-A9gOqLdi6cV4ibazAjcQufGj0B1y/vDqYrcuP6d/6x8P27gRS8643Dj9o1dEKtB6O7fwxb2FgBmJS2mX7gpvdw==}
     engines: {node: '>=14.6'}
+    deprecated: this version has critical issues, please update to the latest version
 
   abort-controller@3.0.0:
     resolution: {integrity: sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==}
@@ -3104,6 +3112,11 @@ packages:
       expo-asset: '*'
       react: '*'
       react-native: '*'
+
+  expo-build-properties@55.0.18:
+    resolution: {integrity: sha512-LLTuab2S4Gv9dYjolBF/noRAUosa9Fu1o374yoQ7WD+NLWP8rn3fUd5ciKlx7f702JqO7tDJB2+BUjTwtgciCg==}
+    peerDependencies:
+      expo: '*'
 
   expo-constants@55.0.16:
     resolution: {integrity: sha512-Z15/No94UHoogD+pulxjudGAeOHTEIWZgb/vnX48Wx5D+apWTeCbnKxQZZtGQlosvduYL5kaic2/W8U+NHfBQQ==}
@@ -6293,6 +6306,8 @@ snapshots:
 
   '@expo/schema-utils@55.0.4': {}
 
+  '@expo/schema-utils@55.0.5': {}
+
   '@expo/sdk-runtime-versions@1.0.0': {}
 
   '@expo/spawn-async@1.8.0':
@@ -7812,6 +7827,13 @@ snapshots:
       expo-asset: 55.0.17(expo@55.0.26)(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.16)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
       react: 19.2.0
       react-native: 0.83.2(@babel/core@7.29.7)(@types/react@19.2.16)(react@19.2.0)
+
+  expo-build-properties@55.0.18(expo@55.0.26):
+    dependencies:
+      '@expo/schema-utils': 55.0.5
+      expo: 55.0.26(@babel/core@7.29.7)(@expo/dom-webview@55.0.6)(@expo/metro-runtime@55.0.11)(expo-router@55.0.16)(react-dom@19.2.0(react@19.2.0))(react-native-worklets@0.7.2(@babel/core@7.29.7)(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.16)(react@19.2.0))(react@19.2.0))(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.16)(react@19.2.0))(react@19.2.0)(typescript@5.9.3)
+      resolve-from: 5.0.0
+      semver: 7.8.1
 
   expo-constants@55.0.16(expo@55.0.26)(react-native@0.83.2(@babel/core@7.29.7)(@types/react@19.2.16)(react@19.2.0)):
     dependencies:
