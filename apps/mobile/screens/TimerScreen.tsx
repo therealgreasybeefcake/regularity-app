@@ -39,6 +39,31 @@ import { useAlert } from '../components/CustomAlert';
 import LiveShareBanner from '../components/LiveShareBanner';
 import { Mono, Label, Card, Surface, Button, IconButton, Chip, TextField, Sheet, LiveDot } from '../components/ui';
 
+// Why the session setup sheet is open: first-run setup, editing the current
+// session's details, or setting up the next session right after ending one.
+type SessionSetupMode = 'new' | 'edit' | 'next';
+
+const SESSION_SETUP_COPY: Record<SessionSetupMode, { title: string; subtitle: string; primaryLabel: string; secondaryLabel: string }> = {
+  new: {
+    title: 'Start New Session',
+    subtitle: 'Set up your race session details',
+    primaryLabel: 'Start Session',
+    secondaryLabel: 'Skip for now',
+  },
+  edit: {
+    title: 'Edit Session',
+    subtitle: 'Update your race session details',
+    primaryLabel: 'Save Changes',
+    secondaryLabel: 'Cancel',
+  },
+  next: {
+    title: 'Start Next Session',
+    subtitle: 'Session saved to history. Set up the next session.',
+    primaryLabel: 'Start Session',
+    secondaryLabel: 'Skip for now',
+  },
+};
+
 export default function TimerScreen() {
   const {
     teams,
@@ -90,6 +115,22 @@ export default function TimerScreen() {
   const [setupRaceName, setSetupRaceName] = useState('');
   const [setupSessionNumber, setSetupSessionNumber] = useState('');
   const [setupSessionDuration, setSetupSessionDuration] = useState('120');
+  const [sessionSetupMode, setSessionSetupMode] = useState<SessionSetupMode>('new');
+
+  const openSessionSetup = (mode: SessionSetupMode, overrides?: { sessionNumber?: string }) => {
+    setSetupTeamName(team?.name || '');
+    setSetupRaceName(team?.raceName || '');
+    setSetupSessionNumber(overrides?.sessionNumber ?? (team?.sessionNumber || ''));
+    setSetupSessionDuration(String(team?.sessionDuration ?? 120));
+    setSessionSetupMode(mode);
+    setShowSessionSetup(true);
+  };
+
+  // "Different race" — blanks the race fields but keeps team name and duration.
+  const clearSessionDetails = () => {
+    setSetupRaceName('');
+    setSetupSessionNumber('');
+  };
 
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -143,11 +184,7 @@ export default function TimerScreen() {
   useEffect(() => {
     const needsSetup = !team.name && !team.raceName && !team.sessionNumber && driver.laps.length === 0;
     if (needsSetup) {
-      setShowSessionSetup(true);
-      setSetupTeamName(team.name || '');
-      setSetupRaceName(team.raceName || '');
-      setSetupSessionNumber(team.sessionNumber || '');
-      setSetupSessionDuration(team.sessionDuration.toString());
+      openSessionSetup('new');
     }
   }, []);
 
@@ -652,7 +689,15 @@ export default function TimerScreen() {
             resetTimer();
             // Mark the live session ended server-side (kept as history).
             void endLiveSession();
-            showAlert({ title: 'Session Ended', message: 'Session saved to history' });
+
+            // Prompt for the next session, bumping a purely numeric session number.
+            const rawSessionNumber = (currentTeam.sessionNumber || '').trim();
+            const parsedSessionNumber = parseInt(rawSessionNumber, 10);
+            const nextSessionNumber =
+              !isNaN(parsedSessionNumber) && String(parsedSessionNumber) === rawSessionNumber
+                ? String(parsedSessionNumber + 1)
+                : rawSessionNumber;
+            openSessionSetup('next', { sessionNumber: nextSessionNumber });
           },
         },
       ],
@@ -810,10 +855,15 @@ export default function TimerScreen() {
               ) : null}
             </View>
           ) : null}
-          {/* Header */}
-          <View style={styles.header}>
+          {/* Header — tap to edit the race / session details */}
+          <Pressable
+            style={styles.header}
+            onPress={() => openSessionSetup('edit')}
+            accessibilityRole="button"
+            accessibilityLabel="Edit session details"
+          >
             <View style={{ flex: 1 }}>
-              <Label muted>{team?.raceName || 'Regularity Timer'}</Label>
+              <Label muted>{team?.raceName || 'Tap to set race name'}</Label>
               <View style={styles.headerTitleRow}>
                 <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
                   {team?.name || 'New Session'}
@@ -821,7 +871,8 @@ export default function TimerScreen() {
                 {team?.sessionNumber ? <Chip label={`S${team.sessionNumber}`} color={theme.accent} active size="sm" /> : null}
               </View>
             </View>
-          </View>
+            <Ionicons name="create-outline" size={20} color={theme.primary as string} />
+          </Pressable>
 
           {/* Rejected lap message */}
           {rejectedMessage && (
@@ -1017,19 +1068,29 @@ export default function TimerScreen() {
         </View>
       </Sheet>
 
-      {/* Session Setup Sheet */}
+      {/* Session Setup Sheet — new session, edit current, or next after ending */}
       <Sheet
         visible={showSessionSetup}
         onClose={() => setShowSessionSetup(false)}
-        title="Start New Session"
+        title={SESSION_SETUP_COPY[sessionSetupMode].title}
         footer={
           <>
-            <Button title="Start Session" icon="checkmark-circle" onPress={handleStartSession} fullWidth size="lg" />
-            <Button title="Skip for now" variant="ghost" onPress={() => setShowSessionSetup(false)} fullWidth />
+            <Button title={SESSION_SETUP_COPY[sessionSetupMode].primaryLabel} icon="checkmark-circle" onPress={handleStartSession} fullWidth size="lg" />
+            <Button title={SESSION_SETUP_COPY[sessionSetupMode].secondaryLabel} variant="ghost" onPress={() => setShowSessionSetup(false)} fullWidth />
+            {sessionSetupMode !== 'new' ? (
+              <Button
+                title="Clear details for a different race"
+                icon="trash-outline"
+                variant="ghost"
+                onPress={clearSessionDetails}
+                fullWidth
+                textStyle={{ color: theme.textSecondary }}
+              />
+            ) : null}
           </>
         }
       >
-        <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>Set up your race session details</Text>
+        <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>{SESSION_SETUP_COPY[sessionSetupMode].subtitle}</Text>
         <View style={styles.sheetFields}>
           <TextField label="Team Name" value={setupTeamName} onChangeText={setSetupTeamName} placeholder="Enter team name" />
           <TextField label="Race Name" value={setupRaceName} onChangeText={setSetupRaceName} placeholder="Enter race name" />
