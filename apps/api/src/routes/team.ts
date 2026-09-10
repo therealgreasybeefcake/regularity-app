@@ -1,0 +1,532 @@
+import { Hono } from 'hono';
+import { streamSSE } from 'hono/streaming';
+import { and, asc, desc, eq } from 'drizzle-orm';
+import { db } from '../db';
+import { requireAuth, type AppVariables } from '../middleware';
+import { rooms, teamRoom } from '../rooms';
+import { getOrCreateTeam, getOwnedTeam, getMembership, roleAtLeast, buildSessionPayload } from '../lib/domain';
+import { teams, drivers, raceSessions, sessionDrivers, laps } from '@regularity/db';
+import {
+  updateTeamInputSchema,
+  createDriverInputSchema,
+  importTeamSchema,
+  teamStateSchema,
+  sessionSnapshotSchema,
+  startSessionInputSchema,
+} from '@regularity/schemas';
+
+export const teamRouter = new Hono<{ Variables: AppVariables }>();
+teamRouter.use('*', requireAuth);
+
+/**
+ * End every session a team still has marked `live`. Used to enforce a single
+ * live session per team (on start) and as the explicit "kill switch" for
+ * orphaned live sessions the client lost its local reference to. Notifies any
+ * spectators and the team room. Returns how many sessions were ended.
+ */
+async function endLiveSessionsForTeam(teamId: string): Promise<number> {
+  const ended = await db
+    .update(raceSessions)
+    .set({ status: 'ended', endedAt: new Date() })
+    .where(and(eq(raceSessions.teamId, teamId), eq(raceSessions.status, 'live')))
+    .returning({ publicToken: raceSessions.publicToken, id: raceSessions.id });
+  for (const s of ended) {
+    rooms.broadcast(s.publicToken, { type: 'sessionEnded', sessionId: s.id });
+  }
+  if (ended.length) rooms.broadcast(teamRoom(teamId), { type: 'teamChanged' });
+  return ended.length;
+}
+
+// POST /api/teams/import — one-time first-login migration of the legacy local
+// Team (+ sessionHistory) into Postgres. Idempotent: only runs on an empty team.
+teamRouter.post('/import', async (c) => {
+  const user = c.get('user');
+  const team = await getOrCreateTeam(user.id);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = importTeamSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const data = parsed.data;
+
+  // Guard against double-import: only proceed if the team has no data yet.
+  const [existingDriver] = await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.teamId, team.id)).limit(1);
+  const [existingSession] = await db.select({ id: raceSessions.id }).from(raceSessions).where(eq(raceSessions.teamId, team.id)).limit(1);
+  if (existingDriver || existingSession) {
+    return c.json({ imported: false, reason: 'already_has_data' });
+  }
+
+  let importedSessions = 0;
+  let importedLaps = 0;
+
+  await db.transaction(async (tx) => {
+    await tx
+      .update(teams)
+      .set({
+        name: data.name || team.name,
+        raceName: data.raceName,
+        sessionNumber: data.sessionNumber,
+        sessionDurationMin: data.sessionDuration,
+        ...(data.lapTypeValues ? { lapTypeValues: data.lapTypeValues } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(teams.id, team.id));
+
+    // Current roster
+    if (data.drivers.length) {
+      await tx.insert(drivers).values(
+        data.drivers.map((d, i) => ({
+          teamId: team.id,
+          name: d.name,
+          targetTimeSec: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        })),
+      );
+    }
+
+    // Historical sessions (immutable snapshots)
+    for (const session of data.sessionHistory) {
+      const when = new Date(session.timestamp);
+      const [createdSession] = await tx
+        .insert(raceSessions)
+        .values({
+          teamId: team.id,
+          raceName: session.raceName,
+          sessionNumber: session.sessionNumber,
+          sessionDurationMin: session.sessionDuration,
+          status: 'ended',
+          startedAt: when,
+          endedAt: when,
+        })
+        .returning();
+      importedSessions += 1;
+
+      for (let i = 0; i < session.drivers.length; i++) {
+        const d = session.drivers[i];
+        const [sd] = await tx
+          .insert(sessionDrivers)
+          .values({
+            sessionId: createdSession.id,
+            name: d.name,
+            targetTimeSec: d.targetTime,
+            penaltyLaps: d.penaltyLaps,
+            sortOrder: i,
+          })
+          .returning();
+
+        if (d.laps.length) {
+          await tx.insert(laps).values(
+            d.laps.map((lap) => ({
+              sessionDriverId: sd.id,
+              clientLapId: crypto.randomUUID(),
+              number: lap.number,
+              timeSec: lap.time,
+              delta: lap.delta,
+              lapType: lap.lapType,
+              lapValue: lap.lapValue,
+              recordedAt: new Date(lap.timestamp),
+            })),
+          );
+          importedLaps += d.laps.length;
+        }
+      }
+    }
+  });
+
+  return c.json({ imported: true, sessions: importedSessions, laps: importedLaps });
+});
+
+// GET /api/teams/me — the caller's team + current driver roster.
+teamRouter.get('/me', async (c) => {
+  const user = c.get('user');
+  const team = await getOrCreateTeam(user.id);
+  const roster = await db
+    .select()
+    .from(drivers)
+    .where(eq(drivers.teamId, team.id))
+    .orderBy(asc(drivers.sortOrder));
+  return c.json({ team, drivers: roster });
+});
+
+// GET /api/teams/me/live — the team's current live session (drives the web "Live" nav).
+teamRouter.get('/me/live', async (c) => {
+  const user = c.get('user');
+  const team = await getOwnedTeam(user.id);
+  if (!team) return c.json({ live: null });
+  const [s] = await db
+    .select({ id: raceSessions.id, publicToken: raceSessions.publicToken, raceName: raceSessions.raceName })
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, team.id), eq(raceSessions.status, 'live')))
+    .orderBy(desc(raceSessions.startedAt))
+    .limit(1);
+  return c.json({ live: s ?? null });
+});
+
+// GET /api/teams/:id — a specific team + its roster (any member). Lets a member
+// load a shared team's roster/settings after switching to it.
+teamRouter.get('/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  const roster = await db
+    .select()
+    .from(drivers)
+    .where(eq(drivers.teamId, id))
+    .orderBy(asc(drivers.sortOrder));
+  return c.json({ team: m.team, drivers: roster, role: m.role });
+});
+
+// GET /api/teams/:id/live — the active live session for a team the user belongs
+// to (drives the "a teammate is recording" banner). Any member.
+teamRouter.get('/:id/live', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  const [s] = await db
+    .select({ id: raceSessions.id, publicToken: raceSessions.publicToken, raceName: raceSessions.raceName })
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, id), eq(raceSessions.status, 'live')))
+    .orderBy(desc(raceSessions.startedAt))
+    .limit(1);
+  return c.json({ live: s ?? null });
+});
+
+// POST /api/teams/:id/live/end — end ALL of a team's live sessions at once.
+// The "kill switch" for orphaned live sessions the app lost track of locally
+// (e.g. after reinstall, sign-out, or a team switch). Any member; safe to call
+// when nothing is live (ends 0).
+teamRouter.post('/:id/live/end', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+  const ended = await endLiveSessionsForTeam(id);
+  return c.json({ ended });
+});
+
+// GET /api/teams/:id/events — authenticated per-team SSE. Peers are notified of
+// roster/settings edits (`teamChanged`) and when a teammate starts recording
+// (`sessionStarted`), so a shared team stays in sync without a manual reload.
+teamRouter.get('/:id/events', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  return streamSSE(c, async (stream) => {
+    let closed = false;
+    const unsub = rooms.subscribe(teamRoom(id), (event, eid) => {
+      stream.writeSSE({ event: event.type, data: JSON.stringify(event), id: String(eid) }).catch(() => {});
+    });
+    stream.onAbort(() => { closed = true; unsub(); });
+    await stream.writeSSE({ event: 'hello', data: '{}', id: '0' });
+    while (!closed) {
+      await stream.sleep(15000);
+      if (closed) break;
+      await stream.writeSSE({ event: 'ping', data: 'keepalive' }).catch(() => {});
+    }
+  });
+});
+
+// PATCH /api/teams/:id — settings/scoring/meta (owner|admin).
+teamRouter.patch('/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = updateTeamInputSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+
+  const [updated] = await db
+    .update(teams)
+    .set({ ...parsed.data, updatedAt: new Date() })
+    .where(eq(teams.id, id))
+    .returning();
+  rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
+  return c.json({ team: updated });
+});
+
+// POST /api/teams/:id/drivers — add a roster driver (owner|admin).
+teamRouter.post('/:id/drivers', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = createDriverInputSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+
+  const existing = await db.select({ id: drivers.id }).from(drivers).where(eq(drivers.teamId, id));
+  const [created] = await db
+    .insert(drivers)
+    .values({
+      ...(parsed.data.id ? { id: parsed.data.id } : {}),
+      teamId: id,
+      name: parsed.data.name,
+      targetTimeSec: parsed.data.targetTime,
+      penaltyLaps: parsed.data.penaltyLaps ?? 0,
+      linkedUserId: parsed.data.linkedUserId ?? null,
+      sortOrder: existing.length,
+    })
+    .onConflictDoNothing()
+    .returning();
+  // Idempotent replay (same client id) — return the already-stored row.
+  const driver =
+    created ??
+    (await db.select().from(drivers).where(eq(drivers.id, parsed.data.id!)).limit(1))[0];
+  rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
+  return c.json({ driver }, created ? 201 : 200);
+});
+
+// PUT /api/teams/:id — bulk meta update + roster replace (owner|admin). Legacy
+// single-writer sync path; multi-member clients use granular driver endpoints.
+teamRouter.put('/:id', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = teamStateSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const data = parsed.data;
+
+  await db.transaction(async (tx) => {
+    const meta: Record<string, unknown> = { updatedAt: new Date() };
+    if (data.name !== undefined) meta.name = data.name;
+    if (data.raceName !== undefined) meta.raceName = data.raceName;
+    if (data.sessionNumber !== undefined) meta.sessionNumber = data.sessionNumber;
+    if (data.sessionDuration !== undefined) meta.sessionDurationMin = data.sessionDuration;
+    if (data.lapTypeValues !== undefined) meta.lapTypeValues = data.lapTypeValues;
+    await tx.update(teams).set(meta).where(eq(teams.id, id));
+
+    if (data.drivers !== undefined) {
+      // Replace roster. session_drivers keep their snapshots (driver_id -> null).
+      await tx.delete(drivers).where(eq(drivers.teamId, id));
+      if (data.drivers.length) {
+        await tx.insert(drivers).values(
+          data.drivers.map((d, i) => ({
+            teamId: id,
+            name: d.name,
+            targetTimeSec: d.targetTime,
+            penaltyLaps: d.penaltyLaps,
+            linkedUserId: d.linkedUserId ?? null,
+            sortOrder: i,
+          })),
+        );
+      }
+    }
+  });
+
+  const roster = await db.select().from(drivers).where(eq(drivers.teamId, id)).orderBy(asc(drivers.sortOrder));
+  const [updated] = await db.select().from(teams).where(eq(teams.id, id));
+  rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
+  return c.json({ team: updated, drivers: roster });
+});
+
+// POST /api/teams/:id/sessions/complete — persist a finished session (history).
+// Idempotent on clientSessionId so re-saves/offline replays don't duplicate.
+teamRouter.post('/:id/sessions/complete', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+
+  const body = await c.req.json().catch(() => null);
+  const parsed = sessionSnapshotSchema.safeParse(body);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const session = parsed.data;
+
+  const [dup] = await db
+    .select()
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, id), eq(raceSessions.clientSessionId, session.id)))
+    .limit(1);
+  if (dup) return c.json({ session: dup, deduped: true });
+
+  const when = new Date(session.timestamp);
+  const created = await db.transaction(async (tx) => {
+    const [s] = await tx
+      .insert(raceSessions)
+      .values({
+        teamId: id,
+        clientSessionId: session.id,
+        raceName: session.raceName,
+        sessionNumber: session.sessionNumber,
+        sessionDurationMin: session.sessionDuration,
+        status: 'ended',
+        startedAt: when,
+        endedAt: when,
+      })
+      .returning();
+
+    for (let i = 0; i < session.drivers.length; i++) {
+      const d = session.drivers[i];
+      const [sd] = await tx
+        .insert(sessionDrivers)
+        .values({
+          sessionId: s.id,
+          name: d.name,
+          targetTimeSec: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        })
+        .returning();
+      if (d.laps.length) {
+        await tx.insert(laps).values(
+          d.laps.map((lap) => ({
+            sessionDriverId: sd.id,
+            clientLapId: crypto.randomUUID(),
+            number: lap.number,
+            timeSec: lap.time,
+            delta: lap.delta,
+            lapType: lap.lapType,
+            lapValue: lap.lapValue,
+            recordedAt: new Date(lap.timestamp),
+          })),
+        );
+      }
+    }
+    return s;
+  });
+
+  return c.json({ session: created });
+});
+
+// GET /api/teams/:id/sessions — history (newest first). Any member.
+teamRouter.get('/:id/sessions', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+
+  const list = await db
+    .select()
+    .from(raceSessions)
+    .where(eq(raceSessions.teamId, id))
+    .orderBy(desc(raceSessions.startedAt));
+  return c.json({ sessions: list });
+});
+
+// GET /api/teams/:id/trends — cross-session percentage-factor time series (the key
+// longitudinal metric). Any member. Computed via @regularity/core so it matches
+// the live-view + Stats numbers exactly.
+teamRouter.get('/:id/trends', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+
+  const sessions = await db
+    .select()
+    .from(raceSessions)
+    .where(and(eq(raceSessions.teamId, id), eq(raceSessions.status, 'ended')))
+    .orderBy(asc(raceSessions.startedAt));
+
+  const trends = await Promise.all(
+    sessions.map(async (s) => {
+      const payload = await buildSessionPayload(s, m.team.lapTypeValues);
+      return {
+        sessionId: s.id,
+        raceName: s.raceName,
+        sessionNumber: s.sessionNumber,
+        endedAt: (s.endedAt ?? s.startedAt).toISOString(),
+        percentageFactor: payload.teamStats.percentageFactor,
+        achievedLaps: payload.teamStats.achievedLaps,
+        goalLaps: payload.teamStats.goalLaps,
+      };
+    }),
+  );
+  return c.json({ trends });
+});
+
+// POST /api/teams/:id/sessions — start a live session. Accepts optional
+// client-generated ids (offline-safe) and is idempotent on the session id.
+teamRouter.post('/:id/sessions', async (c) => {
+  const user = c.get('user');
+  const id = c.req.param('id');
+  const m = await getMembership(id, user.id);
+  if (!m) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(m.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+  const team = m.team;
+
+  const body = await c.req.json().catch(() => undefined);
+  const parsed = startSessionInputSchema.safeParse(body ?? undefined);
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const input = parsed.data;
+
+  // Idempotent: a replayed start (same client id) returns the existing session.
+  if (input?.id) {
+    const [existing] = await db
+      .select()
+      .from(raceSessions)
+      .where(and(eq(raceSessions.id, input.id), eq(raceSessions.teamId, id)))
+      .limit(1);
+    if (existing) {
+      const sd = await db
+        .select()
+        .from(sessionDrivers)
+        .where(eq(sessionDrivers.sessionId, existing.id))
+        .orderBy(asc(sessionDrivers.sortOrder));
+      return c.json({ session: existing, sessionDrivers: sd, existing: true });
+    }
+  }
+
+  // Enforce one live session per team: end any sessions still marked `live`
+  // before starting a new one, so stale/abandoned sessions can't accumulate and
+  // orphan (the client may have lost its local reference to them).
+  await endLiveSessionsForTeam(id);
+
+  const [session] = await db
+    .insert(raceSessions)
+    .values({
+      ...(input?.id ? { id: input.id } : {}),
+      ...(input?.publicToken ? { publicToken: input.publicToken } : {}),
+      teamId: id,
+      raceName: input?.raceName ?? team.raceName,
+      sessionNumber: input?.sessionNumber ?? team.sessionNumber,
+      sessionDurationMin: input?.sessionDuration ?? team.sessionDurationMin,
+      status: 'live',
+    })
+    .returning();
+
+  const driverValues: (typeof sessionDrivers.$inferInsert)[] =
+    input?.drivers && input.drivers.length
+      ? input.drivers.map((d, i) => ({
+          id: d.id,
+          sessionId: session.id,
+          name: d.name,
+          targetTimeSec: d.targetTime,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        }))
+      : (
+          await db.select().from(drivers).where(eq(drivers.teamId, id)).orderBy(asc(drivers.sortOrder))
+        ).map((d, i) => ({
+          sessionId: session.id,
+          driverId: d.id,
+          name: d.name,
+          targetTimeSec: d.targetTimeSec,
+          penaltyLaps: d.penaltyLaps,
+          sortOrder: i,
+        }));
+  if (driverValues.length) await db.insert(sessionDrivers).values(driverValues);
+
+  const sd = await db
+    .select()
+    .from(sessionDrivers)
+    .where(eq(sessionDrivers.sessionId, session.id))
+    .orderBy(asc(sessionDrivers.sortOrder));
+
+  rooms.broadcast(teamRoom(id), { type: 'sessionStarted', publicToken: session.publicToken, sessionId: session.id });
+  return c.json({ session, sessionDrivers: sd }, 201);
+});

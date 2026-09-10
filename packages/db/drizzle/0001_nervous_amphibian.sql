@@ -1,0 +1,2 @@
+ALTER TABLE "race_sessions" ADD COLUMN "client_session_id" text;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "race_sessions_team_client_session_uq" ON "race_sessions" USING btree ("team_id","client_session_id");
