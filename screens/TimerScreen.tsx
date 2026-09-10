@@ -24,6 +24,8 @@ import { lightTheme, darkTheme } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
 
+type SessionSetupMode = 'new' | 'edit' | 'next';
+
 export default function TimerScreen() {
   const {
     teams,
@@ -58,6 +60,22 @@ export default function TimerScreen() {
   const [setupRaceName, setSetupRaceName] = useState('');
   const [setupSessionNumber, setSetupSessionNumber] = useState('');
   const [setupSessionDuration, setSetupSessionDuration] = useState('120');
+  const [sessionSetupMode, setSessionSetupMode] = useState<SessionSetupMode>('new');
+
+  const openSessionSetup = (mode: SessionSetupMode, overrides?: { sessionNumber?: string }) => {
+    setSetupTeamName(team.name || '');
+    setSetupRaceName(team.raceName || '');
+    setSetupSessionNumber(overrides?.sessionNumber ?? (team.sessionNumber || ''));
+    setSetupSessionDuration(team.sessionDuration.toString());
+    setSessionSetupMode(mode);
+    setShowSessionSetup(true);
+  };
+
+  // "Different race" — blanks the race fields but keeps team name and duration
+  const clearSessionDetails = () => {
+    setSetupRaceName('');
+    setSetupSessionNumber('');
+  };
 
   const startTimeRef = useRef<number | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -80,11 +98,7 @@ export default function TimerScreen() {
   useEffect(() => {
     const needsSetup = !team.name && !team.raceName && !team.sessionNumber && driver.laps.length === 0;
     if (needsSetup) {
-      setShowSessionSetup(true);
-      setSetupTeamName(team.name || '');
-      setSetupRaceName(team.raceName || '');
-      setSetupSessionNumber(team.sessionNumber || '');
-      setSetupSessionDuration(team.sessionDuration.toString());
+      openSessionSetup('new');
     }
   }, []);
 
@@ -545,7 +559,14 @@ export default function TimerScreen() {
 
             setTeams(updatedTeams);
             resetTimer();
-            Alert.alert('Session Ended', 'Session saved to history');
+
+            // Prompt for the next session, bumping a numeric session number
+            const parsedSessionNumber = parseInt(currentTeam.sessionNumber || '', 10);
+            const nextSessionNumber =
+              !isNaN(parsedSessionNumber) && String(parsedSessionNumber) === (currentTeam.sessionNumber || '').trim()
+                ? String(parsedSessionNumber + 1)
+                : currentTeam.sessionNumber || '';
+            openSessionSetup('next', { sessionNumber: nextSessionNumber });
           },
         },
       ]
@@ -572,6 +593,39 @@ export default function TimerScreen() {
     return 'WAITING';
   };
 
+  const sessionInfoParts = [
+    team?.raceName?.trim(),
+    team?.sessionNumber?.trim() ? `Session ${team.sessionNumber.trim()}` : '',
+  ].filter(Boolean);
+  const hasSessionInfo = sessionInfoParts.length > 0;
+  const sessionInfoLabel = hasSessionInfo
+    ? sessionInfoParts.join(' · ')
+    : 'Tap to set race name';
+
+  const sessionSetupCopy = {
+    new: {
+      icon: 'flag' as const,
+      title: 'Start New Session',
+      subtitle: 'Set up your race session details',
+      primaryLabel: 'Start Session',
+      secondaryLabel: 'Skip for now',
+    },
+    edit: {
+      icon: 'create' as const,
+      title: 'Edit Session',
+      subtitle: 'Update your race session details',
+      primaryLabel: 'Save Changes',
+      secondaryLabel: 'Cancel',
+    },
+    next: {
+      icon: 'flag' as const,
+      title: 'Start Next Session',
+      subtitle: 'Session saved to history. Set up the next session.',
+      primaryLabel: 'Start Session',
+      secondaryLabel: 'Skip for now',
+    },
+  }[sessionSetupMode];
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <ScrollView style={styles.scrollView}>
@@ -583,6 +637,23 @@ export default function TimerScreen() {
             <Text style={[styles.screenTitle, { color: theme.text }]}>Regularity Race Timer</Text>
           </View>
           <View style={[styles.titleUnderline, { backgroundColor: theme.primary }]} />
+          <TouchableOpacity
+            style={styles.sessionInfoRow}
+            onPress={() => openSessionSetup('edit')}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="flag-outline" size={16} color={theme.textSecondary} />
+            <Text
+              style={[
+                styles.sessionInfoText,
+                { color: hasSessionInfo ? theme.text : theme.textSecondary },
+              ]}
+              numberOfLines={1}
+            >
+              {sessionInfoLabel}
+            </Text>
+            <Ionicons name="create-outline" size={16} color={theme.primary} />
+          </TouchableOpacity>
         </View>
 
         {/* Rejected Lap Message */}
@@ -927,17 +998,19 @@ export default function TimerScreen() {
         visible={showSessionSetup}
         transparent
         animationType="slide"
-        onRequestClose={() => {}}
+        onRequestClose={() => {
+          if (sessionSetupMode !== 'new') setShowSessionSetup(false);
+        }}
       >
         <View style={styles.sessionSetupOverlay}>
           <View style={[styles.sessionSetupContent, { backgroundColor: theme.card }]}>
             <View style={styles.sessionSetupHeader}>
-              <Ionicons name="flag" size={40} color={theme.primary} />
+              <Ionicons name={sessionSetupCopy.icon} size={40} color={theme.primary} />
               <Text style={[styles.sessionSetupTitle, { color: theme.text }]}>
-                Start New Session
+                {sessionSetupCopy.title}
               </Text>
               <Text style={[styles.sessionSetupSubtitle, { color: theme.textSecondary }]}>
-                Set up your race session details
+                {sessionSetupCopy.subtitle}
               </Text>
             </View>
 
@@ -1001,7 +1074,7 @@ export default function TimerScreen() {
               onPress={handleStartSession}
             >
               <Ionicons name="checkmark-circle" size={24} color="#fff" />
-              <Text style={styles.sessionStartButtonText}>Start Session</Text>
+              <Text style={styles.sessionStartButtonText}>{sessionSetupCopy.primaryLabel}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -1009,9 +1082,18 @@ export default function TimerScreen() {
               onPress={() => setShowSessionSetup(false)}
             >
               <Text style={[styles.sessionSkipButtonText, { color: theme.textSecondary }]}>
-                Skip for now
+                {sessionSetupCopy.secondaryLabel}
               </Text>
             </TouchableOpacity>
+
+            {sessionSetupMode !== 'new' && (
+              <TouchableOpacity style={styles.sessionClearButton} onPress={clearSessionDetails}>
+                <Ionicons name="trash-outline" size={16} color={theme.textSecondary} />
+                <Text style={[styles.sessionSkipButtonText, { color: theme.textSecondary }]}>
+                  Clear details for a different race
+                </Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>
@@ -1049,6 +1131,17 @@ const styles = StyleSheet.create({
     width: 60,
     borderRadius: 2,
     marginLeft: 40,
+  },
+  sessionInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 4,
+  },
+  sessionInfoText: {
+    fontSize: 14,
+    fontWeight: '600',
+    flexShrink: 1,
   },
   rejectedCard: {
     flexDirection: 'row',
@@ -1369,5 +1462,12 @@ const styles = StyleSheet.create({
   sessionSkipButtonText: {
     fontSize: 15,
     fontWeight: '600',
+  },
+  sessionClearButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 12,
+    gap: 6,
   },
 });
