@@ -54,7 +54,6 @@
         "ascApiKeyIssuerId": "bd657051-a17c-4a00-bfae-8a2ace9ba230"
       },
       "android": {
-        "serviceAccountKeyPath": "./regularity-app-96196786d674.json",
         "track": "internal"
       }
     }
