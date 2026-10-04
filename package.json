@@ -14,7 +14,9 @@
     "dev": "turbo run dev",
     "mobile": "pnpm --filter @regularity/mobile start",
     "mobile:web": "pnpm --filter @regularity/mobile web",
-    "api": "pnpm --filter @regularity/api dev"
+    "api": "pnpm --filter @regularity/api dev",
+    "update:prod": "cd apps/mobile && eas update --channel production --environment production",
+    "update:preview": "cd apps/mobile && eas update --channel preview --environment preview"
   },
   "devDependencies": {
     "turbo": "^2.5.5",
