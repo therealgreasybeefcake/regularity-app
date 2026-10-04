@@ -9,6 +9,7 @@ import {
   Vibration,
   Platform,
   KeyboardAvoidingView,
+  AppState,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -103,7 +104,14 @@ export default function TimerScreen() {
   const [editModalVisible, setEditModalVisible] = useState(false);
   const [selectedLapIndex, setSelectedLapIndex] = useState<number | null>(null);
   const [editLapValue, setEditLapValue] = useState('');
-  const [rejectedMessage, setRejectedMessage] = useState<string | null>(null);
+  const [rejectedLap, setRejectedLap] = useState<{
+    time: number;
+    recordedAt: number;
+    minTime: number;
+    maxTime: number;
+    safetyCarThreshold: number;
+  } | null>(null);
+  const rejectedLapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [raceInfoModalVisible, setRaceInfoModalVisible] = useState(false);
   const [tempTeamName, setTempTeamName] = useState('');
   const [tempDriverName, setTempDriverName] = useState('');
@@ -137,6 +145,9 @@ export default function TimerScreen() {
   const lastLapTimeRef = useRef<number | null>(null);
   const beforeTargetBeepPlayedRef = useRef(false);
   const afterStartBeepPlayedRef = useRef(false);
+  const beforeTargetTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const afterStartTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLockScreenSecondRef = useRef<number>(-1);
   const pulseAnim = useRef(new Animated.Value(1)).current;
   const initialVolumeRef = useRef<number | null>(null);
   const addLapRef = useRef<(() => void) | undefined>(undefined);
@@ -209,6 +220,21 @@ export default function TimerScreen() {
     }
   }, [showWarning]);
 
+  // Keep app active in foreground sync when switching back from background
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active' && startTimeRef.current && isRunning) {
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTimeRef.current) / 10) / 100;
+        setElapsedTime(elapsed);
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [isRunning]);
+
   useEffect(() => {
     if (isRunning) {
       // Keep screen awake when timer is running
@@ -217,26 +243,30 @@ export default function TimerScreen() {
       intervalRef.current = setInterval(() => {
         const now = Date.now();
         const elapsed = Math.floor((now - (startTimeRef.current || now)) / 10) / 100;
-        setElapsedTime(elapsed);
 
-        // After lap start beep
+        // When in active foreground, update state at 100fps for smooth clock display
+        if (AppState.currentState === 'active') {
+          setElapsedTime(elapsed);
+        }
+
+        // After lap start beep fallback check
         if (
           audioSettings.afterLapStartEnabled &&
           elapsed >= audioSettings.afterLapStart &&
           !afterStartBeepPlayedRef.current &&
-          driver?.laps.length > 0
+          (driver?.laps?.length || 0) > 0
         ) {
           playBeep(true);
           afterStartBeepPlayedRef.current = true;
         }
 
-        // Before target beep
+        // Before target beep fallback check
         if (driver) {
           const timeUntilTarget = driver.targetTime - elapsed;
           if (
             audioSettings.beforeTargetEnabled &&
             timeUntilTarget <= audioSettings.beforeTargetTime &&
-            timeUntilTarget > 0 &&
+            timeUntilTarget > -5 &&
             !beforeTargetBeepPlayedRef.current
           ) {
             playBeep(false);
@@ -248,6 +278,33 @@ export default function TimerScreen() {
           } else {
             setShowWarning(false);
           }
+        }
+
+        // Update pull-down notification / lock screen media controls once every second
+        const currentSec = Math.floor(elapsed);
+        if (currentSec !== lastLockScreenSecondRef.current && keepAlivePlayer) {
+          lastLockScreenSecondRef.current = currentSec;
+          const liveDelta = driver ? elapsed - driver.targetTime : 0;
+          const deltaSign = liveDelta >= 0 ? '+' : '';
+          const targetStr = driver ? formatTime(driver.targetTime) : '—';
+          const lapNum = (driver?.laps?.length || 0) + 1;
+          const meta = {
+            title: `${formatTime(elapsed)} (Target: ${targetStr})`,
+            artist: driver
+              ? `Gap: ${deltaSign}${liveDelta.toFixed(1)}s • Lap #${lapNum}`
+              : `Lap #${lapNum}`,
+            albumTitle: `${driver?.name || 'Driver'} • ${team?.name || 'Race'}`,
+          };
+          try {
+            if (typeof keepAlivePlayer.updateLockScreenMetadata === 'function') {
+              keepAlivePlayer.updateLockScreenMetadata(meta);
+            } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+              keepAlivePlayer.setActiveForLockScreen(true, meta, {
+                showSeekForward: false,
+                showSeekBackward: false,
+              });
+            }
+          } catch (e) {}
         }
       }, 10);
     } else {
@@ -265,25 +322,60 @@ export default function TimerScreen() {
 
   // Keep the silent track playing while a session is running so the audio
   // session stays active and the beep interval keeps firing in the background.
-  // Pause it when stopped (or when no beep could sound) to release audio focus
-  // and avoid unnecessary battery drain.
+  // Also initializes lock screen / pull down media notification controls.
   useEffect(() => {
     if (!keepAlivePlayer) return;
-    if (isRunning && beepsActive) {
+    if (isRunning) {
+      if (setAudioModeAsyncImport) {
+        setAudioModeAsyncImport({
+          playsInSilentMode: true,
+          shouldPlayInBackground: true,
+          interruptionMode: 'doNotMix',
+        }).catch((err) => console.warn('Error setting audio mode:', err));
+      }
+
       try {
         keepAlivePlayer.loop = true;
         keepAlivePlayer.seekTo(0);
         keepAlivePlayer.play();
+
+        const initialTarget = driver ? formatTime(driver.targetTime) : '—';
+        const initialLapNum = (driver?.laps?.length || 0) + 1;
+        const initialMeta = {
+          title: `0:00.000 (Target: ${initialTarget})`,
+          artist: `Lap #${initialLapNum} • ${driver?.name || 'Driver'}`,
+          albumTitle: `${driver?.name || 'Driver'} • ${team?.name || 'Race'}`,
+        };
+        if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+          keepAlivePlayer.setActiveForLockScreen(true, initialMeta, {
+            showSeekForward: false,
+            showSeekBackward: false,
+          });
+        }
       } catch (error) {
-        console.error('Error starting keep-alive audio:', error);
+        console.warn('Error starting keep-alive audio:', error);
       }
     } else {
-      try { keepAlivePlayer.pause(); } catch {}
+      try {
+        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
+          keepAlivePlayer.clearLockScreenControls();
+        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+          keepAlivePlayer.setActiveForLockScreen(false);
+        }
+        keepAlivePlayer.pause();
+      } catch {}
     }
     return () => {
-      try { keepAlivePlayer.pause(); } catch {}
+      try {
+        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
+          keepAlivePlayer.clearLockScreenControls();
+        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+          keepAlivePlayer.setActiveForLockScreen(false);
+        }
+        keepAlivePlayer.pause();
+      } catch {}
     };
-  }, [isRunning, beepsActive]);
+  }, [isRunning, driver?.targetTime, driver?.name, team?.name, team?.raceName]);
 
   // Volume button listener for lap recording
   useEffect(() => {
@@ -377,12 +469,109 @@ export default function TimerScreen() {
     }
   };
 
-  const startStopwatch = () => {
-    startTimeRef.current = Date.now();
-    setElapsedTime(0);
+  const clearBeepTimeouts = () => {
+    if (beforeTargetTimeoutRef.current) {
+      clearTimeout(beforeTargetTimeoutRef.current);
+      beforeTargetTimeoutRef.current = null;
+    }
+    if (afterStartTimeoutRef.current) {
+      clearTimeout(afterStartTimeoutRef.current);
+      afterStartTimeoutRef.current = null;
+    }
+  };
+
+  const scheduleBeeps = (startTime: number, targetTime?: number) => {
+    clearBeepTimeouts();
+    if (!audioSettings.enabled) return;
+
+    const now = Date.now();
+
+    // After lap start beep (double beep)
+    if (audioSettings.afterLapStartEnabled && (driver?.laps?.length || 0) > 0) {
+      const delay = (startTime + audioSettings.afterLapStart * 1000) - now;
+      if (delay > 0) {
+        afterStartTimeoutRef.current = setTimeout(() => {
+          if (!afterStartBeepPlayedRef.current) {
+            playBeep(true);
+            afterStartBeepPlayedRef.current = true;
+          }
+        }, delay);
+      }
+    }
+
+    // Before target beep (single beep)
+    if (audioSettings.beforeTargetEnabled && targetTime && targetTime > 0) {
+      const targetBeepElapsed = targetTime - audioSettings.beforeTargetTime;
+      if (targetBeepElapsed > 0) {
+        const delay = (startTime + targetBeepElapsed * 1000) - now;
+        if (delay > 0) {
+          beforeTargetTimeoutRef.current = setTimeout(() => {
+            if (!beforeTargetBeepPlayedRef.current) {
+              playBeep(false);
+              beforeTargetBeepPlayedRef.current = true;
+            }
+          }, delay);
+        }
+      }
+    }
+  };
+
+  const startStopwatch = (customStartTime?: number) => {
+    const start = customStartTime ?? Date.now();
+    startTimeRef.current = start;
+    const initialElapsed = Math.max(0, Math.floor((Date.now() - start) / 10) / 100);
+    setElapsedTime(initialElapsed);
     setIsRunning(true);
     beforeTargetBeepPlayedRef.current = false;
     afterStartBeepPlayedRef.current = false;
+    lastLockScreenSecondRef.current = -1;
+    scheduleBeeps(start, driver?.targetTime);
+  };
+
+  const overrideRejectedLap = () => {
+    if (!rejectedLap || !driver) return;
+    if (rejectedLapTimerRef.current) {
+      clearTimeout(rejectedLapTimerRef.current);
+      rejectedLapTimerRef.current = null;
+    }
+
+    const lapTime = rejectedLap.time;
+    const recordedAt = rejectedLap.recordedAt;
+    setRejectedLap(null);
+
+    const updatedTeams = [...teams];
+    const currentDriver = updatedTeams[activeTeam].drivers[activeDriver];
+
+    const isChangeover = !!(lastLapTimeRef.current && recordedAt - lastLapTimeRef.current > 180000);
+    const delta = lapTime - currentDriver.targetTime;
+    const lapType = calculateLapType(delta, isChangeover);
+
+    currentDriver.laps.push({
+      number: currentDriver.laps.length + 1,
+      time: lapTime,
+      delta,
+      lapType,
+      lapValue: calculateLapValue(lapType, lapTypeValues),
+      timestamp: recordedAt,
+    });
+
+    setTeams(updatedTeams);
+    lastLapTimeRef.current = recordedAt;
+    if (!isWeb) Vibration.vibrate(500);
+
+    // If timer was running, continue measuring the new lap seamlessly
+    // from the moment the rejected lap was recorded!
+    if (isRunning) {
+      startTimeRef.current = recordedAt;
+      const currentElapsed = Math.max(0, Math.floor((Date.now() - recordedAt) / 10) / 100);
+      setElapsedTime(currentElapsed);
+      beforeTargetBeepPlayedRef.current = false;
+      afterStartBeepPlayedRef.current = false;
+      lastLockScreenSecondRef.current = -1;
+      scheduleBeeps(recordedAt, currentDriver.targetTime);
+    } else {
+      startStopwatch();
+    }
   };
 
   const addLap = () => {
@@ -458,11 +647,23 @@ export default function TimerScreen() {
         if (!isInNormalRange && !isSafetyCar) {
           // Outside allowed range and not a safety car - reject
           if (!isWeb) Vibration.vibrate([0, 100, 100, 100]);
-          setRejectedMessage(`Lap rejected: ${lapTime.toFixed(2)}s outside range (${minTime.toFixed(1)}-${maxTime.toFixed(1)}s, or ${safetyCarThreshold.toFixed(1)}s+ for safety car)`);
-          setTimeout(() => setRejectedMessage(null), 3000);
+          if (rejectedLapTimerRef.current) clearTimeout(rejectedLapTimerRef.current);
+          setRejectedLap({
+            time: lapTime,
+            recordedAt: Date.now(),
+            minTime,
+            maxTime,
+            safetyCarThreshold,
+          });
+          rejectedLapTimerRef.current = setTimeout(() => {
+            setRejectedLap(null);
+          }, 8000);
           return;
         }
       }
+
+      if (rejectedLapTimerRef.current) clearTimeout(rejectedLapTimerRef.current);
+      setRejectedLap(null);
 
       const isChangeover = !!(lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000);
       const delta = lapTime - currentDriver.targetTime;
@@ -489,10 +690,63 @@ export default function TimerScreen() {
     addLapRef.current = addLap;
   });
 
+  const handleStopPress = () => {
+    if (!isRunning) return;
+    showAlert({
+      title: 'Stop Timer',
+      message: 'Are you sure you want to stop the timer?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Stop',
+          style: 'destructive',
+          onPress: () => {
+            setIsRunning(false);
+            clearBeepTimeouts();
+          },
+        },
+      ],
+    });
+  };
+
+  const handleResetPress = () => {
+    if (elapsedTime === 0 && !isRunning) return;
+    showAlert({
+      title: 'Reset Timer',
+      message: isRunning
+        ? 'The timer is currently running. Are you sure you want to stop and reset it to 0.00?'
+        : 'Are you sure you want to reset the elapsed time to 0.00?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reset',
+          style: 'destructive',
+          onPress: () => {
+            resetTimer();
+          },
+        },
+      ],
+    });
+  };
+
   const resetTimer = () => {
     setIsRunning(false);
     setElapsedTime(0);
     if (intervalRef.current) clearInterval(intervalRef.current);
+    clearBeepTimeouts();
+    beforeTargetBeepPlayedRef.current = false;
+    afterStartBeepPlayedRef.current = false;
+    lastLockScreenSecondRef.current = -1;
+    if (keepAlivePlayer) {
+      try {
+        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
+          keepAlivePlayer.clearLockScreenControls();
+        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+          keepAlivePlayer.setActiveForLockScreen(false);
+        }
+        keepAlivePlayer.pause();
+      } catch (e) {}
+    }
   };
 
   const handleStartSession = () => {
@@ -874,11 +1128,53 @@ export default function TimerScreen() {
             <Ionicons name="create-outline" size={20} color={theme.primary as string} />
           </Pressable>
 
-          {/* Rejected lap message */}
-          {rejectedMessage && (
-            <Surface level="base" style={[styles.rejected, { borderColor: theme.danger }]}>
-              <Ionicons name="close-circle" size={18} color={theme.danger as string} />
-              <Text style={[styles.rejectedText, { color: theme.text }]}>{rejectedMessage}</Text>
+          {/* Rejected lap message with Override option */}
+          {rejectedLap && (
+            <Surface
+              level="base"
+              style={[
+                styles.rejected,
+                {
+                  borderColor: theme.danger,
+                  backgroundColor: theme.surfaceElevated,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  paddingVertical: spacing.sm,
+                  paddingHorizontal: spacing.md,
+                },
+              ]}
+            >
+              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginRight: spacing.sm }}>
+                <Ionicons name="warning-outline" size={22} color={theme.danger as string} style={{ marginRight: spacing.sm }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={[styles.rejectedText, { color: theme.text, fontWeight: fontWeights.bold }]}>
+                    Lap rejected: {rejectedLap.time.toFixed(2)}s
+                  </Text>
+                  <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>
+                    Expected {rejectedLap.minTime.toFixed(1)}–{rejectedLap.maxTime.toFixed(1)}s (Safety car: {rejectedLap.safetyCarThreshold.toFixed(1)}s+)
+                  </Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+                <Button
+                  title="Override"
+                  size="sm"
+                  onPress={overrideRejectedLap}
+                  style={{ backgroundColor: theme.accent, paddingHorizontal: spacing.sm, height: 34 }}
+                  textStyle={{ color: '#000', fontWeight: '700', fontSize: 12 }}
+                />
+                <IconButton
+                  icon="close"
+                  size={18}
+                  variant="ghost"
+                  onPress={() => {
+                    if (rejectedLapTimerRef.current) clearTimeout(rejectedLapTimerRef.current);
+                    setRejectedLap(null);
+                  }}
+                  accessibilityLabel="Dismiss rejection message"
+                />
+              </View>
             </Surface>
           )}
 
@@ -948,8 +1244,22 @@ export default function TimerScreen() {
 
           {/* Secondary controls */}
           <View style={styles.secondaryRow}>
-            <Button title="Stop" icon="stop" variant="secondary" onPress={() => setIsRunning(false)} style={{ flex: 1 }} />
-            <Button title="Reset" icon="refresh" variant="secondary" onPress={resetTimer} style={{ flex: 1 }} />
+            <Button
+              title="Stop"
+              icon="stop"
+              variant="secondary"
+              onPress={handleStopPress}
+              disabled={!isRunning}
+              style={[{ flex: 1 }, !isRunning && { opacity: 0.5 }]}
+            />
+            <Button
+              title="Reset"
+              icon="refresh"
+              variant="secondary"
+              onPress={handleResetPress}
+              disabled={elapsedTime === 0 && !isRunning}
+              style={[{ flex: 1 }, elapsedTime === 0 && !isRunning && { opacity: 0.5 }]}
+            />
           </View>
 
           {/* Manual entry */}

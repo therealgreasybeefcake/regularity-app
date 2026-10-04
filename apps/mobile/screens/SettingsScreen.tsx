@@ -457,6 +457,110 @@ function TeamSection({ theme }: { theme: typeof lightTheme }) {
   );
 }
 
+// Toggle row: title (+ optional subtitle) on the left, Switch on the right.
+function ToggleRow({
+  title,
+  subtitle,
+  value,
+  onValueChange,
+  theme,
+}: {
+  title: string;
+  subtitle?: string;
+  value: boolean;
+  onValueChange: (v: boolean) => void;
+  theme: any;
+}) {
+  return (
+    <View style={styles.row}>
+      <View style={styles.rowText}>
+        <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
+        {subtitle ? (
+          <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>{subtitle}</Text>
+        ) : null}
+      </View>
+      <Switch
+        value={value}
+        onValueChange={onValueChange}
+        trackColor={{ false: theme.border as string, true: theme.primary as string }}
+      />
+    </View>
+  );
+}
+
+// Numeric input row using a mono TextField pinned to the right.
+// Holds local state so typing/backspacing is responsive and does not lose focus or snap back immediately.
+function NumberRow({
+  label,
+  value,
+  onCommit,
+  keyboardType = 'number-pad',
+  min = 0,
+  max,
+  allowDecimal = false,
+  theme,
+}: {
+  label: string;
+  value: number;
+  onCommit: (val: number) => void;
+  keyboardType?: 'number-pad' | 'decimal-pad';
+  min?: number;
+  max?: number;
+  allowDecimal?: boolean;
+  theme: any;
+}) {
+  const [text, setText] = useState(String(value ?? ''));
+
+  useEffect(() => {
+    setText(String(value ?? ''));
+  }, [value]);
+
+  const handleChangeText = (val: string) => {
+    const cleaned = allowDecimal ? val.replace(/[^0-9.]/g, '') : val.replace(/[^0-9]/g, '');
+    setText(cleaned);
+    if (cleaned.trim() !== '' && cleaned !== '.') {
+      const num = allowDecimal ? parseFloat(cleaned) : parseInt(cleaned, 10);
+      if (!isNaN(num) && num >= min && (max === undefined || num <= max)) {
+        onCommit(num);
+      }
+    }
+  };
+
+  const handleBlur = () => {
+    if (text.trim() === '' || text === '.') {
+      setText(String(value ?? min));
+      onCommit(value ?? min);
+      return;
+    }
+    const num = allowDecimal ? parseFloat(text) : parseInt(text, 10);
+    if (isNaN(num) || num < min) {
+      setText(String(min));
+      onCommit(min);
+    } else if (max !== undefined && num > max) {
+      setText(String(max));
+      onCommit(max);
+    } else {
+      setText(String(num));
+      onCommit(num);
+    }
+  };
+
+  return (
+    <View style={styles.row}>
+      <Text style={[styles.rowTitle, { color: theme.text, flex: 1, marginRight: spacing.md }]}>{label}</Text>
+      <TextField
+        mono
+        value={text}
+        onChangeText={handleChangeText}
+        onBlur={handleBlur}
+        keyboardType={keyboardType}
+        containerStyle={styles.numberField}
+        style={styles.numberInput}
+      />
+    </View>
+  );
+}
+
 export default function SettingsScreen() {
   const {
     teams,
@@ -757,58 +861,6 @@ export default function SettingsScreen() {
     });
   };
 
-  // Toggle row: title (+ optional subtitle) on the left, Switch on the right.
-  const ToggleRow = ({
-    title,
-    subtitle,
-    value,
-    onValueChange,
-  }: {
-    title: string;
-    subtitle?: string;
-    value: boolean;
-    onValueChange: (v: boolean) => void;
-  }) => (
-    <View style={styles.row}>
-      <View style={styles.rowText}>
-        <Text style={[styles.rowTitle, { color: theme.text }]}>{title}</Text>
-        {subtitle ? (
-          <Text style={[styles.rowSubtitle, { color: theme.textSecondary }]}>{subtitle}</Text>
-        ) : null}
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onValueChange}
-        trackColor={{ false: theme.border as string, true: theme.primary as string }}
-      />
-    </View>
-  );
-
-  // Numeric input row using a mono TextField pinned to the right.
-  const NumberRow = ({
-    label,
-    value,
-    onChangeText,
-    keyboardType = 'number-pad',
-  }: {
-    label: string;
-    value: string;
-    onChangeText: (text: string) => void;
-    keyboardType?: 'number-pad' | 'decimal-pad';
-  }) => (
-    <View style={styles.row}>
-      <Text style={[styles.rowTitle, { color: theme.text, flex: 1, marginRight: spacing.md }]}>{label}</Text>
-      <TextField
-        mono
-        value={value}
-        onChangeText={onChangeText}
-        keyboardType={keyboardType}
-        containerStyle={styles.numberField}
-        style={styles.numberInput}
-      />
-    </View>
-  );
-
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.content}>
@@ -840,6 +892,7 @@ export default function SettingsScreen() {
             subtitle="Jump to the live view when a teammate starts recording"
             value={autoJoinLive}
             onValueChange={setAutoJoinLive}
+            theme={theme}
           />
           <Divider faint />
           <ToggleRow
@@ -847,6 +900,7 @@ export default function SettingsScreen() {
             subtitle="Start the live view with per-lap sounds enabled"
             value={liveSoundDefault}
             onValueChange={setLiveSoundDefault}
+            theme={theme}
           />
         </Collapsible>
 
@@ -860,6 +914,7 @@ export default function SettingsScreen() {
               onValueChange={(value) =>
                 setAudioSettings({ ...audioSettings, volumeButtonsEnabled: value })
               }
+              theme={theme}
             />
           </Collapsible>
         )}
@@ -870,6 +925,7 @@ export default function SettingsScreen() {
             title="Enable Audio"
             value={audioSettings.enabled}
             onValueChange={(value) => setAudioSettings({ ...audioSettings, enabled: value })}
+            theme={theme}
           />
           <Divider faint />
           <ToggleRow
@@ -878,17 +934,20 @@ export default function SettingsScreen() {
             onValueChange={(value) =>
               setAudioSettings({ ...audioSettings, beforeTargetEnabled: value })
             }
+            theme={theme}
           />
           <Divider faint />
           <NumberRow
             label="Seconds before target"
-            value={audioSettings.beforeTargetTime.toString()}
-            onChangeText={(text) =>
+            value={audioSettings.beforeTargetTime}
+            min={1}
+            onCommit={(val) =>
               setAudioSettings({
                 ...audioSettings,
-                beforeTargetTime: parseInt(text) || 10,
+                beforeTargetTime: val,
               })
             }
+            theme={theme}
           />
           <Divider faint />
           <ToggleRow
@@ -897,17 +956,20 @@ export default function SettingsScreen() {
             onValueChange={(value) =>
               setAudioSettings({ ...audioSettings, afterLapStartEnabled: value })
             }
+            theme={theme}
           />
           <Divider faint />
           <NumberRow
             label="Seconds after lap start"
-            value={audioSettings.afterLapStart.toString()}
-            onChangeText={(text) =>
+            value={audioSettings.afterLapStart}
+            min={1}
+            onCommit={(val) =>
               setAudioSettings({
                 ...audioSettings,
-                afterLapStart: parseInt(text) || 15,
+                afterLapStart: val,
               })
             }
+            theme={theme}
           />
         </Collapsible>
 
@@ -920,6 +982,7 @@ export default function SettingsScreen() {
             onValueChange={(value) =>
               setAudioSettings({ ...audioSettings, showPenaltyLaps: value })
             }
+            theme={theme}
           />
         </Collapsible>
 
@@ -951,28 +1014,33 @@ export default function SettingsScreen() {
             onValueChange={(value) =>
               setAudioSettings({ ...audioSettings, lapGuardEnabled: value })
             }
+            theme={theme}
           />
           <Divider faint />
           <NumberRow
             label="+/- seconds from target"
-            value={audioSettings.lapGuardRange.toString()}
-            onChangeText={(text) =>
+            value={audioSettings.lapGuardRange}
+            min={1}
+            onCommit={(val) =>
               setAudioSettings({
                 ...audioSettings,
-                lapGuardRange: parseInt(text) || 10,
+                lapGuardRange: val,
               })
             }
+            theme={theme}
           />
           <Divider faint />
           <NumberRow
             label={`Safety car threshold\n(seconds over target)`}
-            value={audioSettings.lapGuardSafetyCarThreshold.toString()}
-            onChangeText={(text) =>
+            value={audioSettings.lapGuardSafetyCarThreshold}
+            min={1}
+            onCommit={(val) =>
               setAudioSettings({
                 ...audioSettings,
-                lapGuardSafetyCarThreshold: parseInt(text) || 30,
+                lapGuardSafetyCarThreshold: val,
               })
             }
+            theme={theme}
           />
           {audioSettings.lapGuardEnabled && (
             <>
@@ -991,14 +1059,16 @@ export default function SettingsScreen() {
             <React.Fragment key={key}>
               <NumberRow
                 label={key.charAt(0).toUpperCase() + key.slice(1)}
-                value={value.toString()}
+                value={value}
+                allowDecimal
                 keyboardType="decimal-pad"
-                onChangeText={(text) =>
+                onCommit={(val) =>
                   setLapTypeValues({
                     ...lapTypeValues,
-                    [key]: parseFloat(text) || 0,
+                    [key]: val,
                   })
                 }
+                theme={theme}
               />
               {idx < arr.length - 1 && <Divider faint />}
             </React.Fragment>
