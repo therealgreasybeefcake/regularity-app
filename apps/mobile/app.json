@@ -19,6 +19,7 @@
       "bundleIdentifier": "com.regularity.racetimer",
       "buildNumber": "1",
       "usesAppleSignIn": true,
+      "runtimeVersion": "39725300a5f85ff40b150953a03e572b6d781526",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -33,14 +34,12 @@
         "WAKE_LOCK",
         "MODIFY_AUDIO_SETTINGS"
       ],
+      "runtimeVersion": "2f7e0f18e35966239f05422156dcc8be5e6dda45",
       "versionCode": 2
     },
     "scheme": "regularity",
     "updates": {
       "url": "https://u.expo.dev/9518c45d-1858-4d87-908f-106cd5784128"
-    },
-    "runtimeVersion": {
-      "policy": "fingerprint"
     },
     "plugins": [
       "expo-router",
