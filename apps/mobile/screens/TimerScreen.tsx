@@ -282,7 +282,10 @@ export default function TimerScreen() {
           elapsed >= afterLapSec &&
           !afterStartBeepPlayedRef.current
         ) {
-          playBeep(true);
+          // Only play audio beep if within 2.5s window; if resuming long after, don't play stale beep
+          if (elapsed < afterLapSec + 2.5) {
+            playBeep(true);
+          }
           afterStartBeepPlayedRef.current = true;
         }
 
@@ -295,7 +298,10 @@ export default function TimerScreen() {
             timeUntilTarget > -5 &&
             !beforeTargetBeepPlayedRef.current
           ) {
-            playBeep(false);
+            // Only play if approaching target in real-time, not if resuming long after
+            if (timeUntilTarget >= beforeTargetSec - 3.0) {
+              playBeep(false);
+            }
             beforeTargetBeepPlayedRef.current = true;
           }
 
@@ -565,13 +571,13 @@ export default function TimerScreen() {
           }
         }, delay);
 
-        // Schedule OS-level date-triggered notification so warning NEVER fails when backgrounded or locked
-        const triggerDate = new Date(startTime + afterLapSec * 1000);
+        // Schedule OS-level time-interval notification so warning NEVER fails when backgrounded or locked
+        const delaySeconds = delay / 1000;
         void TimerNotificationService.scheduleWarning(
           WARNING_15S_ID,
           '⚠️ 15s Lap Warning',
           '15 seconds after lap start',
-          triggerDate
+          delaySeconds
         );
       }
     }
@@ -589,13 +595,13 @@ export default function TimerScreen() {
             }
           }, delay);
 
-          // Schedule OS-level date-triggered notification for target approach
-          const triggerDate = new Date(startTime + targetBeepElapsed * 1000);
+          // Schedule OS-level time-interval notification for target approach
+          const delaySeconds = delay / 1000;
           void TimerNotificationService.scheduleWarning(
             WARNING_TARGET_ID,
             '⚠️ Target Time Warning',
             driver ? `${driver.name} approaching target (${formatTime(targetTime)})` : 'Approaching target time',
-            triggerDate
+            delaySeconds
           );
         }
       }

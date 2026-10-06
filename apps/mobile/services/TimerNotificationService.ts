@@ -143,12 +143,14 @@ class TimerNotificationServiceClass {
     return this.update(title, body, true);
   }
 
-  async scheduleWarning(id: string, title: string, body: string, triggerDate: Date) {
+  async scheduleWarning(id: string, title: string, body: string, delaySeconds: number) {
     if (Platform.OS === 'web' || !Notifications) return;
     if (!this.isConfigured) await this.init();
 
     const permitted = await this.ensurePermission();
     if (!permitted) return;
+
+    const seconds = Math.max(1, Math.round(delaySeconds));
 
     try {
       if (Notifications.scheduleNotificationAsync) {
@@ -159,11 +161,17 @@ class TimerNotificationServiceClass {
             body,
             sound: true,
             priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
+            interruptionLevel: 'timeSensitive',
             color: '#dc2626',
             ...(Platform.OS === 'android' ? { channelId: ALERT_CHANNEL_ID } : {}),
           },
-          trigger: triggerDate,
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
+            seconds,
+            repeats: false,
+          },
         });
+        console.log(`[TimerNotificationService] Scheduled warning "${id}" in ${seconds}s`);
       }
     } catch (err) {
       console.warn('[TimerNotificationService] scheduleWarning error:', err);
