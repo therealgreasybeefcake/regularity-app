@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, useWindowDimensions } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -15,6 +15,7 @@ import { LiveDot } from '../../components/ui';
 
 const monoBold = fonts.monoBold;
 const monoMed = fonts.monoMedium;
+const monoExtra = fonts.monoExtraBold;
 
 // Palette derived from the active app theme so the live view follows light/dark.
 type LivePalette = ReturnType<typeof palette>;
@@ -33,6 +34,7 @@ function palette(theme: ReturnType<typeof useTheme>['theme']) {
     blue: String(theme.base),
     accent: String(theme.accent),
     live: String(theme.livePulse),
+    warning: String(theme.warning),
   };
 }
 
@@ -41,32 +43,32 @@ export default function LiveView() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { theme } = useTheme();
+  const { width: windowWidth } = useWindowDimensions();
+  const isWide = windowWidth >= 860;
+
   const { liveSoundDefault, memberships, liveSession, endLiveSession, discardLiveSession } = useApp();
   const { showAlert } = useAlert();
   const C = useMemo(() => palette(theme), [theme]);
-  const styles = useMemo(() => makeStyles(C), [C]);
+  const styles = useMemo(() => makeStyles(C, isWide), [C, isWide]);
   const deltaColor = (delta: number) => (delta < 0 ? C.red : delta < 1 ? C.green : C.blue);
 
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
   const [notFound, setNotFound] = useState(false);
-  const [soundOn, setSoundOn] = useState(liveSoundDefault); // default from user preference
+  const [soundOn, setSoundOn] = useState(liveSoundDefault);
   const [ending, setEnding] = useState(false);
+  const [focusedDriverId, setFocusedDriverId] = useState<string | null>(null);
+
   const snapRef = useRef<LiveSnapshot | null>(null);
   snapRef.current = snap;
   const soundOnRef = useRef(false);
   soundOnRef.current = soundOn;
   const redirectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Role for the session's OWN team (looked up in all memberships — the session
-  // may belong to a team that isn't the active one).
   const myRole = useMemo(() => memberships.find((m) => m.id === snap?.teamId)?.role ?? null, [memberships, snap?.teamId]);
-  const canManage = snap?.status === 'live' && canEditTeam(myRole); // admin|owner only (UI gate; server enforces its own)
+  const canManage = snap?.status === 'live' && canEditTeam(myRole);
   const isRecorder = !!liveSession && liveSession.publicToken === publicToken;
 
-  // Ticking clock so the live "current lap" timer counts up (only while live).
-  // requestAnimationFrame (≈60fps) instead of a fixed interval, so the 2nd
-  // decimal moves smoothly rather than stepping in coarse 0.05s jumps.
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (snap?.status !== 'live') return;
@@ -79,7 +81,6 @@ export default function LiveView() {
     return () => cancelAnimationFrame(raf);
   }, [snap?.status]);
 
-  // When a session ends (or its link is gone), return to the portal after a beat.
   const goToPortal = () => {
     if (redirectTimer.current) return;
     redirectTimer.current = setTimeout(() => router.replace('/(app)/(tabs)' as any), 2200);
@@ -88,19 +89,19 @@ export default function LiveView() {
   const toggleSound = () => {
     const next = !soundOn;
     setSoundOn(next);
-    if (next) ensureLiveAudio(); // this tap is the user gesture that unlocks audio
+    if (next) ensureLiveAudio();
   };
 
   const markEnded = () => {
-    setSnap((prev) => (prev ? { ...prev, status: 'ended' as const } : prev)); // instant flip — native poll lags 3s
-    goToPortal(); // idempotent via redirectTimer
+    setSnap((prev) => (prev ? { ...prev, status: 'ended' as const } : prev));
+    goToPortal();
   };
 
   const doEnd = async () => {
     if (!snap || ending) return;
     setEnding(true);
     try {
-      if (isRecorder) await endLiveSession(); // recorder: tears down local state + queues the end op
+      if (isRecorder) await endLiveSession();
       else await api.post(`/api/sessions/${snap.id}/end`);
       markEnded();
     } catch {
@@ -147,8 +148,6 @@ export default function LiveView() {
     });
   };
 
-  // Unmuted by default — but browsers block audio until a user gesture, so unlock
-  // the Web Audio context on the first interaction anywhere on the page.
   useEffect(() => {
     ensureLiveAudio();
     const doc = (globalThis as any).document;
@@ -182,7 +181,6 @@ export default function LiveView() {
       },
       onLap: (lap) => {
         const n = normalizeLap(lap);
-        // Sound only for genuinely new laps (server may re-send on reconnect).
         const already = snapRef.current?.drivers
           .find((d) => d.id === n.sessionDriverId)
           ?.laps.some((l) => l.number === n.number);
@@ -193,7 +191,7 @@ export default function LiveView() {
             ...prev,
             drivers: prev.drivers.map((d) => {
               if (d.id !== n.sessionDriverId) return d;
-              if (d.laps.some((l) => l.number === n.number)) return d; // dedupe
+              if (d.laps.some((l) => l.number === n.number)) return d;
               return { ...d, laps: [...d.laps, { number: n.number, time: n.time, delta: n.delta, lapType: n.lapType, lapValue: n.lapValue, timestamp: n.timestamp }] };
             }),
           };
@@ -212,7 +210,6 @@ export default function LiveView() {
     };
   }, [publicToken]);
 
-  // Recompute stats live, reusing the shared core scoring.
   const { drivers, teamStats, recent } = useMemo(() => {
     if (!snap) return { drivers: [], teamStats: { percentageFactor: 0, achievedLaps: 0, goalLaps: 0 }, recent: [] as any[] };
     const coreDrivers: CoreDriver[] = snap.drivers.map((d, i) => ({
@@ -234,13 +231,37 @@ export default function LiveView() {
     const recentLaps = snap.drivers
       .flatMap((d) => d.laps.map((l) => ({ driver: d.name, ...l })))
       .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 12);
+      .slice(0, 16);
     return {
       drivers: withStats,
       teamStats: { percentageFactor: goal > 0 ? (achieved / goal) * 100 : 0, achievedLaps: achieved, goalLaps: goal },
       recent: recentLaps,
     };
   }, [snap]);
+
+  // Identify active driver on track (most recent lap, or explicitly focused driver)
+  const activeDriver = useMemo(() => {
+    if (drivers.length === 0) return null;
+    if (focusedDriverId) {
+      const found = drivers.find((x) => x.d.id === focusedDriverId);
+      if (found) return found;
+    }
+    let latest = drivers[0];
+    let latestTime = -1;
+    for (const item of drivers) {
+      if (item.last && item.last.timestamp > latestTime) {
+        latestTime = item.last.timestamp;
+        latest = item;
+      }
+    }
+    return latest;
+  }, [drivers, focusedDriverId]);
+
+  // Standby drivers (all other team drivers)
+  const standbyDrivers = useMemo(() => {
+    if (!activeDriver) return [];
+    return drivers.filter((x) => x.d.id !== activeDriver.d.id);
+  }, [drivers, activeDriver]);
 
   if (notFound) {
     return (
@@ -262,111 +283,292 @@ export default function LiveView() {
   }
 
   const isLive = snap.status === 'live';
+  const progressRatio = teamStats.goalLaps > 0 ? Math.min(100, Math.max(0, (teamStats.achievedLaps / teamStats.goalLaps) * 100)) : 0;
 
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
+      {/* Sticky top pit header */}
       <View style={[styles.headerWrap, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.kicker}>{snap.sessionNumber ? `SESSION ${snap.sessionNumber}` : 'LIVE TIMING'}</Text>
+            <View style={styles.titleBadgeRow}>
+              <Text style={styles.kicker}>
+                {snap.sessionNumber ? `SESSION ${snap.sessionNumber}` : 'LIVE TIMING'} · PIT TELEMETRY
+              </Text>
+            </View>
             <Text style={styles.title} numberOfLines={1}>{snap.raceName || 'Regularity Session'}</Text>
           </View>
-          {canManage && (
+
+          <View style={styles.headerActions}>
+            {canManage && (
+              <Pressable
+                onPress={confirmEnd}
+                disabled={ending}
+                style={[styles.headerBtn, { borderColor: C.red }, ending && { opacity: 0.5 }]}
+                accessibilityLabel="End live session"
+              >
+                {ending ? <ActivityIndicator size="small" color={C.red} /> : <Ionicons name="stop" size={16} color={C.red} />}
+              </Pressable>
+            )}
             <Pressable
-              onPress={confirmEnd}
-              disabled={ending}
-              style={[styles.soundBtn, { borderColor: C.red }, ending && { opacity: 0.5 }]}
-              accessibilityLabel="End live session"
+              onPress={toggleSound}
+              style={styles.headerBtn}
+              accessibilityLabel={soundOn ? 'Mute lap sounds' : 'Enable lap sounds'}
             >
-              {ending ? <ActivityIndicator size="small" color={C.red} /> : <Ionicons name="stop" size={16} color={C.red} />}
+              <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={16} color={soundOn ? C.accent : C.dim} />
             </Pressable>
-          )}
-          <Pressable
-            onPress={toggleSound}
-            style={styles.soundBtn}
-            accessibilityLabel={soundOn ? 'Mute lap sounds' : 'Enable lap sounds'}
-          >
-            <Ionicons name={soundOn ? 'volume-high' : 'volume-mute'} size={16} color={soundOn ? C.accent : C.dim} />
-          </Pressable>
-          <View style={[styles.badge, isLive && { borderColor: C.live }]}>
-            <LiveDot size={8} color={isLive ? C.live : C.dim} active={isLive} />
-            <Text style={[styles.badgeText, { color: isLive ? C.live : C.dim }]}>{isLive ? 'LIVE' : 'ENDED'}</Text>
+            <View style={[styles.badge, isLive && { borderColor: C.live, backgroundColor: `${C.live}14` }]}>
+              <LiveDot size={8} color={isLive ? C.live : C.dim} active={isLive} />
+              <Text style={[styles.badgeText, { color: isLive ? C.live : C.dim }]}>{isLive ? 'LIVE' : 'ENDED'}</Text>
+            </View>
           </View>
         </View>
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.factorCard}>
-          <Text style={styles.factorLabel}>% FACTOR</Text>
-          <Text style={styles.factorValue}>{teamStats.percentageFactor.toFixed(1)}</Text>
-          <Text style={styles.dim}>{teamStats.achievedLaps.toFixed(0)} / {teamStats.goalLaps.toFixed(0)} goal laps · {connected ? 'connected' : 'reconnecting…'}</Text>
-        </View>
+        {/* Cockpit Split: Active Driver Hero (Main) + Prominent % Factor */}
+        <View style={styles.dashboardSplit}>
+          {/* Active Driver Hero Card */}
+          {activeDriver ? (
+            <View style={styles.heroCard}>
+              <View style={styles.heroHeader}>
+                <View style={styles.heroDriverIdentity}>
+                  <View style={styles.onTrackBadge}>
+                    <LiveDot size={8} color={C.live} active={isLive} />
+                    <Text style={styles.onTrackText}>ON TRACK</Text>
+                  </View>
+                  <Text style={styles.heroDriverName} numberOfLines={1}>{activeDriver.d.name}</Text>
+                  {activeDriver.d.targetTime > 0 && (
+                    <View style={styles.targetBadge}>
+                      <Text style={styles.targetBadgeText}>🎯 TARGET {formatTime(activeDriver.d.targetTime)}</Text>
+                    </View>
+                  )}
+                </View>
+                <View style={styles.heroLapPill}>
+                  <Text style={styles.heroLapPillText}>
+                    {activeDriver.d.laps.length > 0 ? `LAP ${activeDriver.d.laps.length + 1}` : 'OUT LAP'}
+                  </Text>
+                </View>
+              </View>
 
-        {drivers.map(({ d, stats, last }) => (
-          <View key={d.id} style={styles.driverCard}>
-            <View style={styles.driverHeader}>
-              <Text style={styles.driverName} numberOfLines={1}>{d.name}</Text>
-              <Text style={styles.lapCount}>{d.laps.length} LAPS</Text>
-            </View>
-            <View style={styles.driverBody}>
-              <View style={styles.lastLap}>
-                <Text style={styles.metricLabel}>{isLive && last ? 'CURRENT LAP' : 'LAST LAP'}</Text>
-                {isLive && last ? (
-                  <>
-                    <Text style={[styles.lapTime, { color: C.live }]} numberOfLines={1} adjustsFontSizeToFit>{fmtElapsed(now - last.timestamp)}</Text>
-                    <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]} numberOfLines={1}>
-                      last {formatTime(last.time)} · {last.delta >= 0 ? '+' : ''}{last.delta.toFixed(2)}s
-                    </Text>
-                  </>
-                ) : last ? (
-                  <>
-                    <Text style={[styles.lapTime, { color: C.text }]} numberOfLines={1} adjustsFontSizeToFit>{formatTime(last.time)}</Text>
-                    <Text style={[styles.lapDelta, { color: deltaColor(last.delta) }]} numberOfLines={1}>
-                      {last.delta >= 0 ? '+' : ''}{last.delta.toFixed(2)}s
-                    </Text>
-                  </>
+              {/* Huge Live Clock Display */}
+              <View style={styles.clockSection}>
+                <Text style={styles.clockSubLabel}>CURRENT LAP TIME</Text>
+                <Text style={styles.giantClock} numberOfLines={1} adjustsFontSizeToFit>
+                  {isLive && activeDriver.last
+                    ? fmtElapsed(now - activeDriver.last.timestamp)
+                    : activeDriver.last
+                    ? formatTime(activeDriver.last.time)
+                    : '0:00.00'}
+                </Text>
+
+                {/* Previous lap bar */}
+                {activeDriver.last ? (
+                  <View style={styles.lastLapBanner}>
+                    <Text style={styles.lastLapTitle}>LAST LAP:</Text>
+                    <Text style={styles.lastLapTime}>{formatTime(activeDriver.last.time)}</Text>
+                    <View style={[styles.lastLapDeltaPill, { backgroundColor: `${deltaColor(activeDriver.last.delta)}22`, borderColor: deltaColor(activeDriver.last.delta) }]}>
+                      <Text style={[styles.lastLapDeltaText, { color: deltaColor(activeDriver.last.delta) }]}>
+                        {activeDriver.last.delta >= 0 ? '+' : ''}{activeDriver.last.delta.toFixed(2)}s
+                      </Text>
+                    </View>
+                    <View style={[styles.lapTypeBadge, { backgroundColor: `${deltaColor(activeDriver.last.delta)}18` }]}>
+                      <Text style={[styles.lapTypeText, { color: deltaColor(activeDriver.last.delta) }]}>
+                        {activeDriver.last.lapType.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
                 ) : (
-                  <>
-                    <Text style={[styles.lapTime, { color: C.text }]}>—</Text>
-                    <Text style={styles.dim}>no laps yet</Text>
-                  </>
+                  <View style={styles.lastLapBanner}>
+                    <Text style={styles.dim}>Out lap in progress · Telemetry waiting for lap 1</Text>
+                  </View>
                 )}
               </View>
-              <View style={styles.metrics}>
-                <Metric styles={styles} label="AVG Δ" value={`${stats.averageDelta >= 0 ? '+' : ''}${stats.averageDelta.toFixed(2)}`} />
-                <Metric styles={styles} label="3-LAP" value={stats.threelapAvg == null ? '—' : `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(2)}`} />
-                <Metric styles={styles} label="ACHIEVED" value={stats.achievedLaps.toFixed(0)} />
+
+              {/* Hero telemetry metrics row */}
+              <View style={styles.heroMetricsRow}>
+                <View style={styles.heroMetricItem}>
+                  <Text style={styles.metricLabel}>AVG Δ</Text>
+                  <Text style={[styles.heroMetricValue, { color: deltaColor(activeDriver.stats.averageDelta) }]}>
+                    {activeDriver.stats.averageDelta >= 0 ? '+' : ''}{activeDriver.stats.averageDelta.toFixed(2)}s
+                  </Text>
+                </View>
+                <View style={styles.heroMetricItem}>
+                  <Text style={styles.metricLabel}>3-LAP AVG</Text>
+                  <Text style={styles.heroMetricValue}>
+                    {activeDriver.stats.threelapAvg == null ? '—' : `${activeDriver.stats.threelapAvg >= 0 ? '+' : ''}${activeDriver.stats.threelapAvg.toFixed(2)}s`}
+                  </Text>
+                </View>
+                <View style={styles.heroMetricItem}>
+                  <Text style={styles.metricLabel}>ACHIEVED</Text>
+                  <Text style={[styles.heroMetricValue, { color: C.green }]}>
+                    {activeDriver.stats.achievedLaps.toFixed(0)} <Text style={styles.heroMetricUnit}>/ {activeDriver.stats.goalLaps.toFixed(0)}</Text>
+                  </Text>
+                </View>
+                <View style={styles.heroMetricItem}>
+                  <Text style={styles.metricLabel}>COMPLETED</Text>
+                  <Text style={styles.heroMetricValue}>
+                    {activeDriver.d.laps.length} <Text style={styles.heroMetricUnit}>laps</Text>
+                  </Text>
+                </View>
+              </View>
+            </View>
+          ) : null}
+
+          {/* Prominent % Factor Card */}
+          <View style={styles.factorCard}>
+            <View style={styles.factorHeader}>
+              <View>
+                <Text style={styles.factorLabel}>% FACTOR</Text>
+                <Text style={styles.factorSub}>OVERALL EFFICIENCY</Text>
+              </View>
+              <View style={[styles.connBadge, { borderColor: connected ? C.live : C.warning }]}>
+                <View style={[styles.connDot, { backgroundColor: connected ? C.live : C.warning }]} />
+                <Text style={[styles.connText, { color: connected ? C.live : C.warning }]}>
+                  {connected ? 'CONNECTED' : 'OFFLINE'}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.factorValueContainer}>
+              <Text style={styles.giantFactor} numberOfLines={1} adjustsFontSizeToFit>
+                {teamStats.percentageFactor.toFixed(1)}
+                <Text style={styles.factorPercentSign}>%</Text>
+              </Text>
+            </View>
+
+            {/* Custom progress bar */}
+            <View style={styles.progressBarTrack}>
+              <View style={[styles.progressBarFill, { width: `${progressRatio}%` }]} />
+            </View>
+
+            <View style={styles.factorStatsGrid}>
+              <View style={styles.factorStatBox}>
+                <Text style={styles.factorStatLabel}>ACHIEVED</Text>
+                <Text style={styles.factorStatNumber}>{teamStats.achievedLaps.toFixed(0)}</Text>
+              </View>
+              <View style={styles.factorStatBox}>
+                <Text style={styles.factorStatLabel}>GOAL LAPS</Text>
+                <Text style={styles.factorStatNumber}>{teamStats.goalLaps.toFixed(0)}</Text>
+              </View>
+              <View style={styles.factorStatBox}>
+                <Text style={styles.factorStatLabel}>REMAINING</Text>
+                <Text style={styles.factorStatNumber}>
+                  {Math.max(0, teamStats.goalLaps - teamStats.achievedLaps).toFixed(0)}
+                </Text>
+              </View>
+              <View style={styles.factorStatBox}>
+                <Text style={styles.factorStatLabel}>SESSION</Text>
+                <Text style={styles.factorStatNumber}>{snap.sessionDurationMin || 120}m</Text>
               </View>
             </View>
           </View>
-        ))}
-
-        <Text style={styles.sectionTitle}>RECENT LAPS</Text>
-        <View style={styles.feed}>
-          {recent.length === 0 ? (
-            <Text style={[styles.dim, { padding: 16 }]}>Waiting for laps…</Text>
-          ) : (
-            recent.map((l, i) => (
-              <View key={`${l.driver}-${l.number}-${i}`} style={[styles.feedRow, i === recent.length - 1 && { borderBottomWidth: 0 }]}>
-                <Text style={[styles.feedDriver]} numberOfLines={1}>{l.driver}</Text>
-                <Text style={styles.feedTime} numberOfLines={1} adjustsFontSizeToFit>{formatTime(l.time)}</Text>
-                <Text style={[styles.feedDelta, { color: deltaColor(l.delta) }]} numberOfLines={1} adjustsFontSizeToFit>
-                  {l.delta >= 0 ? '+' : ''}{l.delta.toFixed(2)}
-                </Text>
-                <Text style={[styles.feedType, { color: deltaColor(l.delta) }]} numberOfLines={1}>{l.lapType.toUpperCase()}</Text>
-              </View>
-            ))
-          )}
         </View>
+
+        {/* Standby / Non-Active Drivers Section (Subdued & Compact) */}
+        {standbyDrivers.length > 0 && (
+          <View style={styles.standbySection}>
+            <View style={styles.sectionHeaderRow}>
+              <Text style={styles.sectionTitle}>STANDBY DRIVERS</Text>
+              <Text style={styles.sectionHint}>Tap driver to switch focus</Text>
+            </View>
+
+            <View style={styles.standbyGrid}>
+              {standbyDrivers.map(({ d, stats, last }) => (
+                <Pressable
+                  key={d.id}
+                  style={styles.standbyCard}
+                  onPress={() => setFocusedDriverId(d.id)}
+                  accessibilityLabel={`Focus on driver ${d.name}`}
+                >
+                  <View style={styles.standbyCardHeader}>
+                    <View style={styles.standbyIdentity}>
+                      <Text style={styles.standbyName} numberOfLines={1}>{d.name}</Text>
+                      <View style={styles.standbyPill}>
+                        <Text style={styles.standbyPillText}>STANDBY</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.standbyLapCount}>{d.laps.length} LAPS</Text>
+                  </View>
+
+                  <View style={styles.standbyDetailsRow}>
+                    <View style={styles.standbyMetric}>
+                      <Text style={styles.standbyMetricLabel}>TARGET</Text>
+                      <Text style={styles.standbyMetricValue}>{d.targetTime > 0 ? formatTime(d.targetTime) : '—'}</Text>
+                    </View>
+                    <View style={styles.standbyMetric}>
+                      <Text style={styles.standbyMetricLabel}>LAST LAP</Text>
+                      <Text style={styles.standbyMetricValue}>
+                        {last ? formatTime(last.time) : '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.standbyMetric}>
+                      <Text style={styles.standbyMetricLabel}>AVG Δ</Text>
+                      <Text style={[styles.standbyMetricValue, { color: last ? deltaColor(stats.averageDelta) : C.text }]}>
+                        {last ? `${stats.averageDelta >= 0 ? '+' : ''}${stats.averageDelta.toFixed(2)}s` : '—'}
+                      </Text>
+                    </View>
+                    <View style={styles.standbyMetric}>
+                      <Text style={styles.standbyMetricLabel}>ACHIEVED</Text>
+                      <Text style={[styles.standbyMetricValue, { color: C.green }]}>
+                        {stats.achievedLaps.toFixed(0)}
+                      </Text>
+                    </View>
+                  </View>
+                </Pressable>
+              ))}
+            </View>
+          </View>
+        )}
+
+        {/* Recent Laps Telemetry Table */}
+        <View style={styles.recentSection}>
+          <View style={styles.sectionHeaderRow}>
+            <Text style={styles.sectionTitle}>RECENT LAPS</Text>
+            <Text style={styles.sectionHint}>Live telemetry stream</Text>
+          </View>
+
+          <View style={styles.feed}>
+            {recent.length === 0 ? (
+              <Text style={[styles.dim, { padding: 18, textAlign: 'center' }]}>Waiting for live lap recordings…</Text>
+            ) : (
+              <View>
+                {/* Table Header Row */}
+                <View style={styles.feedHeaderRow}>
+                  <Text style={[styles.feedHeaderCell, { flex: 1.2 }]}>DRIVER</Text>
+                  <Text style={[styles.feedHeaderCell, { width: 50, textAlign: 'center' }]}>LAP</Text>
+                  <Text style={[styles.feedHeaderCell, { width: 90, textAlign: 'right' }]}>TIME</Text>
+                  <Text style={[styles.feedHeaderCell, { width: 75, textAlign: 'right' }]}>DELTA</Text>
+                  <Text style={[styles.feedHeaderCell, { width: 95, textAlign: 'right' }]}>TYPE</Text>
+                </View>
+
+                {recent.map((l, i) => (
+                  <View key={`${l.driver}-${l.number}-${i}`} style={[styles.feedRow, i === recent.length - 1 && { borderBottomWidth: 0 }]}>
+                    <Text style={styles.feedDriver} numberOfLines={1}>{l.driver}</Text>
+                    <Text style={styles.feedLapNumber}>#{l.number}</Text>
+                    <Text style={styles.feedTime} numberOfLines={1}>{formatTime(l.time)}</Text>
+                    <Text style={[styles.feedDelta, { color: deltaColor(l.delta) }]} numberOfLines={1}>
+                      {l.delta >= 0 ? '+' : ''}{l.delta.toFixed(2)}s
+                    </Text>
+                    <View style={[styles.feedTypePill, { backgroundColor: `${deltaColor(l.delta)}18`, borderColor: `${deltaColor(l.delta)}33` }]}>
+                      <Text style={[styles.feedType, { color: deltaColor(l.delta) }]} numberOfLines={1}>
+                        {l.lapType.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+        </View>
+
         <View style={{ height: 40 }} />
       </ScrollView>
     </View>
   );
 }
 
-// Elapsed current-lap time, ticking. "S.ss" under a minute, "M:SS.ss" under an
-// hour, "H:MM:SS" beyond (centiseconds are noise at that scale) — and an em-dash
-// once the "current lap" is a day old: that's a stale session, not a lap.
+// Elapsed current-lap time ticking (60fps)
 function fmtElapsed(ms: number): string {
   const s = Math.max(0, ms) / 1000;
   if (s < 60) return `${s.toFixed(2)}s`;
@@ -381,53 +583,509 @@ function fmtElapsed(ms: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-function Metric({ label, value, styles }: { label: string; value: string; styles: ReturnType<typeof makeStyles> }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel} numberOfLines={1}>{label}</Text>
-      <Text style={styles.metricValue} numberOfLines={1} adjustsFontSizeToFit>{value}</Text>
-    </View>
-  );
-}
-
-function makeStyles(C: LivePalette) {
+function makeStyles(C: LivePalette, isWide: boolean) {
   return StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
-    container: { padding: 16, maxWidth: 720, width: '100%', alignSelf: 'center' },
-    kicker: { color: C.accent, fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 3 },
-    title: { color: C.text, fontSize: 24, fontWeight: '800', letterSpacing: 0.2 },
+    container: {
+      paddingHorizontal: isWide ? 24 : 16,
+      paddingTop: 16,
+      maxWidth: isWide ? 1320 : 720,
+      width: '100%',
+      alignSelf: 'center',
+    },
     dim: { color: C.dim, fontSize: 13 },
-    // Header lives OUTSIDE the ScrollView so content can never scroll up over
-    // the status bar; it repeats container's centering for the web layout.
-    headerWrap: { backgroundColor: C.bg, paddingBottom: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.borderFaint },
-    headerRow: { flexDirection: 'row', alignItems: 'center', maxWidth: 720, width: '100%', alignSelf: 'center', paddingHorizontal: 16 },
-    badge: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.elevated },
-    soundBtn: { width: 36, height: 36, borderRadius: 999, borderWidth: 1, borderColor: C.border, backgroundColor: C.elevated, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
+    headerWrap: {
+      backgroundColor: C.bg,
+      paddingBottom: 10,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: C.borderFaint,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      maxWidth: isWide ? 1320 : 720,
+      width: '100%',
+      alignSelf: 'center',
+      paddingHorizontal: isWide ? 24 : 16,
+    },
+    titleBadgeRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    kicker: { color: C.accent, fontSize: 11, fontWeight: '800', letterSpacing: 2, marginBottom: 2 },
+    title: { color: C.text, fontSize: isWide ? 26 : 22, fontWeight: '800', letterSpacing: -0.3 },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+    headerBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: C.border,
+      backgroundColor: C.elevated,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    badge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 7,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: C.border,
+      backgroundColor: C.elevated,
+    },
     badgeText: { fontSize: 12, fontWeight: '800', letterSpacing: 1.5 },
-    factorCard: { backgroundColor: C.panel, borderRadius: 18, padding: 22, alignItems: 'center', borderWidth: 1, borderColor: C.border, marginBottom: 16 },
-    factorLabel: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700' },
-    factorValue: { color: C.text, fontSize: 60, fontFamily: fonts.monoExtraBold, marginVertical: 6, letterSpacing: -2 },
-    driverCard: { backgroundColor: C.panel, borderRadius: 16, padding: 16, borderWidth: 1, borderColor: C.border, marginBottom: 12 },
-    driverHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
-    driverName: { color: C.text, fontSize: 18, fontWeight: '700', flex: 1 },
-    lapCount: { color: C.dim, fontSize: 11, fontWeight: '700', letterSpacing: 1 },
-    // Lap time on top, metrics in an evenly-spread row below — stacking avoids
-    // the big mono lap time and the three metrics fighting for width (and
-    // wrapping) on narrow phone screens.
-    driverBody: {},
-    lastLap: {},
-    lapTime: { fontSize: 32, fontFamily: monoBold, letterSpacing: -1 },
-    lapDelta: { fontSize: 16, fontFamily: monoBold, marginTop: 2 },
-    metrics: { flexDirection: 'row', marginTop: 14, gap: 12 },
-    metric: { flex: 1, alignItems: 'flex-start' },
-    metricLabel: { color: C.muted, fontSize: 10, letterSpacing: 1, fontWeight: '700' },
-    metricValue: { color: C.text, fontSize: 16, fontFamily: monoBold, marginTop: 3 },
-    sectionTitle: { color: C.dim, fontSize: 11, letterSpacing: 2.5, fontWeight: '700', marginTop: 10, marginBottom: 8, marginLeft: 4 },
-    feed: { backgroundColor: C.panel, borderRadius: 16, borderWidth: 1, borderColor: C.border, overflow: 'hidden' },
-    feedRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 14, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.borderFaint },
-    feedDriver: { color: C.text, flex: 1, fontSize: 14, fontWeight: '600' },
-    feedTime: { color: C.text, fontFamily: monoMed, fontSize: 14, width: 92, textAlign: 'right' },
-    feedDelta: { fontFamily: monoBold, fontSize: 14, width: 64, textAlign: 'right' },
-    feedType: { fontSize: 10, fontWeight: '800', width: 80, textAlign: 'right', letterSpacing: 0.5 },
+
+    // Cockpit Split Layout
+    dashboardSplit: {
+      flexDirection: isWide ? 'row' : 'column',
+      gap: 16,
+      marginBottom: 16,
+    },
+
+    // Active Driver Hero Card
+    heroCard: {
+      flex: isWide ? 1.55 : undefined,
+      backgroundColor: C.panel,
+      borderRadius: 20,
+      padding: isWide ? 24 : 18,
+      borderWidth: 1.5,
+      borderColor: `${C.live}44`,
+      shadowColor: C.live,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.12,
+      shadowRadius: 10,
+    },
+    heroHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 14,
+    },
+    heroDriverIdentity: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 10,
+      flex: 1,
+    },
+    onTrackBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      backgroundColor: `${C.live}18`,
+      borderWidth: 1,
+      borderColor: `${C.live}55`,
+      paddingHorizontal: 9,
+      paddingVertical: 4,
+      borderRadius: 999,
+    },
+    onTrackText: {
+      color: C.live,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.5,
+    },
+    heroDriverName: {
+      color: C.text,
+      fontSize: isWide ? 30 : 22,
+      fontWeight: '800',
+      letterSpacing: -0.5,
+    },
+    targetBadge: {
+      backgroundColor: C.elevated,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 6,
+      borderWidth: 1,
+      borderColor: C.borderFaint,
+    },
+    targetBadgeText: {
+      color: C.dim,
+      fontFamily: monoBold,
+      fontSize: 11,
+    },
+    heroLapPill: {
+      backgroundColor: C.elevated,
+      paddingHorizontal: 10,
+      paddingVertical: 5,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: C.border,
+    },
+    heroLapPillText: {
+      color: C.accent,
+      fontFamily: monoBold,
+      fontSize: 12,
+      letterSpacing: 1,
+    },
+
+    // Clock section inside hero
+    clockSection: {
+      alignItems: 'flex-start',
+      marginVertical: 4,
+    },
+    clockSubLabel: {
+      color: C.muted,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 2,
+      marginBottom: 2,
+    },
+    giantClock: {
+      fontSize: isWide ? 80 : 54,
+      fontFamily: monoExtra,
+      color: C.live,
+      letterSpacing: -2,
+      lineHeight: isWide ? 88 : 60,
+    },
+    lastLapBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      flexWrap: 'wrap',
+      gap: 8,
+      backgroundColor: C.elevated,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 10,
+      marginTop: 10,
+      borderWidth: 1,
+      borderColor: C.borderFaint,
+      width: '100%',
+    },
+    lastLapTitle: {
+      color: C.muted,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1,
+    },
+    lastLapTime: {
+      color: C.text,
+      fontFamily: monoBold,
+      fontSize: 15,
+    },
+    lastLapDeltaPill: {
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    lastLapDeltaText: {
+      fontFamily: monoBold,
+      fontSize: 13,
+    },
+    lapTypeBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    lapTypeText: {
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.5,
+    },
+
+    // Bottom telemetry boxes inside hero
+    heroMetricsRow: {
+      flexDirection: 'row',
+      gap: 10,
+      marginTop: 18,
+      paddingTop: 16,
+      borderTopWidth: StyleSheet.hairlineWidth,
+      borderTopColor: C.borderFaint,
+    },
+    heroMetricItem: {
+      flex: 1,
+      backgroundColor: C.elevated,
+      padding: 10,
+      borderRadius: 10,
+      borderWidth: 1,
+      borderColor: C.borderFaint,
+    },
+    metricLabel: {
+      color: C.muted,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      marginBottom: 3,
+    },
+    heroMetricValue: {
+      color: C.text,
+      fontFamily: monoBold,
+      fontSize: isWide ? 17 : 14,
+    },
+    heroMetricUnit: {
+      fontSize: 11,
+      fontFamily: monoMed,
+      color: C.dim,
+    },
+
+    // Prominent % Factor Card
+    factorCard: {
+      flex: isWide ? 1 : undefined,
+      backgroundColor: C.panel,
+      borderRadius: 20,
+      padding: isWide ? 24 : 18,
+      borderWidth: 1,
+      borderColor: C.border,
+      justifyContent: 'space-between',
+    },
+    factorHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      marginBottom: 10,
+    },
+    factorLabel: {
+      color: C.dim,
+      fontSize: 12,
+      fontWeight: '800',
+      letterSpacing: 2.5,
+    },
+    factorSub: {
+      color: C.muted,
+      fontSize: 10,
+      fontWeight: '700',
+      letterSpacing: 1,
+      marginTop: 2,
+    },
+    connBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+      backgroundColor: C.elevated,
+    },
+    connDot: { width: 6, height: 6, borderRadius: 3 },
+    connText: { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
+    factorValueContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: isWide ? 12 : 6,
+    },
+    giantFactor: {
+      fontSize: isWide ? 66 : 50,
+      fontFamily: monoExtra,
+      color: C.accent,
+      letterSpacing: -2,
+    },
+    factorPercentSign: {
+      fontSize: isWide ? 38 : 28,
+      fontFamily: monoBold,
+      color: C.dim,
+    },
+    progressBarTrack: {
+      height: 8,
+      backgroundColor: C.elevated,
+      borderRadius: 999,
+      overflow: 'hidden',
+      marginVertical: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: C.borderFaint,
+    },
+    progressBarFill: {
+      height: '100%',
+      backgroundColor: C.accent,
+      borderRadius: 999,
+    },
+    factorStatsGrid: {
+      flexDirection: 'row',
+      gap: 8,
+      marginTop: 4,
+    },
+    factorStatBox: {
+      flex: 1,
+      backgroundColor: C.elevated,
+      padding: 8,
+      borderRadius: 8,
+      alignItems: 'center',
+      borderWidth: 1,
+      borderColor: C.borderFaint,
+    },
+    factorStatLabel: {
+      color: C.muted,
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 1,
+      marginBottom: 2,
+    },
+    factorStatNumber: {
+      color: C.text,
+      fontFamily: monoBold,
+      fontSize: 13,
+    },
+
+    // Standby Drivers Section
+    standbySection: {
+      marginBottom: 16,
+    },
+    sectionHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+      paddingHorizontal: 4,
+    },
+    sectionTitle: {
+      color: C.dim,
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 2,
+    },
+    sectionHint: {
+      color: C.muted,
+      fontSize: 11,
+      fontStyle: 'italic',
+    },
+    standbyGrid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 12,
+    },
+    standbyCard: {
+      flex: 1,
+      minWidth: isWide ? 260 : '100%',
+      backgroundColor: C.panel,
+      borderRadius: 14,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: C.borderFaint,
+    },
+    standbyCardHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    standbyIdentity: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      flex: 1,
+    },
+    standbyName: {
+      color: C.text,
+      fontSize: 15,
+      fontWeight: '700',
+    },
+    standbyPill: {
+      backgroundColor: C.elevated,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: C.borderFaint,
+    },
+    standbyPillText: {
+      color: C.muted,
+      fontSize: 9,
+      fontWeight: '800',
+      letterSpacing: 1,
+    },
+    standbyLapCount: {
+      color: C.dim,
+      fontSize: 11,
+      fontWeight: '700',
+      letterSpacing: 1,
+    },
+    standbyDetailsRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      backgroundColor: C.elevated,
+      padding: 8,
+      borderRadius: 8,
+    },
+    standbyMetric: {
+      alignItems: 'flex-start',
+    },
+    standbyMetricLabel: {
+      color: C.muted,
+      fontSize: 9,
+      fontWeight: '700',
+      letterSpacing: 0.8,
+    },
+    standbyMetricValue: {
+      color: C.text,
+      fontFamily: monoBold,
+      fontSize: 12,
+      marginTop: 2,
+    },
+
+    // Recent Laps Feed Section
+    recentSection: {
+      marginBottom: 16,
+    },
+    feed: {
+      backgroundColor: C.panel,
+      borderRadius: 16,
+      borderWidth: 1,
+      borderColor: C.border,
+      overflow: 'hidden',
+    },
+    feedHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      backgroundColor: C.elevated,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: C.border,
+    },
+    feedHeaderCell: {
+      color: C.muted,
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+    },
+    feedRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 14,
+      paddingVertical: 11,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: C.borderFaint,
+    },
+    feedDriver: {
+      color: C.text,
+      flex: 1.2,
+      fontSize: 14,
+      fontWeight: '600',
+    },
+    feedLapNumber: {
+      width: 50,
+      textAlign: 'center',
+      color: C.muted,
+      fontFamily: monoMed,
+      fontSize: 12,
+    },
+    feedTime: {
+      color: C.text,
+      fontFamily: monoBold,
+      fontSize: 14,
+      width: 90,
+      textAlign: 'right',
+    },
+    feedDelta: {
+      fontFamily: monoBold,
+      fontSize: 13,
+      width: 75,
+      textAlign: 'right',
+    },
+    feedTypePill: {
+      width: 95,
+      alignItems: 'center',
+      paddingVertical: 3,
+      borderRadius: 6,
+      borderWidth: 1,
+      marginLeft: 8,
+    },
+    feedType: {
+      fontSize: 10,
+      fontWeight: '800',
+      letterSpacing: 0.8,
+    },
   });
 }
+
