@@ -1,7 +1,8 @@
-import { Platform, AppState } from 'react-native';
+import { Platform } from 'react-native';
 
 const NOTIFICATION_ID = 'regularity-active-timer';
 const CHANNEL_ID = 'active-timer';
+const ALERT_CHANNEL_ID = 'timer-alerts';
 
 let Notifications: any = null;
 try {
@@ -23,23 +24,37 @@ class TimerNotificationServiceClass {
     try {
       if (Notifications.setNotificationHandler) {
         Notifications.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldShowAlert: true,
-            shouldPlaySound: false,
-            shouldSetBadge: false,
-            shouldShowBanner: true,
-            shouldShowList: true,
-          }),
+          handleNotification: async (notification: any) => {
+            const isAlert = notification?.request?.identifier?.startsWith('regularity-warning');
+            return {
+              shouldShowAlert: true,
+              shouldPlaySound: isAlert,
+              shouldSetBadge: false,
+              shouldShowBanner: true,
+              shouldShowList: true,
+            };
+          },
         });
       }
 
       if (Platform.OS === 'android' && Notifications.setNotificationChannelAsync) {
+        // Channel for the silent, persistent ticking stopwatch notification
         await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
           name: 'Active Timer',
-          importance: Notifications.AndroidImportance?.HIGH ?? 4,
+          importance: Notifications.AndroidImportance?.LOW ?? 2,
           vibrationPattern: null,
           enableVibrate: false,
           showBadge: false,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
+        });
+
+        // Channel for audio warnings and lap alerts (with sound and motor vibration)
+        await Notifications.setNotificationChannelAsync(ALERT_CHANNEL_ID, {
+          name: 'Timer Warnings & Alerts',
+          importance: Notifications.AndroidImportance?.HIGH ?? 4,
+          vibrationPattern: [0, 400, 150, 400],
+          enableVibrate: true,
+          showBadge: true,
           lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
         });
       }
@@ -74,7 +89,7 @@ class TimerNotificationServiceClass {
           ios: {
             allowAlert: true,
             allowBadge: true,
-            allowSound: false,
+            allowSound: true,
             allowDisplayInCarPlay: true,
           },
         });
@@ -112,7 +127,7 @@ class TimerNotificationServiceClass {
             body,
             sound: false,
             sticky: true,
-            priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
+            priority: Notifications.AndroidNotificationPriority?.LOW ?? 0,
             color: '#1e40af',
             ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
           },
@@ -126,6 +141,73 @@ class TimerNotificationServiceClass {
 
   async updateImmediate(title: string, body: string) {
     return this.update(title, body, true);
+  }
+
+  async scheduleWarning(id: string, title: string, body: string, triggerDate: Date) {
+    if (Platform.OS === 'web' || !Notifications) return;
+    if (!this.isConfigured) await this.init();
+
+    const permitted = await this.ensurePermission();
+    if (!permitted) return;
+
+    try {
+      if (Notifications.scheduleNotificationAsync) {
+        await Notifications.scheduleNotificationAsync({
+          identifier: id,
+          content: {
+            title,
+            body,
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
+            color: '#dc2626',
+            ...(Platform.OS === 'android' ? { channelId: ALERT_CHANNEL_ID } : {}),
+          },
+          trigger: triggerDate,
+        });
+      }
+    } catch (err) {
+      console.warn('[TimerNotificationService] scheduleWarning error:', err);
+    }
+  }
+
+  async sendImmediateAlert(title: string, body: string) {
+    if (Platform.OS === 'web' || !Notifications) return;
+    if (!this.isConfigured) await this.init();
+
+    const permitted = await this.ensurePermission();
+    if (!permitted) return;
+
+    try {
+      if (Notifications.scheduleNotificationAsync) {
+        await Notifications.scheduleNotificationAsync({
+          identifier: `regularity-warning-alert-${Date.now()}`,
+          content: {
+            title,
+            body,
+            sound: true,
+            priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
+            color: '#dc2626',
+            ...(Platform.OS === 'android' ? { channelId: ALERT_CHANNEL_ID } : {}),
+          },
+          trigger: null,
+        });
+      }
+    } catch (err) {
+      console.warn('[TimerNotificationService] sendImmediateAlert error:', err);
+    }
+  }
+
+  async cancelWarnings(ids: string[]) {
+    if (Platform.OS === 'web' || !Notifications) return;
+    try {
+      for (const id of ids) {
+        if (Notifications.cancelScheduledNotificationAsync) {
+          await Notifications.cancelScheduledNotificationAsync(id);
+        }
+      }
+    } catch {
+      // Ignore
+    }
   }
 
   async dismiss() {

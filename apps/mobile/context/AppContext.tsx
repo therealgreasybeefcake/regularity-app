@@ -351,6 +351,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           if (parsed.enabled === undefined) parsed.enabled = true;
           if (parsed.beforeTargetEnabled === undefined) parsed.beforeTargetEnabled = true;
           if (parsed.afterLapStartEnabled === undefined) parsed.afterLapStartEnabled = true;
+          if (typeof parsed.afterLapStart !== 'number' || parsed.afterLapStart <= 0) parsed.afterLapStart = 15;
+          if (typeof parsed.beforeTargetTime !== 'number' || parsed.beforeTargetTime <= 0) parsed.beforeTargetTime = 10;
           if (parsed.lapGuardEnabled === undefined) parsed.lapGuardEnabled = false;
           if (parsed.lapGuardRange === undefined) parsed.lapGuardRange = 15;
           if (parsed.lapGuardSafetyCarThreshold === undefined) parsed.lapGuardSafetyCarThreshold = 30;

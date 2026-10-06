@@ -158,18 +158,23 @@ export default function TimerScreen() {
   const volumeAlertShownRef = useRef(false);
 
   // Audio player for beeps (no-op on web). The beep is bundled locally so it
-  // plays reliably even when the app is backgrounded — a remote URL would not
-  // load once the app is suspended.
+  // plays reliably even when the app is backgrounded. keepAudioSessionActive: true
+  // ensures the audio session is not deactivated when playback completes.
   const beepPlayer = useAudioPlayerImport
-    ? useAudioPlayerImport(require('../assets/audio/beep.wav'))
+    ? useAudioPlayerImport(require('../assets/audio/beep.wav'), {
+        keepAudioSessionActive: true,
+      })
     : { seekTo: () => {}, play: () => {} };
 
-  // Silent looping keep-alive track. While a timing session is running we keep
-  // this playing so the audio session (configured for background playback) stays
-  // active — this prevents iOS/Android from suspending the JS timer, so the
-  // lap-reminder beeps still fire when the user has switched to another app.
+  // 1-hour silent track. While a timing session is running we keep this playing so
+  // the audio session stays active continuously — this prevents iOS and Android from
+  // suspending the JavaScript thread, so the lap-reminder beeps, haptics, and live
+  // drop-down notification timer continue ticking while backgrounded/locked.
   const keepAlivePlayer = useAudioPlayerImport
-    ? useAudioPlayerImport(require('../assets/audio/silence.wav'))
+    ? useAudioPlayerImport(require('../assets/audio/silence.m4a'), {
+        keepAudioSessionActive: true,
+        updateInterval: 1000,
+      })
     : null;
 
   // Beeps can only fire when enabled and at least one reminder is on. We use this
@@ -263,15 +268,18 @@ export default function TimerScreen() {
         const now = Date.now();
         const elapsed = Math.floor((now - (startTimeRef.current || now)) / 10) / 100;
 
-        // When in active foreground, update state at 100fps for smooth clock display
+        // When in active foreground, update state for smooth clock display
         if (AppState.currentState === 'active') {
           setElapsedTime(elapsed);
         }
 
+        const afterLapSec = Number(audioSettings.afterLapStart) || 15;
+        const beforeTargetSec = Number(audioSettings.beforeTargetTime) || 10;
+
         // After lap start beep fallback check
         if (
           audioSettings.afterLapStartEnabled &&
-          elapsed >= audioSettings.afterLapStart &&
+          elapsed >= afterLapSec &&
           !afterStartBeepPlayedRef.current
         ) {
           playBeep(true);
@@ -283,7 +291,7 @@ export default function TimerScreen() {
           const timeUntilTarget = driver.targetTime - elapsed;
           if (
             audioSettings.beforeTargetEnabled &&
-            timeUntilTarget <= audioSettings.beforeTargetTime &&
+            timeUntilTarget <= beforeTargetSec &&
             timeUntilTarget > -5 &&
             !beforeTargetBeepPlayedRef.current
           ) {
@@ -312,7 +320,7 @@ export default function TimerScreen() {
             : `Lap #${lapNum}`;
           void TimerNotificationService.update(title, body);
         }
-      }, 10);
+      }, 50);
     } else {
       if (intervalRef.current) clearInterval(intervalRef.current);
       setShowWarning(false);
@@ -345,8 +353,16 @@ export default function TimerScreen() {
 
       try {
         keepAlivePlayer.loop = true;
-        keepAlivePlayer.seekTo(0);
-        keepAlivePlayer.play();
+        keepAlivePlayer.volume = 0.05;
+        if (typeof keepAlivePlayer.seekTo === 'function') {
+          void keepAlivePlayer.seekTo(0).then(() => {
+            keepAlivePlayer.play();
+          }).catch(() => {
+            keepAlivePlayer.play();
+          });
+        } else {
+          keepAlivePlayer.play();
+        }
       } catch (error) {
         console.warn('Error starting keep-alive audio:', error);
       }
@@ -438,13 +454,37 @@ export default function TimerScreen() {
     if (!audioSettings.enabled) return;
 
     try {
-      // Play the beep sound and vibrate phone
-      beepPlayer.seekTo(0);
-      beepPlayer.play();
+      // 1. Play audio beep reliably
+      if (beepPlayer) {
+        try {
+          beepPlayer.volume = 1.0;
+          if (typeof beepPlayer.seekTo === 'function') {
+            void beepPlayer.seekTo(0).then(() => {
+              beepPlayer.play();
+            }).catch(() => {
+              beepPlayer.play();
+            });
+          } else {
+            beepPlayer.play();
+          }
+        } catch {
+          try { beepPlayer.play(); } catch {}
+        }
+      }
 
+      // 2. Physical vibration & haptics (both foreground and background)
       if (!isWeb) {
+        const isBg = AppState.currentState !== 'active';
+
+        // Full system motor vibration: works in foreground and background on iOS & Android
+        if (isDouble) {
+          Vibration.vibrate([0, 400, 150, 400]);
+        } else {
+          Vibration.vibrate([0, 450]);
+        }
+
+        // Taptic Engine (active in foreground on iOS)
         if (Platform.OS === 'ios') {
-          // On iOS, NotificationFeedbackType.Error fires the deepest, strongest 3-pulse rumble from the Taptic Engine
           if (isDouble) {
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             setTimeout(() => {
@@ -452,31 +492,47 @@ export default function TimerScreen() {
             }, 220);
           } else {
             void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            setTimeout(() => {
-              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-            }, 180);
           }
-        } else {
-          // On Android, deliver high-energy multi-stage motor vibration
-          if (isDouble) {
-            Vibration.vibrate([0, 350, 100, 350, 100, 450]);
-          } else {
-            Vibration.vibrate([0, 450, 100, 350]);
-          }
+        }
+
+        // When in BACKGROUND, also immediately fire an alert notification with sound
+        // so the OS lock-screen daemon chimes and triggers hardware vibration!
+        if (isBg) {
+          const alertTitle = isDouble ? '⚠️ 15s Lap Warning' : '⚠️ Target Warning';
+          const alertBody = isDouble
+            ? '15 seconds after lap start'
+            : (driver ? `${driver.name} approaching target (${formatTime(driver.targetTime)})` : 'Approaching target time');
+          void TimerNotificationService.sendImmediateAlert(alertTitle, alertBody);
         }
       }
 
       if (isDouble) {
-        // Wait 200ms then play audio again for double beep
+        // Wait 220ms then play audio again for double beep
         setTimeout(() => {
-          beepPlayer.seekTo(0);
-          beepPlayer.play();
-        }, 200);
+          if (beepPlayer) {
+            try {
+              if (typeof beepPlayer.seekTo === 'function') {
+                void beepPlayer.seekTo(0).then(() => {
+                  beepPlayer.play();
+                }).catch(() => {
+                  beepPlayer.play();
+                });
+              } else {
+                beepPlayer.play();
+              }
+            } catch {
+              try { beepPlayer.play(); } catch {}
+            }
+          }
+        }, 220);
       }
     } catch (error) {
       console.error('Error playing beep:', error);
     }
   };
+
+  const WARNING_15S_ID = 'regularity-warning-15s';
+  const WARNING_TARGET_ID = 'regularity-warning-target';
 
   const clearBeepTimeouts = () => {
     if (beforeTargetTimeoutRef.current) {
@@ -487,6 +543,7 @@ export default function TimerScreen() {
       clearTimeout(afterStartTimeoutRef.current);
       afterStartTimeoutRef.current = null;
     }
+    void TimerNotificationService.cancelWarnings([WARNING_15S_ID, WARNING_TARGET_ID]);
   };
 
   const scheduleBeeps = (startTime: number, targetTime?: number) => {
@@ -494,10 +551,12 @@ export default function TimerScreen() {
     if (!audioSettings.enabled) return;
 
     const now = Date.now();
+    const afterLapSec = Number(audioSettings.afterLapStart) || 15;
+    const beforeTargetSec = Number(audioSettings.beforeTargetTime) || 10;
 
     // After lap start beep (double beep)
     if (audioSettings.afterLapStartEnabled) {
-      const delay = (startTime + audioSettings.afterLapStart * 1000) - now;
+      const delay = (startTime + afterLapSec * 1000) - now;
       if (delay > 0) {
         afterStartTimeoutRef.current = setTimeout(() => {
           if (!afterStartBeepPlayedRef.current) {
@@ -505,12 +564,21 @@ export default function TimerScreen() {
             afterStartBeepPlayedRef.current = true;
           }
         }, delay);
+
+        // Schedule OS-level date-triggered notification so warning NEVER fails when backgrounded or locked
+        const triggerDate = new Date(startTime + afterLapSec * 1000);
+        void TimerNotificationService.scheduleWarning(
+          WARNING_15S_ID,
+          '⚠️ 15s Lap Warning',
+          '15 seconds after lap start',
+          triggerDate
+        );
       }
     }
 
     // Before target beep (single beep)
     if (audioSettings.beforeTargetEnabled && targetTime && targetTime > 0) {
-      const targetBeepElapsed = targetTime - audioSettings.beforeTargetTime;
+      const targetBeepElapsed = targetTime - beforeTargetSec;
       if (targetBeepElapsed > 0) {
         const delay = (startTime + targetBeepElapsed * 1000) - now;
         if (delay > 0) {
@@ -520,6 +588,15 @@ export default function TimerScreen() {
               beforeTargetBeepPlayedRef.current = true;
             }
           }, delay);
+
+          // Schedule OS-level date-triggered notification for target approach
+          const triggerDate = new Date(startTime + targetBeepElapsed * 1000);
+          void TimerNotificationService.scheduleWarning(
+            WARNING_TARGET_ID,
+            '⚠️ Target Time Warning',
+            driver ? `${driver.name} approaching target (${formatTime(targetTime)})` : 'Approaching target time',
+            triggerDate
+          );
         }
       }
     }
