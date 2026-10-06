@@ -197,7 +197,7 @@ export default function TimerScreen() {
     setAudioModeAsyncImport({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
-      interruptionMode: 'mixWithOthers',
+      interruptionMode: Platform.OS === 'android' ? 'doNotMix' : 'mixWithOthers',
     }).catch((error) => console.error('Error setting audio mode:', error));
   }, []);
 
@@ -343,9 +343,11 @@ export default function TimerScreen() {
   }, [isRunning, driver, audioSettings]);
 
   // Keep the silent track playing while a session is running so the background
-  // audio session stays active without suspending JavaScript. We deliberately
-  // use 'mixWithOthers' so music apps (Spotify/Apple Music) are never interrupted,
-  // and we do NOT register lock screen media player controls.
+  // audio session stays active without suspending JavaScript.
+  // On Android, we enable lock screen controls via setActiveForLockScreen which starts
+  // the Android Foreground Service (AudioControlsService). This is required by Android OS
+  // to prevent the JavaScript event loop, intervals, and audio from being paused while
+  // the app is backgrounded or the screen is locked.
   useEffect(() => {
     if (!keepAlivePlayer) return;
     if (isRunning) {
@@ -353,13 +355,29 @@ export default function TimerScreen() {
         setAudioModeAsyncImport({
           playsInSilentMode: true,
           shouldPlayInBackground: true,
-          interruptionMode: 'mixWithOthers',
+          interruptionMode: Platform.OS === 'android' ? 'doNotMix' : 'mixWithOthers',
         }).catch((err) => console.warn('Error setting audio mode:', err));
       }
 
       try {
         keepAlivePlayer.loop = true;
         keepAlivePlayer.volume = 0.05;
+
+        if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+          const targetStr = driver ? formatTime(driver.targetTime) : '—';
+          keepAlivePlayer.setActiveForLockScreen(
+            true,
+            {
+              title: 'Regularity Race Timer',
+              artist: driver ? `${driver.name} • Target ${targetStr}` : 'Timer running',
+            },
+            {
+              showSeekForward: false,
+              showSeekBackward: false,
+            }
+          );
+        }
+
         if (typeof keepAlivePlayer.seekTo === 'function') {
           void keepAlivePlayer.seekTo(0).then(() => {
             keepAlivePlayer.play();
@@ -374,17 +392,27 @@ export default function TimerScreen() {
       }
     } else {
       try {
+        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
+          keepAlivePlayer.clearLockScreenControls();
+        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+          keepAlivePlayer.setActiveForLockScreen(false);
+        }
         keepAlivePlayer.pause();
       } catch {}
       void TimerNotificationService.dismiss();
     }
     return () => {
       try {
+        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
+          keepAlivePlayer.clearLockScreenControls();
+        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
+          keepAlivePlayer.setActiveForLockScreen(false);
+        }
         keepAlivePlayer.pause();
       } catch {}
       void TimerNotificationService.dismiss();
     };
-  }, [isRunning]);
+  }, [isRunning, driver]);
 
   // Volume button listener for lap recording
   useEffect(() => {

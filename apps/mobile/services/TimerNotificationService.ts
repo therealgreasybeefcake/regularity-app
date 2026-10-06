@@ -1,8 +1,8 @@
 import { Platform } from 'react-native';
 
 const NOTIFICATION_ID = 'regularity-active-timer';
-const CHANNEL_ID = 'active-timer';
-const ALERT_CHANNEL_ID = 'timer-alerts';
+const CHANNEL_ID = 'active-race-timer-v7';
+const ALERT_CHANNEL_ID = 'race-warning-alerts-v7';
 
 let Notifications: any = null;
 try {
@@ -38,23 +38,26 @@ class TimerNotificationServiceClass {
       }
 
       if (Platform.OS === 'android' && Notifications.setNotificationChannelAsync) {
-        // Channel for the silent, persistent ticking stopwatch notification
+        // Channel for the ticking stopwatch notification (visible on lockscreen & status bar without buzzing)
         await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-          name: 'Active Timer',
-          importance: Notifications.AndroidImportance?.LOW ?? 2,
+          name: 'Active Race Timer',
+          importance: Notifications.AndroidImportance?.DEFAULT ?? 3,
           vibrationPattern: null,
           enableVibrate: false,
           showBadge: false,
+          sound: null,
           lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
         });
 
-        // Channel for audio warnings and lap alerts (with sound and motor vibration)
+        // Channel for audio warnings and lap alerts (high-priority heads-up with sound, motor vibration, bypass DND)
         await Notifications.setNotificationChannelAsync(ALERT_CHANNEL_ID, {
           name: 'Timer Warnings & Alerts',
-          importance: Notifications.AndroidImportance?.HIGH ?? 4,
-          vibrationPattern: [0, 400, 150, 400],
+          importance: Notifications.AndroidImportance?.MAX ?? 5,
+          vibrationPattern: [0, 500, 200, 500],
           enableVibrate: true,
           showBadge: true,
+          sound: 'default',
+          bypassDnd: true,
           lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
         });
       }
@@ -92,6 +95,7 @@ class TimerNotificationServiceClass {
             allowSound: true,
             allowDisplayInCarPlay: true,
           },
+          android: {},
         });
         if (res.granted || res.status === 'granted') {
           this.hasPermission = true;
@@ -127,11 +131,11 @@ class TimerNotificationServiceClass {
             body,
             sound: false,
             sticky: true,
-            priority: Notifications.AndroidNotificationPriority?.LOW ?? 0,
+            priority: Notifications.AndroidNotificationPriority?.DEFAULT ?? 1,
             color: '#1e40af',
-            ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
+            channelId: CHANNEL_ID,
           },
-          trigger: null,
+          trigger: Platform.OS === 'android' ? { channelId: CHANNEL_ID } : null,
         });
       }
     } catch (err) {
@@ -159,19 +163,20 @@ class TimerNotificationServiceClass {
           content: {
             title,
             body,
-            sound: true,
+            sound: 'default',
             priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
             interruptionLevel: 'timeSensitive',
             color: '#dc2626',
-            ...(Platform.OS === 'android' ? { channelId: ALERT_CHANNEL_ID } : {}),
+            channelId: ALERT_CHANNEL_ID,
           },
           trigger: {
             type: Notifications.SchedulableTriggerInputTypes?.TIME_INTERVAL ?? 'timeInterval',
             seconds,
             repeats: false,
+            channelId: ALERT_CHANNEL_ID,
           },
         });
-        console.log(`[TimerNotificationService] Scheduled warning "${id}" in ${seconds}s`);
+        console.log(`[TimerNotificationService] Scheduled warning "${id}" in ${seconds}s on channel ${ALERT_CHANNEL_ID}`);
       }
     } catch (err) {
       console.warn('[TimerNotificationService] scheduleWarning error:', err);
@@ -192,12 +197,12 @@ class TimerNotificationServiceClass {
           content: {
             title,
             body,
-            sound: true,
+            sound: 'default',
             priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
             color: '#dc2626',
-            ...(Platform.OS === 'android' ? { channelId: ALERT_CHANNEL_ID } : {}),
+            channelId: ALERT_CHANNEL_ID,
           },
-          trigger: null,
+          trigger: Platform.OS === 'android' ? { channelId: ALERT_CHANNEL_ID } : null,
         });
       }
     } catch (err) {
