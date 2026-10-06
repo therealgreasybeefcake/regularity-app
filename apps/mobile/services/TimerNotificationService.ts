@@ -1,4 +1,4 @@
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 
 const NOTIFICATION_ID = 'regularity-active-timer';
 const CHANNEL_ID = 'active-timer';
@@ -24,23 +24,28 @@ class TimerNotificationServiceClass {
     try {
       if (Notifications.setNotificationHandler) {
         Notifications.setNotificationHandler({
-          handleNotification: async () => ({
-            shouldShowAlert: false, // Don't trigger heads-up popup banner when active
-            shouldPlaySound: false,
-            shouldSetBadge: false,
-            shouldShowBanner: false,
-            shouldShowList: true, // Show in pull-down shade / notification center
-          }),
+          handleNotification: async () => {
+            // When in background or locked, show banner so user sees timer progress
+            const isForeground = AppState.currentState === 'active';
+            return {
+              shouldShowAlert: !isForeground,
+              shouldPlaySound: false,
+              shouldSetBadge: false,
+              shouldShowBanner: !isForeground,
+              shouldShowList: true, // Always show in notification center / lock screen
+            };
+          },
         });
       }
 
       if (Platform.OS === 'android' && Notifications.setNotificationChannelAsync) {
         await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
           name: 'Active Timer',
-          importance: Notifications.AndroidImportance?.LOW ?? 2,
+          importance: Notifications.AndroidImportance?.HIGH ?? 4,
           vibrationPattern: null,
           enableVibrate: false,
           showBadge: false,
+          lockscreenVisibility: Notifications.AndroidNotificationVisibility?.PUBLIC ?? 1,
         });
       }
 
@@ -49,7 +54,14 @@ class TimerNotificationServiceClass {
         if (existing === 'granted') {
           this.hasPermission = true;
         } else if (Notifications.requestPermissionsAsync) {
-          const { status } = await Notifications.requestPermissionsAsync();
+          const { status } = await Notifications.requestPermissionsAsync({
+            ios: {
+              allowAlert: true,
+              allowBadge: true,
+              allowSound: false,
+              allowDisplayInCarPlay: true,
+            },
+          });
           this.hasPermission = status === 'granted';
         }
       }
@@ -58,14 +70,14 @@ class TimerNotificationServiceClass {
     }
   }
 
-  async update(title: string, body: string) {
+  async update(title: string, body: string, immediate = false) {
     if (Platform.OS === 'web' || !Notifications) return;
     if (!this.isConfigured) await this.init();
     if (!this.hasPermission) return;
 
-    // Throttle to at most once per 800ms
+    // Throttle unless explicitly requested as immediate
     const now = Date.now();
-    if (now - this.lastUpdateMs < 800) return;
+    if (!immediate && now - this.lastUpdateMs < 800) return;
     this.lastUpdateMs = now;
 
     try {
@@ -77,7 +89,8 @@ class TimerNotificationServiceClass {
             body,
             sound: false,
             sticky: true,
-            color: '#3b82f6',
+            priority: Notifications.AndroidNotificationPriority?.HIGH,
+            color: '#1e40af',
             ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
           },
           trigger: null,
@@ -86,6 +99,10 @@ class TimerNotificationServiceClass {
     } catch {
       // Ignore background or notification schedule errors
     }
+  }
+
+  async updateImmediate(title: string, body: string) {
+    return this.update(title, body, true);
   }
 
   async dismiss() {

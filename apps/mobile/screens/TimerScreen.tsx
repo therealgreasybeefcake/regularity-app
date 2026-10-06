@@ -233,13 +233,26 @@ export default function TimerScreen() {
         const now = Date.now();
         const elapsed = Math.floor((now - startTimeRef.current) / 10) / 100;
         setElapsedTime(elapsed);
+      } else if ((nextAppState === 'background' || nextAppState === 'inactive') && startTimeRef.current && isRunning) {
+        // Immediately push an updated notification banner when moving to background/lock screen
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTimeRef.current) / 10) / 100;
+        const liveDelta = driver ? elapsed - driver.targetTime : 0;
+        const deltaSign = liveDelta >= 0 ? '+' : '';
+        const targetStr = driver ? formatTime(driver.targetTime) : '—';
+        const lapNum = (driver?.laps?.length || 0) + 1;
+        const title = `${formatTime(elapsed)} (Target: ${targetStr})`;
+        const body = driver
+          ? `Gap: ${deltaSign}${liveDelta.toFixed(1)}s • Lap #${lapNum} • ${driver.name}`
+          : `Lap #${lapNum}`;
+        void TimerNotificationService.updateImmediate(title, body);
       }
     });
 
     return () => {
       subscription.remove();
     };
-  }, [isRunning]);
+  }, [isRunning, driver]);
 
   useEffect(() => {
     if (isRunning) {
@@ -432,14 +445,28 @@ export default function TimerScreen() {
 
       if (!isWeb) {
         if (isDouble) {
-          Vibration.vibrate([0, 150, 100, 150]);
+          // Strong double warning burst (4 heavy tactile pulses + dual vibration)
+          Vibration.vibrate([0, 250, 80, 250, 80, 300]);
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
           setTimeout(() => {
             void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          }, 80);
+          setTimeout(() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
           }, 200);
+          setTimeout(() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          }, 280);
         } else {
-          Vibration.vibrate(250);
-          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          // Strong single warning burst (3 rapid heavy tactile pulses)
+          Vibration.vibrate([0, 300, 80, 200]);
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          setTimeout(() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          }, 90);
+          setTimeout(() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          }, 180);
         }
       }
 
