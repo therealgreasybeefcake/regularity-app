@@ -1318,9 +1318,11 @@ export default function TimerScreen() {
                     >
                       <Mono size={13} weight="bold" color={theme.textMuted} numberOfLines={1} style={styles.lapNum}>{lap.number}</Mono>
                       <Mono size={16} weight="medium" color={theme.text} numberOfLines={1} style={styles.lapTime}>{formatTime(lap.time)}</Mono>
-                      <Mono size={14} weight="bold" color={deltaColor(lap.delta)} numberOfLines={1} style={styles.lapDelta}>
-                        {lap.delta >= 0 ? '+' : ''}{lap.delta.toFixed(2)}
-                      </Mono>
+                      <View style={styles.lapDeltaWrap}>
+                        <Mono size={14} weight="bold" color={deltaColor(lap.delta)} numberOfLines={1} style={styles.lapDelta}>
+                          {`${lap.delta >= 0 ? '+' : '\u2212'}${Math.abs(lap.delta).toFixed(2)}`}
+                        </Mono>
+                      </View>
                       <Chip label={lap.lapType} color={lapTypeColor(lap.lapType)} active size="sm" uppercase style={styles.lapChip} />
                     </Pressable>
                   </Swipeable>
@@ -1501,8 +1503,9 @@ const styles = StyleSheet.create({
   lapRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
   lapNum: { width: 28, marginRight: spacing.xs },
   lapTime: { flex: 1, marginRight: spacing.xs },
-  lapDelta: { minWidth: 84, textAlign: 'right', flexShrink: 0 },
-  lapChip: { marginLeft: spacing.sm, minWidth: 78 },
+  lapDeltaWrap: { minWidth: 80, alignItems: 'flex-end', justifyContent: 'center', flexShrink: 0 },
+  lapDelta: { textAlign: 'right' },
+  lapChip: { marginLeft: spacing.sm, minWidth: 78, alignItems: 'center' },
 
   deleteAction: { backgroundColor: '#dc2626', justifyContent: 'center', alignItems: 'center', width: 88, height: '100%' },
   deleteActionText: { color: '#fff', fontSize: 11, fontWeight: '800', marginTop: 2, letterSpacing: 0.8 },

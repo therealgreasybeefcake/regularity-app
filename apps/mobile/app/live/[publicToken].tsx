@@ -369,7 +369,7 @@ export default function LiveView() {
                     <Text style={styles.lastLapTime}>{formatTime(activeDriver.last.time)}</Text>
                     <View style={[styles.lastLapDeltaPill, { backgroundColor: `${deltaColor(activeDriver.last.delta)}22`, borderColor: deltaColor(activeDriver.last.delta) }]}>
                       <Text style={[styles.lastLapDeltaText, { color: deltaColor(activeDriver.last.delta) }]}>
-                        {activeDriver.last.delta >= 0 ? '+' : ''}{activeDriver.last.delta.toFixed(2)}s
+                        {`${activeDriver.last.delta >= 0 ? '+' : '\u2212'}${Math.abs(activeDriver.last.delta).toFixed(2)}s`}
                       </Text>
                     </View>
                     <View style={[styles.lapTypeBadge, { backgroundColor: `${deltaColor(activeDriver.last.delta)}18` }]}>
@@ -505,7 +505,7 @@ export default function LiveView() {
                     <View style={styles.standbyMetric}>
                       <Text style={styles.standbyMetricLabel}>AVG Δ</Text>
                       <Text style={[styles.standbyMetricValue, { color: last ? deltaColor(stats.averageDelta) : C.text }]}>
-                        {last ? `${stats.averageDelta >= 0 ? '+' : ''}${stats.averageDelta.toFixed(2)}s` : '—'}
+                        {last ? `${stats.averageDelta >= 0 ? '+' : '\u2212'}${Math.abs(stats.averageDelta).toFixed(2)}s` : '—'}
                       </Text>
                     </View>
                     <View style={styles.standbyMetric}>
@@ -538,7 +538,7 @@ export default function LiveView() {
                   <Text style={[styles.feedHeaderCell, { flex: 1.2 }]}>DRIVER</Text>
                   <Text style={[styles.feedHeaderCell, { width: 50, textAlign: 'center' }]}>LAP</Text>
                   <Text style={[styles.feedHeaderCell, { width: 90, textAlign: 'right' }]}>TIME</Text>
-                  <Text style={[styles.feedHeaderCell, { width: 75, textAlign: 'right' }]}>DELTA</Text>
+                  <Text style={[styles.feedHeaderCell, { width: 85, textAlign: 'right' }]}>DELTA</Text>
                   <Text style={[styles.feedHeaderCell, { width: 95, textAlign: 'right' }]}>TYPE</Text>
                 </View>
 
@@ -548,7 +548,7 @@ export default function LiveView() {
                     <Text style={styles.feedLapNumber}>#{l.number}</Text>
                     <Text style={styles.feedTime} numberOfLines={1}>{formatTime(l.time)}</Text>
                     <Text style={[styles.feedDelta, { color: deltaColor(l.delta) }]} numberOfLines={1}>
-                      {l.delta >= 0 ? '+' : ''}{l.delta.toFixed(2)}s
+                      {`${l.delta >= 0 ? '+' : '\u2212'}${Math.abs(l.delta).toFixed(2)}s`}
                     </Text>
                     <View style={[styles.feedTypePill, { backgroundColor: `${deltaColor(l.delta)}18`, borderColor: `${deltaColor(l.delta)}33` }]}>
                       <Text style={[styles.feedType, { color: deltaColor(l.delta) }]} numberOfLines={1}>
