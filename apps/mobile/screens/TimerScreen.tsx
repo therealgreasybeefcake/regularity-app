@@ -816,9 +816,10 @@ export default function TimerScreen() {
   const saveEditedLap = () => {
     if (selectedLapIndex === null || !driver) return;
 
-    const newTime = parseFloat(editLapValue);
+    const parsed = parseTimeInput(editLapValue);
+    const newTime = parsed ?? parseFloat(editLapValue);
     if (isNaN(newTime) || newTime <= 0) {
-      showAlert({ title: 'Invalid Time', message: 'Please enter a valid lap time' });
+      showAlert({ title: 'Invalid Time', message: 'Please enter a valid lap time (e.g. 85.5 or 1:25.5)' });
       return;
     }
 
@@ -1335,7 +1336,6 @@ export default function TimerScreen() {
         visible={editModalVisible}
         onClose={() => setEditModalVisible(false)}
         title="Edit Lap Time"
-        scroll={false}
         footer={
           <View style={styles.sheetBtns}>
             <Button title="Cancel" variant="secondary" onPress={() => setEditModalVisible(false)} style={{ flex: 1 }} />
@@ -1345,11 +1345,13 @@ export default function TimerScreen() {
       >
         <TextField
           mono
-          label="Lap time (seconds)"
+          label="Lap time (seconds or M:SS.mmm)"
           value={editLapValue}
           onChangeText={setEditLapValue}
           keyboardType="decimal-pad"
-          placeholder="Enter time in seconds"
+          placeholder="e.g. 85.500 or 1:25.500"
+          returnKeyType="done"
+          onSubmitEditing={saveEditedLap}
           autoFocus
         />
       </Sheet>
