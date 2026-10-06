@@ -272,8 +272,7 @@ export default function TimerScreen() {
         if (
           audioSettings.afterLapStartEnabled &&
           elapsed >= audioSettings.afterLapStart &&
-          !afterStartBeepPlayedRef.current &&
-          (driver?.laps?.length || 0) > 0
+          !afterStartBeepPlayedRef.current
         ) {
           playBeep(true);
           afterStartBeepPlayedRef.current = true;
@@ -444,29 +443,26 @@ export default function TimerScreen() {
       beepPlayer.play();
 
       if (!isWeb) {
-        if (isDouble) {
-          // Strong double warning burst (4 heavy tactile pulses + dual vibration)
-          Vibration.vibrate([0, 250, 80, 250, 80, 300]);
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          setTimeout(() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          }, 80);
-          setTimeout(() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          }, 200);
-          setTimeout(() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          }, 280);
+        if (Platform.OS === 'ios') {
+          // On iOS, NotificationFeedbackType.Error fires the deepest, strongest 3-pulse rumble from the Taptic Engine
+          if (isDouble) {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            setTimeout(() => {
+              void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            }, 220);
+          } else {
+            void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            setTimeout(() => {
+              void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            }, 180);
+          }
         } else {
-          // Strong single warning burst (3 rapid heavy tactile pulses)
-          Vibration.vibrate([0, 300, 80, 200]);
-          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          setTimeout(() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          }, 90);
-          setTimeout(() => {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-          }, 180);
+          // On Android, deliver high-energy multi-stage motor vibration
+          if (isDouble) {
+            Vibration.vibrate([0, 350, 100, 350, 100, 450]);
+          } else {
+            Vibration.vibrate([0, 450, 100, 350]);
+          }
         }
       }
 
@@ -500,7 +496,7 @@ export default function TimerScreen() {
     const now = Date.now();
 
     // After lap start beep (double beep)
-    if (audioSettings.afterLapStartEnabled && (driver?.laps?.length || 0) > 0) {
+    if (audioSettings.afterLapStartEnabled) {
       const delay = (startTime + audioSettings.afterLapStart * 1000) - now;
       if (delay > 0) {
         afterStartTimeoutRef.current = setTimeout(() => {

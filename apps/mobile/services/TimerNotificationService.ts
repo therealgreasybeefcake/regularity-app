@@ -18,23 +18,18 @@ class TimerNotificationServiceClass {
   private lastUpdateMs = 0;
 
   async init() {
-    if (this.isConfigured || Platform.OS === 'web' || !Notifications) return;
-    this.isConfigured = true;
+    if (Platform.OS === 'web' || !Notifications) return;
 
     try {
       if (Notifications.setNotificationHandler) {
         Notifications.setNotificationHandler({
-          handleNotification: async () => {
-            // When in background or locked, show banner so user sees timer progress
-            const isForeground = AppState.currentState === 'active';
-            return {
-              shouldShowAlert: !isForeground,
-              shouldPlaySound: false,
-              shouldSetBadge: false,
-              shouldShowBanner: !isForeground,
-              shouldShowList: true, // Always show in notification center / lock screen
-            };
-          },
+          handleNotification: async () => ({
+            shouldShowAlert: true,
+            shouldPlaySound: false,
+            shouldSetBadge: false,
+            shouldShowBanner: true,
+            shouldShowList: true,
+          }),
         });
       }
 
@@ -49,33 +44,61 @@ class TimerNotificationServiceClass {
         });
       }
 
-      if (Notifications.getPermissionsAsync) {
-        const { status: existing } = await Notifications.getPermissionsAsync();
-        if (existing === 'granted') {
-          this.hasPermission = true;
-        } else if (Notifications.requestPermissionsAsync) {
-          const { status } = await Notifications.requestPermissionsAsync({
-            ios: {
-              allowAlert: true,
-              allowBadge: true,
-              allowSound: false,
-              allowDisplayInCarPlay: true,
-            },
-          });
-          this.hasPermission = status === 'granted';
-        }
-      }
+      await this.ensurePermission();
+      this.isConfigured = true;
     } catch (err) {
       console.warn('[TimerNotificationService] init error:', err);
     }
   }
 
+  async ensurePermission(): Promise<boolean> {
+    if (Platform.OS === 'web' || !Notifications) return false;
+
+    // Android 12 and below do not require runtime POST_NOTIFICATIONS permission
+    if (Platform.OS === 'android' && typeof Platform.Version === 'number' && Platform.Version < 33) {
+      this.hasPermission = true;
+      return true;
+    }
+
+    try {
+      if (Notifications.getPermissionsAsync) {
+        const res = await Notifications.getPermissionsAsync();
+        if (res.granted || res.status === 'granted') {
+          this.hasPermission = true;
+          return true;
+        }
+      }
+
+      if (Notifications.requestPermissionsAsync) {
+        const res = await Notifications.requestPermissionsAsync({
+          ios: {
+            allowAlert: true,
+            allowBadge: true,
+            allowSound: false,
+            allowDisplayInCarPlay: true,
+          },
+        });
+        if (res.granted || res.status === 'granted') {
+          this.hasPermission = true;
+          return true;
+        }
+      }
+    } catch (err) {
+      console.warn('[TimerNotificationService] ensurePermission error:', err);
+    }
+
+    return this.hasPermission;
+  }
+
   async update(title: string, body: string, immediate = false) {
     if (Platform.OS === 'web' || !Notifications) return;
     if (!this.isConfigured) await this.init();
-    if (!this.hasPermission) return;
 
-    // Throttle unless explicitly requested as immediate
+    const permitted = await this.ensurePermission();
+    if (!permitted) {
+      return;
+    }
+
     const now = Date.now();
     if (!immediate && now - this.lastUpdateMs < 800) return;
     this.lastUpdateMs = now;
@@ -89,15 +112,15 @@ class TimerNotificationServiceClass {
             body,
             sound: false,
             sticky: true,
-            priority: Notifications.AndroidNotificationPriority?.HIGH,
+            priority: Notifications.AndroidNotificationPriority?.MAX ?? 2,
             color: '#1e40af',
             ...(Platform.OS === 'android' ? { channelId: CHANNEL_ID } : {}),
           },
           trigger: null,
         });
       }
-    } catch {
-      // Ignore background or notification schedule errors
+    } catch (err) {
+      console.warn('[TimerNotificationService] schedule error:', err);
     }
   }
 
