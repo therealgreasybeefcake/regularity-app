@@ -16,6 +16,8 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
 
+import * as Haptics from 'expo-haptics';
+
 // Web-safe imports
 const isWeb = Platform.OS === 'web';
 let activateKeepAwakeAsync: () => Promise<void> = async () => {};
@@ -36,6 +38,7 @@ import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, glowShadow } from '../constants/theme';
 import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
+import { TimerNotificationService } from '../services/TimerNotificationService';
 import { useAlert } from '../components/CustomAlert';
 import LiveShareBanner from '../components/LiveShareBanner';
 import { Mono, Label, Card, Surface, Button, IconButton, Chip, TextField, Sheet, LiveDot } from '../components/ui';
@@ -75,6 +78,7 @@ export default function TimerScreen() {
     isDarkMode,
     audioSettings,
     lapTypeValues,
+    ensureLiveSession,
     discardLiveSession,
     endLiveSession,
     liveSession,
@@ -174,9 +178,10 @@ export default function TimerScreen() {
     audioSettings.enabled &&
     (audioSettings.beforeTargetEnabled || audioSettings.afterLapStartEnabled);
 
-  // Initialize VolumeButtonService
+  // Initialize VolumeButtonService and TimerNotificationService
   useEffect(() => {
     VolumeButtonService.initialize();
+    TimerNotificationService.init();
   }, []);
 
   // Configure the audio session for background playback so lap-reminder beeps
@@ -280,31 +285,19 @@ export default function TimerScreen() {
           }
         }
 
-        // Update pull-down notification / lock screen media controls once every second
+        // Update pull-down notification banner once every second
         const currentSec = Math.floor(elapsed);
-        if (currentSec !== lastLockScreenSecondRef.current && keepAlivePlayer) {
+        if (currentSec !== lastLockScreenSecondRef.current) {
           lastLockScreenSecondRef.current = currentSec;
           const liveDelta = driver ? elapsed - driver.targetTime : 0;
           const deltaSign = liveDelta >= 0 ? '+' : '';
           const targetStr = driver ? formatTime(driver.targetTime) : '—';
           const lapNum = (driver?.laps?.length || 0) + 1;
-          const meta = {
-            title: `${formatTime(elapsed)} (Target: ${targetStr})`,
-            artist: driver
-              ? `Gap: ${deltaSign}${liveDelta.toFixed(1)}s • Lap #${lapNum}`
-              : `Lap #${lapNum}`,
-            albumTitle: `${driver?.name || 'Driver'} • ${team?.name || 'Race'}`,
-          };
-          try {
-            if (typeof keepAlivePlayer.updateLockScreenMetadata === 'function') {
-              keepAlivePlayer.updateLockScreenMetadata(meta);
-            } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-              keepAlivePlayer.setActiveForLockScreen(true, meta, {
-                showSeekForward: false,
-                showSeekBackward: false,
-              });
-            }
-          } catch (e) {}
+          const title = `${formatTime(elapsed)} (Target: ${targetStr})`;
+          const body = driver
+            ? `Gap: ${deltaSign}${liveDelta.toFixed(1)}s • Lap #${lapNum} • ${driver.name}`
+            : `Lap #${lapNum}`;
+          void TimerNotificationService.update(title, body);
         }
       }, 10);
     } else {
@@ -312,17 +305,20 @@ export default function TimerScreen() {
       setShowWarning(false);
       // Deactivate keep awake when timer stops
       deactivateKeepAwake();
+      void TimerNotificationService.dismiss();
     }
 
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
       deactivateKeepAwake();
+      void TimerNotificationService.dismiss();
     };
   }, [isRunning, driver, audioSettings]);
 
-  // Keep the silent track playing while a session is running so the audio
-  // session stays active and the beep interval keeps firing in the background.
-  // Also initializes lock screen / pull down media notification controls.
+  // Keep the silent track playing while a session is running so the background
+  // audio session stays active without suspending JavaScript. We deliberately
+  // use 'mixWithOthers' so music apps (Spotify/Apple Music) are never interrupted,
+  // and we do NOT register lock screen media player controls.
   useEffect(() => {
     if (!keepAlivePlayer) return;
     if (isRunning) {
@@ -330,7 +326,7 @@ export default function TimerScreen() {
         setAudioModeAsyncImport({
           playsInSilentMode: true,
           shouldPlayInBackground: true,
-          interruptionMode: 'doNotMix',
+          interruptionMode: 'mixWithOthers',
         }).catch((err) => console.warn('Error setting audio mode:', err));
       }
 
@@ -338,44 +334,22 @@ export default function TimerScreen() {
         keepAlivePlayer.loop = true;
         keepAlivePlayer.seekTo(0);
         keepAlivePlayer.play();
-
-        const initialTarget = driver ? formatTime(driver.targetTime) : '—';
-        const initialLapNum = (driver?.laps?.length || 0) + 1;
-        const initialMeta = {
-          title: `0:00.000 (Target: ${initialTarget})`,
-          artist: `Lap #${initialLapNum} • ${driver?.name || 'Driver'}`,
-          albumTitle: `${driver?.name || 'Driver'} • ${team?.name || 'Race'}`,
-        };
-        if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-          keepAlivePlayer.setActiveForLockScreen(true, initialMeta, {
-            showSeekForward: false,
-            showSeekBackward: false,
-          });
-        }
       } catch (error) {
         console.warn('Error starting keep-alive audio:', error);
       }
     } else {
       try {
-        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
-          keepAlivePlayer.clearLockScreenControls();
-        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-          keepAlivePlayer.setActiveForLockScreen(false);
-        }
         keepAlivePlayer.pause();
       } catch {}
+      void TimerNotificationService.dismiss();
     }
     return () => {
       try {
-        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
-          keepAlivePlayer.clearLockScreenControls();
-        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-          keepAlivePlayer.setActiveForLockScreen(false);
-        }
         keepAlivePlayer.pause();
       } catch {}
+      void TimerNotificationService.dismiss();
     };
-  }, [isRunning, driver?.targetTime, driver?.name, team?.name, team?.raceName]);
+  }, [isRunning]);
 
   // Volume button listener for lap recording
   useEffect(() => {
@@ -451,17 +425,28 @@ export default function TimerScreen() {
     if (!audioSettings.enabled) return;
 
     try {
-      // Play the beep sound and vibrate
+      // Play the beep sound and vibrate phone
       beepPlayer.seekTo(0);
       beepPlayer.play();
-      if (!isWeb) Vibration.vibrate(100);
+
+      if (!isWeb) {
+        if (isDouble) {
+          Vibration.vibrate([0, 150, 100, 150]);
+          void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          setTimeout(() => {
+            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          }, 200);
+        } else {
+          Vibration.vibrate(250);
+          void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+        }
+      }
 
       if (isDouble) {
-        // Wait 200ms then play again for double beep
+        // Wait 200ms then play audio again for double beep
         setTimeout(() => {
           beepPlayer.seekTo(0);
           beepPlayer.play();
-          if (!isWeb) Vibration.vibrate(100);
         }, 200);
       }
     } catch (error) {
@@ -526,6 +511,7 @@ export default function TimerScreen() {
     afterStartBeepPlayedRef.current = false;
     lastLockScreenSecondRef.current = -1;
     scheduleBeeps(start, driver?.targetTime);
+    void ensureLiveSession();
   };
 
   const overrideRejectedLap = () => {
@@ -1159,10 +1145,21 @@ export default function TimerScreen() {
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
                 <Button
                   title="Override"
+                  icon="flash-outline"
                   size="sm"
                   onPress={overrideRejectedLap}
-                  style={{ backgroundColor: theme.accent, paddingHorizontal: spacing.sm, height: 34 }}
-                  textStyle={{ color: '#000', fontWeight: '700', fontSize: 12 }}
+                  style={{
+                    backgroundColor: theme.warning,
+                    paddingHorizontal: spacing.md,
+                    height: 34,
+                    borderRadius: radius.full,
+                  }}
+                  textStyle={{
+                    color: '#000',
+                    fontWeight: fontWeights.bold,
+                    fontSize: 12,
+                    letterSpacing: 0.2,
+                  }}
                 />
                 <IconButton
                   icon="close"
@@ -1318,9 +1315,9 @@ export default function TimerScreen() {
                         index === arr.length - 1 && { borderBottomWidth: 0 },
                       ]}
                     >
-                      <Mono size={13} weight="bold" color={theme.textMuted} style={styles.lapNum}>{lap.number}</Mono>
-                      <Mono size={17} weight="medium" color={theme.text} style={{ flex: 1 }}>{formatTime(lap.time)}</Mono>
-                      <Mono size={14} weight="bold" color={deltaColor(lap.delta)} style={styles.lapDelta}>
+                      <Mono size={13} weight="bold" color={theme.textMuted} numberOfLines={1} style={styles.lapNum}>{lap.number}</Mono>
+                      <Mono size={16} weight="medium" color={theme.text} numberOfLines={1} style={styles.lapTime}>{formatTime(lap.time)}</Mono>
+                      <Mono size={14} weight="bold" color={deltaColor(lap.delta)} numberOfLines={1} style={styles.lapDelta}>
                         {lap.delta >= 0 ? '+' : ''}{lap.delta.toFixed(2)}
                       </Mono>
                       <Chip label={lap.lapType} color={lapTypeColor(lap.lapType)} active size="sm" uppercase style={styles.lapChip} />
@@ -1499,10 +1496,11 @@ const styles = StyleSheet.create({
   emptyText: { fontSize: typography.body },
 
   lapList: { overflow: 'hidden' },
-  lapRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderBottomWidth: StyleSheet.hairlineWidth },
-  lapNum: { width: 34 },
-  lapDelta: { width: 72, textAlign: 'right' },
-  lapChip: { marginLeft: spacing.md, minWidth: 84 },
+  lapRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  lapNum: { width: 28, marginRight: spacing.xs },
+  lapTime: { flex: 1, marginRight: spacing.xs },
+  lapDelta: { minWidth: 84, textAlign: 'right', flexShrink: 0 },
+  lapChip: { marginLeft: spacing.sm, minWidth: 78 },
 
   deleteAction: { backgroundColor: '#dc2626', justifyContent: 'center', alignItems: 'center', width: 88, height: '100%' },
   deleteActionText: { color: '#fff', fontSize: 11, fontWeight: '800', marginTop: 2, letterSpacing: 0.8 },

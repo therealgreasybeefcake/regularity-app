@@ -4,14 +4,14 @@
 
 const stripTrailingSlash = (s: string) => s.replace(/\/$/, '');
 
-/** Base URL of the Hono API. Defaults to localhost for simulators/web. */
+/** Base URL of the Hono API. Defaults to production domain. */
 export const API_URL = stripTrailingSlash(
-  process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:8787',
+  process.env.EXPO_PUBLIC_API_URL ?? 'https://regularity.pademelonsoftware.com.au',
 );
 
 /** Base URL of the web app (used for shareable live-view links). */
 export const WEB_URL = stripTrailingSlash(
-  process.env.EXPO_PUBLIC_WEB_URL ?? 'http://localhost:8081',
+  process.env.EXPO_PUBLIC_WEB_URL ?? 'https://regularity.pademelonsoftware.com.au',
 );
 
 /** Deep-link scheme (matches app.json "scheme"); used for the OAuth redirect. */

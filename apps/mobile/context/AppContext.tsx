@@ -66,6 +66,7 @@ interface AppContextType {
   // Live session for the real-time web view (laps streamed as recorded).
   liveSession: { id: string; publicToken: string } | null;
   liveShareUrl: string | null;
+  ensureLiveSession: () => Promise<string | null>;
   endLiveSession: () => Promise<void>;
   discardLiveSession: () => Promise<void>;
   /** Kill switch: end any live session(s) the server still has for the team. */
@@ -262,6 +263,17 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const streamedKeysRef = useRef<Set<string>>(new Set());
   teamsRef.current = teams;
   lapTypeValuesRef.current = lapTypeValues;
+
+  // Restore activeServerTeamId from storage immediately so live sessions and sync
+  // don't have to wait for the initial server query.
+  useEffect(() => {
+    AsyncStorage.getItem('activeServerTeamId').then((id) => {
+      if (id && !serverTeamIdRef.current) {
+        serverTeamIdRef.current = id;
+        setActiveServerTeamId(id);
+      }
+    });
+  }, []);
 
   const isDarkMode =
     themeMode === 'auto' ? systemColorScheme === 'dark' : themeMode === 'dark';
@@ -814,8 +826,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, []);
 
   const startLiveSessionInternal = useCallback(async (): Promise<LiveSessionState | null> => {
-    const teamId = serverTeamIdRef.current;
-    const team = teamsRef.current[0];
+    const teamId = serverTeamIdRef.current || activeServerTeamId;
+    const team = teamsRef.current[activeTeam] || teamsRef.current[0];
     if (!teamId || !team) return null;
     const id = randomUuid();
     const publicToken = randomUuid();
@@ -831,19 +843,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       payload: {
         id,
         publicToken,
-        raceName: team.raceName,
-        sessionNumber: team.sessionNumber,
-        sessionDuration: team.sessionDuration,
+        raceName: team.raceName || 'Regularity Session',
+        sessionNumber: team.sessionNumber || '1',
+        sessionDuration: Number(team.sessionDuration) > 0 ? Number(team.sessionDuration) : 120,
         drivers: team.drivers.map((d, i) => ({
           id: sessionDriverIds[i],
-          name: d.name,
-          targetTime: d.targetTime,
-          penaltyLaps: d.penaltyLaps,
+          name: d.name || `Driver ${i + 1}`,
+          targetTime: Number(d.targetTime) > 0 ? Number(d.targetTime) : 60,
+          penaltyLaps: Number(d.penaltyLaps) >= 0 ? Number(d.penaltyLaps) : 0,
         })),
       },
     });
     return state;
-  }, []);
+  }, [activeServerTeamId, activeTeam]);
+
+  const ensureLiveSession = useCallback(async (): Promise<string | null> => {
+    let live = liveSessionRef.current;
+    if (!live) {
+      live = await startLiveSessionInternal();
+    }
+    return live ? `${WEB_URL}/live/${live.publicToken}` : null;
+  }, [startLiveSessionInternal]);
 
   const endLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
@@ -866,25 +886,26 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // reference (after a reinstall, sign-out, or team switch) and so can't use
   // endLiveSession/discardLiveSession. Clears any local live state too.
   const endActiveLiveSession = useCallback(async () => {
-    const teamId = serverTeamIdRef.current;
+    const teamId = serverTeamIdRef.current || activeServerTeamId;
     if (!teamId) return;
     endedLiveTokenRef.current = teamLivePublicTokenRef.current; // may be a peer's token, which teardown can't know
     await api.post(`/api/teams/${teamId}/live/end`);
     await teardownLiveSessionLocal();
-  }, [teardownLiveSessionLocal]);
+  }, [activeServerTeamId, teardownLiveSessionLocal]);
 
   const streamLap = useCallback(
-    async (driverIndex: number, lap: Lap) => {
-      if (!serverTeamIdRef.current) return;
-      // Only owner/admin/member may record; viewers never stream laps.
-      if (!canRecord(userRoleRef.current)) return;
+    async (driverIndex: number, lap: Lap): Promise<boolean> => {
+      const teamId = serverTeamIdRef.current || activeServerTeamId;
+      if (!teamId) return false;
+      // If role is known and is viewer, skip. Otherwise allow for authenticated user.
+      if (userRoleRef.current && !canRecord(userRoleRef.current)) return false;
       let live = liveSessionRef.current;
       if (!live) {
         live = await startLiveSessionInternal();
-        if (!live) return;
+        if (!live) return false;
       }
       const sessionDriverId = live.sessionDriverIds[driverIndex];
-      if (!sessionDriverId) return;
+      if (!sessionDriverId) return false;
       await syncQueue.enqueue({
         kind: 'appendLap',
         sessionId: live.id,
@@ -897,8 +918,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
           isSafety: lap.lapType === 'safety',
         },
       });
+      return true;
     },
-    [startLiveSessionInternal],
+    [activeServerTeamId, startLiveSessionInternal],
   );
 
   // Stream newly-recorded laps to the live session (started lazily on the first
@@ -906,20 +928,23 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // (End Session / Clear Session) — never auto-ended — so a transient local lap
   // clear (re-sync flicker, reset, etc.) can't kill a running live session.
   useEffect(() => {
-    if (isLoading || !serverTeamIdRef.current) return;
-    const team = teams[0];
+    const teamId = serverTeamIdRef.current || activeServerTeamId;
+    if (isLoading || !teamId) return;
+    const team = teams[activeTeam] || teams[0];
     if (!team) return;
     (async () => {
       for (let i = 0; i < team.drivers.length; i++) {
         for (const lap of team.drivers[i].laps) {
           const key = `${i}:${lap.timestamp}`;
           if (streamedKeysRef.current.has(key)) continue;
-          streamedKeysRef.current.add(key);
-          await streamLap(i, lap);
+          const ok = await streamLap(i, lap);
+          if (ok) {
+            streamedKeysRef.current.add(key);
+          }
         }
       }
     })();
-  }, [teams, isLoading, streamLap]);
+  }, [teams, activeTeam, isLoading, activeServerTeamId, streamLap]);
 
   const liveShareUrl = liveSession ? `${WEB_URL}/live/${liveSession.publicToken}` : null;
 
@@ -998,6 +1023,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         loadSessionsFromS3,
         liveSession,
         liveShareUrl,
+        ensureLiveSession,
         endLiveSession,
         discardLiveSession,
         endActiveLiveSession,

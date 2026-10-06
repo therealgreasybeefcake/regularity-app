@@ -1154,7 +1154,7 @@ export default function SettingsScreen() {
           />
           <View style={styles.aboutMeta}>
             <Text style={[styles.aboutText, { color: theme.textSecondary }]}>Regularity Race Timer</Text>
-            <Mono size={12} color={theme.textMuted}>Version 2.0.1</Mono>
+            <Mono size={12} color={theme.textMuted}>Version 2.0.2</Mono>
           </View>
         </Collapsible>
       </ScrollView>

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Regularity Race Timer",
     "slug": "regularity-race-timer",
-    "version": "2.0.1",
+    "version": "2.0.2",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.regularity.racetimer",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "usesAppleSignIn": true,
       "runtimeVersion": "39725300a5f85ff40b150953a03e572b6d781526",
       "infoPlist": {
@@ -32,10 +32,11 @@
       "package": "com.regularity.racetimer",
       "permissions": [
         "WAKE_LOCK",
-        "MODIFY_AUDIO_SETTINGS"
+        "MODIFY_AUDIO_SETTINGS",
+        "POST_NOTIFICATIONS"
       ],
       "runtimeVersion": "2f7e0f18e35966239f05422156dcc8be5e6dda45",
-      "versionCode": 2
+      "versionCode": 3
     },
     "scheme": "regularity",
     "updates": {
@@ -52,6 +53,7 @@
           "recordAudioAndroid": false
         }
       ],
+      "expo-notifications",
       "expo-sharing",
       "expo-font",
       "expo-asset",
@@ -61,8 +63,14 @@
         {
           "ios": {
             "extraPods": [
-              { "name": "GoogleUtilities", "modular_headers": true },
-              { "name": "RecaptchaInterop", "modular_headers": true }
+              {
+                "name": "GoogleUtilities",
+                "modular_headers": true
+              },
+              {
+                "name": "RecaptchaInterop",
+                "modular_headers": true
+              }
             ]
           }
         }
