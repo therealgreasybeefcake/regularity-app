@@ -98,8 +98,8 @@ export default function TimerScreen() {
 
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
-  const team = teams[activeTeam];
-  const driver = team?.drivers[activeDriver];
+  const team = teams[activeTeam] ?? teams[0];
+  const driver = team?.drivers?.[activeDriver] ?? team?.drivers?.[0];
 
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isRunning, setIsRunning] = useState(false);
@@ -198,7 +198,8 @@ export default function TimerScreen() {
 
   // Check if session setup is needed on mount
   useEffect(() => {
-    const needsSetup = !team.name && !team.raceName && !team.sessionNumber && driver.laps.length === 0;
+    const lapsCount = driver?.laps?.length ?? 0;
+    const needsSetup = !team?.name && !team?.raceName && !team?.sessionNumber && lapsCount === 0;
     if (needsSetup) {
       openSessionSetup('new');
     }
@@ -750,10 +751,12 @@ export default function TimerScreen() {
   };
 
   const deleteLap = (lapIndex: number) => {
-    const actualIndex = driver!.laps.length - 1 - lapIndex;
+    const laps = driver?.laps ?? [];
+    const actualIndex = laps.length - 1 - lapIndex;
+    if (!laps[actualIndex]) return;
     showAlert({
       title: 'Delete Lap',
-      message: `Delete lap #${driver!.laps[actualIndex].number}?`,
+      message: `Delete lap #${laps[actualIndex].number}?`,
       buttons: [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -761,9 +764,12 @@ export default function TimerScreen() {
           style: 'destructive',
           onPress: () => {
             const updatedTeams = [...teams];
-            updatedTeams[activeTeam].drivers[activeDriver].laps.splice(actualIndex, 1);
+            const targetTeam = updatedTeams[activeTeam] ?? updatedTeams[0];
+            const targetDriver = targetTeam?.drivers?.[activeDriver] ?? targetTeam?.drivers?.[0];
+            if (!targetDriver?.laps) return;
+            targetDriver.laps.splice(actualIndex, 1);
             // Renumber remaining laps
-            updatedTeams[activeTeam].drivers[activeDriver].laps.forEach((lap, idx) => {
+            targetDriver.laps.forEach((lap, idx) => {
               lap.number = idx + 1;
             });
             setTeams(updatedTeams);
@@ -774,9 +780,11 @@ export default function TimerScreen() {
   };
 
   const openEditModal = (lapIndex: number) => {
-    const actualIndex = driver!.laps.length - 1 - lapIndex;
+    const laps = driver?.laps ?? [];
+    const actualIndex = laps.length - 1 - lapIndex;
+    if (!laps[actualIndex]) return;
     setSelectedLapIndex(actualIndex);
-    setEditLapValue(driver!.laps[actualIndex].time.toString());
+    setEditLapValue(laps[actualIndex].time.toString());
     setEditModalVisible(true);
   };
 
@@ -837,9 +845,13 @@ export default function TimerScreen() {
   };
 
   const toggleLapType = (lapIndex: number, newType: 'changeover' | 'safety') => {
-    const actualIndex = driver!.laps.length - 1 - lapIndex;
+    const laps = driver?.laps ?? [];
+    const actualIndex = laps.length - 1 - lapIndex;
     const updatedTeams = [...teams];
-    const lap = updatedTeams[activeTeam].drivers[activeDriver].laps[actualIndex];
+    const targetTeam = updatedTeams[activeTeam] ?? updatedTeams[0];
+    const targetDriver = targetTeam?.drivers?.[activeDriver] ?? targetTeam?.drivers?.[0];
+    if (!targetDriver?.laps?.[actualIndex]) return;
+    const lap = targetDriver.laps[actualIndex];
 
     if (lap.lapType === newType) {
       // Remove the special type, recalculate based on delta
@@ -854,8 +866,10 @@ export default function TimerScreen() {
   };
 
   const showLapOptions = (lapIndex: number) => {
-    const actualIndex = driver!.laps.length - 1 - lapIndex;
-    const lap = driver!.laps[actualIndex];
+    const laps = driver?.laps ?? [];
+    const actualIndex = laps.length - 1 - lapIndex;
+    const lap = laps[actualIndex];
+    if (!lap) return;
 
     showAlert({
       title: `Lap #${lap.number} Options`,
@@ -994,8 +1008,9 @@ export default function TimerScreen() {
   };
 
   const getStatusColor = () => {
-    if (!driver || driver.laps.length === 0) return theme.textSecondary;
+    if (!driver?.laps || driver.laps.length === 0) return theme.textSecondary;
     const lastLap = driver.laps[driver.laps.length - 1];
+    if (!lastLap) return theme.textSecondary;
     if (lastLap.lapType === 'bonus') return theme.bonus;
     if (lastLap.lapType === 'base') return theme.base;
     if (lastLap.lapType === 'broken') return theme.broken;
@@ -1004,11 +1019,13 @@ export default function TimerScreen() {
   };
 
   const getStatusText = () => {
-    if (!driver || driver.laps.length === 0) return 'WAITING';
+    if (!driver?.laps || driver.laps.length === 0) return 'WAITING';
     const lastLap = driver.laps[driver.laps.length - 1];
-    if (lastLap.lapType === 'bonus') return `BONUS LAP! +${lastLap.delta.toFixed(3)}s`;
-    if (lastLap.lapType === 'base') return `BASE LAP +${lastLap.delta.toFixed(3)}s`;
-    if (lastLap.lapType === 'broken') return `BROKEN! ${lastLap.delta.toFixed(3)}s`;
+    if (!lastLap) return 'WAITING';
+    const deltaStr = (lastLap.delta != null ? lastLap.delta : 0).toFixed(3);
+    if (lastLap.lapType === 'bonus') return `BONUS LAP! +${deltaStr}s`;
+    if (lastLap.lapType === 'base') return `BASE LAP +${deltaStr}s`;
+    if (lastLap.lapType === 'broken') return `BROKEN! ${deltaStr}s`;
     if (lastLap.lapType === 'changeover') return 'CHANGEOVER';
     return 'WAITING';
   };
@@ -1179,7 +1196,7 @@ export default function TimerScreen() {
           {/* Driver tabs */}
           {team?.drivers?.length ? (
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.driverTabs} contentContainerStyle={styles.driverTabsContent}>
-              {team.drivers.map((d, index) => {
+              {(team?.drivers ?? []).map((d, index) => {
                 const active = activeDriver === index;
                 return (
                   <Pressable
@@ -1298,7 +1315,7 @@ export default function TimerScreen() {
             </Surface>
           ) : (
             <Surface level="base" padding={0} style={styles.lapList}>
-              {driver!.laps.slice().reverse().map((lap, index, arr) => {
+              {(driver?.laps ?? []).slice().reverse().map((lap, index, arr) => {
                 const renderRightActions = () => (
                   <Pressable style={styles.deleteAction} onPress={() => deleteLap(index)}>
                     <Ionicons name="trash" size={24} color="#fff" />
@@ -1422,7 +1439,7 @@ export default function TimerScreen() {
               Choose a driver to time, then press START.
             </Text>
             <View style={styles.sheetFields}>
-              {team.drivers.map((d, index) => (
+              {(team?.drivers ?? []).map((d, index) => (
                 <Button
                   key={d.id}
                   title={d.name?.trim() || `Driver ${index + 1}`}

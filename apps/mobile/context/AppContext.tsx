@@ -801,6 +801,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       let s: LiveSessionState;
       try {
         s = JSON.parse(raw);
+        if (!s || !s.id || !s.publicToken) {
+          await AsyncStorage.removeItem('liveSessionState');
+          return;
+        }
+        if (!Array.isArray(s.sessionDriverIds)) {
+          s.sessionDriverIds = [];
+        }
       } catch {
         await AsyncStorage.removeItem('liveSessionState'); // corrupt
         return;
@@ -904,7 +911,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         live = await startLiveSessionInternal();
         if (!live) return false;
       }
-      const sessionDriverId = live.sessionDriverIds[driverIndex];
+      const sessionDriverId = live.sessionDriverIds?.[driverIndex];
       if (!sessionDriverId) return false;
       await syncQueue.enqueue({
         kind: 'appendLap',
@@ -923,6 +930,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     [activeServerTeamId, startLiveSessionInternal],
   );
 
+  // Defensive clamp for active indices
+  useEffect(() => {
+    if (teams.length > 0 && activeTeam >= teams.length) {
+      setActiveTeam(0);
+    }
+  }, [teams, activeTeam]);
+
+  useEffect(() => {
+    const curTeam = teams[activeTeam] ?? teams[0];
+    if (curTeam && curTeam.drivers?.length > 0 && activeDriver >= curTeam.drivers.length) {
+      setActiveDriver(0);
+    }
+  }, [teams, activeTeam, activeDriver]);
+
   // Stream newly-recorded laps to the live session (started lazily on the first
   // lap). The session is ONLY ended/discarded by explicit user action
   // (End Session / Clear Session) — never auto-ended — so a transient local lap
@@ -931,10 +952,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     const teamId = serverTeamIdRef.current || activeServerTeamId;
     if (isLoading || !teamId) return;
     const team = teams[activeTeam] || teams[0];
-    if (!team) return;
+    if (!team?.drivers) return;
     (async () => {
       for (let i = 0; i < team.drivers.length; i++) {
-        for (const lap of team.drivers[i].laps) {
+        const d = team.drivers[i];
+        if (!d?.laps) continue;
+        for (const lap of d.laps) {
+          if (!lap) continue;
           const key = `${i}:${lap.timestamp}`;
           if (streamedKeysRef.current.has(key)) continue;
           const ok = await streamLap(i, lap);

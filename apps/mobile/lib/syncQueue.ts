@@ -48,7 +48,10 @@ class SyncQueue {
     this.loaded = true;
     try {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
-      if (raw) this.items = JSON.parse(raw);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        this.items = Array.isArray(parsed) ? parsed.filter((i) => i && i.op && i.op.kind) : [];
+      }
     } catch {
       this.items = [];
     }
