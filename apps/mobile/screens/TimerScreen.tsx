@@ -197,7 +197,7 @@ export default function TimerScreen() {
     setAudioModeAsyncImport({
       playsInSilentMode: true,
       shouldPlayInBackground: true,
-      interruptionMode: Platform.OS === 'android' ? 'doNotMix' : 'mixWithOthers',
+      interruptionMode: 'mixWithOthers',
     }).catch((error) => console.error('Error setting audio mode:', error));
   }, []);
 
@@ -343,11 +343,8 @@ export default function TimerScreen() {
   }, [isRunning, driver, audioSettings]);
 
   // Keep the silent track playing while a session is running so the background
-  // audio session stays active without suspending JavaScript.
-  // On Android, we enable lock screen controls via setActiveForLockScreen which starts
-  // the Android Foreground Service (AudioControlsService). This is required by Android OS
-  // to prevent the JavaScript event loop, intervals, and audio from being paused while
-  // the app is backgrounded or the screen is locked.
+  // audio session stays active. We use 'mixWithOthers' so music apps (Spotify/Apple Music)
+  // are never interrupted, and we do NOT register lock screen media player controls.
   useEffect(() => {
     if (!keepAlivePlayer) return;
     if (isRunning) {
@@ -355,29 +352,13 @@ export default function TimerScreen() {
         setAudioModeAsyncImport({
           playsInSilentMode: true,
           shouldPlayInBackground: true,
-          interruptionMode: Platform.OS === 'android' ? 'doNotMix' : 'mixWithOthers',
+          interruptionMode: 'mixWithOthers',
         }).catch((err) => console.warn('Error setting audio mode:', err));
       }
 
       try {
         keepAlivePlayer.loop = true;
         keepAlivePlayer.volume = 0.05;
-
-        if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-          const targetStr = driver ? formatTime(driver.targetTime) : '—';
-          keepAlivePlayer.setActiveForLockScreen(
-            true,
-            {
-              title: 'Regularity Race Timer',
-              artist: driver ? `${driver.name} • Target ${targetStr}` : 'Timer running',
-            },
-            {
-              showSeekForward: false,
-              showSeekBackward: false,
-            }
-          );
-        }
-
         if (typeof keepAlivePlayer.seekTo === 'function') {
           void keepAlivePlayer.seekTo(0).then(() => {
             keepAlivePlayer.play();
@@ -392,27 +373,88 @@ export default function TimerScreen() {
       }
     } else {
       try {
-        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
-          keepAlivePlayer.clearLockScreenControls();
-        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-          keepAlivePlayer.setActiveForLockScreen(false);
-        }
         keepAlivePlayer.pause();
       } catch {}
       void TimerNotificationService.dismiss();
     }
     return () => {
       try {
-        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
-          keepAlivePlayer.clearLockScreenControls();
-        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-          keepAlivePlayer.setActiveForLockScreen(false);
-        }
         keepAlivePlayer.pause();
       } catch {}
       void TimerNotificationService.dismiss();
     };
-  }, [isRunning, driver]);
+  }, [isRunning]);
+
+  // Subscribe to native audio playback updates. Every second, native audio playback triggers
+  // a status update event which executes even when the React Native Activity is paused/backgrounded.
+  // This allows the notification timer and audio warning checks to continue firing in the background.
+  useEffect(() => {
+    if (!keepAlivePlayer || !isRunning) return;
+
+    let sub: any = null;
+    if (typeof keepAlivePlayer.addListener === 'function') {
+      sub = keepAlivePlayer.addListener('playbackStatusUpdate', () => {
+        if (!startTimeRef.current) return;
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTimeRef.current) / 10) / 100;
+
+        if (AppState.currentState !== 'active') {
+          setElapsedTime(elapsed);
+        }
+
+        const currentSec = Math.floor(elapsed);
+        if (currentSec !== lastLockScreenSecondRef.current) {
+          lastLockScreenSecondRef.current = currentSec;
+          const liveDelta = driver ? elapsed - driver.targetTime : 0;
+          const deltaSign = liveDelta >= 0 ? '+' : '';
+          const targetStr = driver ? formatTime(driver.targetTime) : '—';
+          const lapNum = (driver?.laps?.length || 0) + 1;
+          const title = `${formatTime(elapsed)} (Target: ${targetStr})`;
+          const body = driver
+            ? `Gap: ${deltaSign}${liveDelta.toFixed(1)}s • Lap #${lapNum} • ${driver.name}`
+            : `Lap #${lapNum}`;
+          void TimerNotificationService.update(title, body);
+        }
+
+        const afterLapSec = Number(audioSettings.afterLapStart) || 15;
+        const beforeTargetSec = Number(audioSettings.beforeTargetTime) || 10;
+
+        // After lap start beep check
+        if (
+          audioSettings.afterLapStartEnabled &&
+          elapsed >= afterLapSec &&
+          !afterStartBeepPlayedRef.current
+        ) {
+          if (elapsed < afterLapSec + 2.5) {
+            playBeep(true);
+          }
+          afterStartBeepPlayedRef.current = true;
+        }
+
+        // Before target beep check
+        if (driver) {
+          const timeUntilTarget = driver.targetTime - elapsed;
+          if (
+            audioSettings.beforeTargetEnabled &&
+            timeUntilTarget <= beforeTargetSec &&
+            timeUntilTarget > -5 &&
+            !beforeTargetBeepPlayedRef.current
+          ) {
+            if (timeUntilTarget >= beforeTargetSec - 3.0) {
+              playBeep(false);
+            }
+            beforeTargetBeepPlayedRef.current = true;
+          }
+        }
+      });
+    }
+
+    return () => {
+      if (sub && typeof sub.remove === 'function') {
+        sub.remove();
+      }
+    };
+  }, [isRunning, keepAlivePlayer, driver, audioSettings]);
 
   // Volume button listener for lap recording
   useEffect(() => {
@@ -860,11 +902,6 @@ export default function TimerScreen() {
     lastLockScreenSecondRef.current = -1;
     if (keepAlivePlayer) {
       try {
-        if (typeof keepAlivePlayer.clearLockScreenControls === 'function') {
-          keepAlivePlayer.clearLockScreenControls();
-        } else if (typeof keepAlivePlayer.setActiveForLockScreen === 'function') {
-          keepAlivePlayer.setActiveForLockScreen(false);
-        }
         keepAlivePlayer.pause();
       } catch (e) {}
     }
