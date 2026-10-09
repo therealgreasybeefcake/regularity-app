@@ -15,6 +15,10 @@ interface LiveSessionState {
   sessionDriverIds: string[];
 }
 
+/** Stable server idempotency key for a local lap (its recorded-at time never changes). */
+const clientLapIdFor = (live: LiveSessionState, sessionDriverId: string, lap: Lap) =>
+  deterministicUuid(`${live.id}:${sessionDriverId}:${lap.timestamp}`);
+
 export type ThemeMode = 'light' | 'dark' | 'auto';
 
 interface AppContextType {
@@ -68,6 +72,10 @@ interface AppContextType {
   liveShareUrl: string | null;
   ensureLiveSession: () => Promise<string | null>;
   endLiveSession: () => Promise<void>;
+  /** Push a corrected lap (time / changeover / safety) to the live session. */
+  syncLapEdit: (driverIndex: number, lap: Lap) => void;
+  /** Remove a deleted lap from the live session. */
+  syncLapDelete: (driverIndex: number, lap: Lap) => void;
   /** Relay the stopwatch state (local epoch ms) so spectators' clocks follow it. */
   reportTimerState: (running: boolean, lapStartedAt: number | null, stoppedAt?: number | null) => void;
   discardLiveSession: () => Promise<void>;
@@ -883,6 +891,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
   }, [teardownLiveSessionLocal]);
 
+  // The live-session lap a local lap was streamed as, or null if it never was
+  // (then there's nothing server-side to change — an edited lap that hasn't been
+  // streamed yet goes up with its current values).
+  const streamedLapRef = (driverIndex: number, lap: Lap) => {
+    const live = liveSessionRef.current;
+    const sessionDriverId = live?.sessionDriverIds?.[driverIndex];
+    if (!live || !sessionDriverId) return null;
+    if (!streamedKeysRef.current.has(`${driverIndex}:${lap.timestamp}`)) return null;
+    if (userRoleRef.current && !canRecord(userRoleRef.current)) return null;
+    return { sessionId: live.id, clientLapId: clientLapIdFor(live, sessionDriverId, lap) };
+  };
+
+  const syncLapEdit = useCallback((driverIndex: number, lap: Lap) => {
+    const ref = streamedLapRef(driverIndex, lap);
+    if (!ref) return;
+    void syncQueue.enqueue({
+      kind: 'patchLap',
+      ...ref,
+      payload: {
+        time: lap.time,
+        isChangeover: lap.lapType === 'changeover',
+        isSafety: lap.lapType === 'safety',
+      },
+    });
+  }, []);
+
+  const syncLapDelete = useCallback((driverIndex: number, lap: Lap) => {
+    const ref = streamedLapRef(driverIndex, lap);
+    if (!ref) return;
+    streamedKeysRef.current.delete(`${driverIndex}:${lap.timestamp}`);
+    void syncQueue.enqueue({ kind: 'deleteLap', ...ref });
+  }, []);
+
   const reportTimerState = useCallback(
     (running: boolean, lapStartedAt: number | null, stoppedAt: number | null = null) => {
       const live = liveSessionRef.current;
@@ -931,7 +972,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         kind: 'appendLap',
         sessionId: live.id,
         payload: {
-          clientLapId: deterministicUuid(`${live.id}:${sessionDriverId}:${lap.timestamp}`),
+          clientLapId: clientLapIdFor(live, sessionDriverId, lap),
           sessionDriverId,
           time: lap.time,
           recordedAt: lap.timestamp,
@@ -1064,6 +1105,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ensureLiveSession,
         endLiveSession,
         reportTimerState,
+        syncLapEdit,
+        syncLapDelete,
         discardLiveSession,
         endActiveLiveSession,
       }}

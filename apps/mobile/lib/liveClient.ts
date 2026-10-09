@@ -89,7 +89,18 @@ export function subscribeLive(publicToken: string, h: Handlers): () => void {
       }
     };
     es.addEventListener('lap', onLapEvt);
-    es.addEventListener('lapEdited', onLapEvt);
+    // Edits/deletes can change types and renumber later laps — refetch the whole
+    // session rather than patching it piecemeal.
+    const resync = () => {
+      fetch(`${base}/snapshot`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((s) => {
+          if (s) h.onSnapshot(s);
+        })
+        .catch(() => {});
+    };
+    es.addEventListener('lapEdited', resync);
+    es.addEventListener('lapDeleted', resync);
     es.addEventListener('timer', (e: any) => {
       try {
         h.onTimer?.(JSON.parse(e.data).timer);

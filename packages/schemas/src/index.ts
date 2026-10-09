@@ -99,6 +99,14 @@ export const appendLapInputSchema = z.object({
 });
 export type AppendLapInput = z.infer<typeof appendLapInputSchema>;
 
+/** Correction to a recorded lap (addressed by its clientLapId); omitted fields keep their value. */
+export const updateLapInputSchema = z.object({
+  time: lapTimeSchema.optional(),
+  isChangeover: z.boolean().optional(),
+  isSafety: z.boolean().optional(),
+});
+export type UpdateLapInput = z.infer<typeof updateLapInputSchema>;
+
 /** Optional link from a roster driver to a member's user account (or null to unlink). */
 const linkedUserIdSchema = z.string().trim().min(1).max(120).nullish();
 

@@ -82,6 +82,8 @@ export default function TimerScreen() {
     discardLiveSession,
     endLiveSession,
     reportTimerState,
+    syncLapEdit,
+    syncLapDelete,
     liveSession,
     teamLivePublicToken,
     refreshTeamLive,
@@ -941,7 +943,8 @@ export default function TimerScreen() {
             const updatedTeams = [...teams];
             const targetTeam = updatedTeams[activeTeam] ?? updatedTeams[0];
             const targetDriver = targetTeam?.drivers?.[activeDriver] ?? targetTeam?.drivers?.[0];
-            if (!targetDriver?.laps) return;
+            if (!targetDriver?.laps?.[actualIndex]) return;
+            syncLapDelete(activeDriver, targetDriver.laps[actualIndex]);
             targetDriver.laps.splice(actualIndex, 1);
             // Renumber remaining laps
             targetDriver.laps.forEach((lap, idx) => {
@@ -1012,6 +1015,7 @@ export default function TimerScreen() {
     lap.delta = newTime - driver.targetTime;
     lap.lapType = calculateLapType(lap.delta, lap.lapType === 'changeover', lap.lapType === 'safety');
     lap.lapValue = calculateLapValue(lap.lapType, lapTypeValues);
+    syncLapEdit(activeDriver, lap);
 
     setTeams(updatedTeams);
     setEditModalVisible(false);
@@ -1037,6 +1041,7 @@ export default function TimerScreen() {
     }
 
     lap.lapValue = calculateLapValue(lap.lapType, lapTypeValues);
+    syncLapEdit(activeDriver, lap);
     setTeams(updatedTeams);
   };
 

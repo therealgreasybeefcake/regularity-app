@@ -21,6 +21,8 @@ export type SyncOp =
   | { kind: 'completeSession'; teamId: string; payload: unknown }
   | { kind: 'startSession'; teamId: string; payload: unknown }
   | { kind: 'appendLap'; sessionId: string; payload: unknown }
+  | { kind: 'patchLap'; sessionId: string; clientLapId: string; payload: unknown }
+  | { kind: 'deleteLap'; sessionId: string; clientLapId: string }
   // Recorder's stopwatch state for spectators. Timestamps are this device's
   // clock; they're converted to server time when sent.
   | { kind: 'timerState'; sessionId: string; running: boolean; lapStartedAt: number | null; stoppedAt: number | null }
@@ -127,6 +129,12 @@ class SyncQueue {
         (i) => !(i.op.kind === 'patchDriver' && i.op.driverId === op.driverId),
       );
     }
+    // Lap patches carry the lap's full editable state — latest wins.
+    if (op.kind === 'patchLap') {
+      this.items = this.items.filter(
+        (i) => !(i.op.kind === 'patchLap' && i.op.clientLapId === op.clientLapId),
+      );
+    }
     // Only the latest stopwatch state matters to spectators.
     if (op.kind === 'timerState') {
       this.items = this.items.filter(
@@ -206,6 +214,12 @@ class SyncQueue {
         break;
       case 'appendLap':
         await api.post(`/api/sessions/${op.sessionId}/laps`, op.payload);
+        break;
+      case 'patchLap':
+        await api.patch(`/api/sessions/${op.sessionId}/laps/${op.clientLapId}`, op.payload);
+        break;
+      case 'deleteLap':
+        await api.del(`/api/sessions/${op.sessionId}/laps/${op.clientLapId}`);
         break;
       case 'timerState': {
         await syncServerClock();
