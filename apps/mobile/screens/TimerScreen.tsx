@@ -10,6 +10,7 @@ import {
   Platform,
   KeyboardAvoidingView,
   AppState,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
@@ -20,6 +21,10 @@ import * as Haptics from 'expo-haptics';
 
 // Web-safe imports
 const isWeb = Platform.OS === 'web';
+// Wide-web layout thresholds (window width includes the 200px web sidebar).
+const WIDE_MIN_WIDTH = 1100;
+const WIDE_MAX_WIDTH = 1440;
+const WEB_SIDEBAR_WIDTH = 200;
 let activateKeepAwakeAsync: () => Promise<void> = async () => {};
 let deactivateKeepAwake: () => void = () => {};
 let useAudioPlayerImport: any = null;
@@ -41,7 +46,7 @@ import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService
 import { TimerNotificationService } from '../services/TimerNotificationService';
 import { useAlert } from '../components/CustomAlert';
 import LiveShareBanner from '../components/LiveShareBanner';
-import { Mono, Label, Card, Surface, Button, IconButton, Chip, TextField, Sheet, LiveDot } from '../components/ui';
+import { Mono, Label, Card, Surface, Button, IconButton, Chip, TextField, Sheet, LiveDot, StatTile } from '../components/ui';
 
 // Why the session setup sheet is open: first-run setup, editing the current
 // session's details, or setting up the next session right after ending one.
@@ -101,6 +106,13 @@ export default function TimerScreen() {
 
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
+  // Laptop/desktop web: two columns (clock + controls | full lap history).
+  const { width: windowWidth } = useWindowDimensions();
+  const wide = isWeb && windowWidth >= WIDE_MIN_WIDTH;
+  // Size the clock to its column so a 6-character time ("123.45") always fits.
+  const wideContentW = Math.min(windowWidth - WEB_SIDEBAR_WIDTH, WIDE_MAX_WIDTH) - spacing.xl * 2;
+  const wideRightW = Math.min(Math.max(wideContentW * 0.4, 360), 520);
+  const wideClockSize = Math.round(Math.min(176, (wideContentW - wideRightW - spacing.xl - spacing.xl * 2) / 4));
   const team = teams[activeTeam] ?? teams[0];
   const driver = team?.drivers?.[activeDriver] ?? team?.drivers?.[0];
 
@@ -1268,6 +1280,323 @@ export default function TimerScreen() {
   const showKillSwitch = teamHasLive && (!liveSession || lapCount === 0);
   const statusColor = getStatusColor();
 
+  // Layout pieces shared by the phone (single column) and wide-web layouts.
+  const notices = (
+    <>
+      {/* A live session is running for the team that this device isn't recording
+          (a teammate, or an orphaned session this device lost track of). Offer
+          to view it, and a kill switch to end it without needing the DB. */}
+      {showViewLive || showKillSwitch ? (
+        <View style={styles.peerLiveWrap}>
+          {showViewLive ? (
+            <Pressable
+              onPress={() => router.push(`/live/${teamLivePublicToken}` as any)}
+              style={[styles.peerLive, { borderColor: theme.livePulse, backgroundColor: theme.surfaceElevated }]}
+            >
+              <LiveDot size={8} color={theme.livePulse} />
+              <Text style={[styles.peerLiveText, { color: theme.text }]}>A live session is running for your team</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.textSecondary as string} />
+            </Pressable>
+          ) : null}
+          {showKillSwitch ? (
+            <Button
+              title="End Live Session"
+              icon="stop-circle-outline"
+              size="sm"
+              variant="secondary"
+              fullWidth
+              onPress={handleEndLiveSession}
+              textStyle={{ color: theme.danger }}
+            />
+          ) : null}
+        </View>
+      ) : null}
+    </>
+  );
+  const header = (
+    <>
+      {/* Header — tap to edit the race / session details */}
+      <Pressable
+        style={[styles.header, wide && styles.flushBottom]}
+        onPress={() => openSessionSetup('edit')}
+        accessibilityRole="button"
+        accessibilityLabel="Edit session details"
+      >
+        <View style={{ flex: 1 }}>
+          <Label muted>{team?.raceName || 'Tap to set race name'}</Label>
+          <View style={styles.headerTitleRow}>
+            <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
+              {team?.name || 'New Session'}
+            </Text>
+            {team?.sessionNumber ? <Chip label={`S${team.sessionNumber}`} color={theme.accent} active size="sm" /> : null}
+          </View>
+        </View>
+        <Ionicons name="create-outline" size={20} color={theme.primary as string} />
+      </Pressable>
+    </>
+  );
+  const rejectedBanner = (
+    <>
+      {/* Rejected lap message with Override option */}
+      {rejectedLap && (
+        <Surface
+          level="base"
+          style={[
+            styles.rejected,
+            {
+              borderColor: theme.danger,
+              backgroundColor: theme.surfaceElevated,
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingVertical: spacing.sm,
+              paddingHorizontal: spacing.md,
+            },
+          ]}
+        >
+          <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginRight: spacing.sm }}>
+            <Ionicons name="warning-outline" size={22} color={theme.danger as string} style={{ marginRight: spacing.sm }} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.rejectedText, { color: theme.text, fontWeight: fontWeights.bold }]}>
+                Lap rejected: {rejectedLap.time.toFixed(2)}s
+              </Text>
+              <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>
+                Expected {rejectedLap.minTime.toFixed(1)}–{rejectedLap.maxTime.toFixed(1)}s (Safety car: {rejectedLap.safetyCarThreshold.toFixed(1)}s+)
+              </Text>
+            </View>
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
+            <Button
+              title="Override"
+              icon="flash-outline"
+              size="sm"
+              onPress={overrideRejectedLap}
+              style={{
+                backgroundColor: theme.warning,
+                paddingHorizontal: spacing.md,
+                height: 34,
+                borderRadius: radius.full,
+              }}
+              textStyle={{
+                color: '#000',
+                fontWeight: fontWeights.bold,
+                fontSize: 12,
+                letterSpacing: 0.2,
+              }}
+            />
+            <IconButton
+              icon="close"
+              size={18}
+              variant="ghost"
+              onPress={() => {
+                if (rejectedLapTimerRef.current) clearTimeout(rejectedLapTimerRef.current);
+                setRejectedLap(null);
+              }}
+              accessibilityLabel="Dismiss rejection message"
+            />
+          </View>
+        </Surface>
+      )}
+    </>
+  );
+  const driverTabs = (
+    <>
+      {/* Driver tabs */}
+      {team?.drivers?.length ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.driverTabs, wide && styles.flushBottom]} contentContainerStyle={styles.driverTabsContent}>
+          {(team?.drivers ?? []).map((d, index) => {
+            const active = activeDriver === index;
+            return (
+              <Pressable
+                key={d.id}
+                onPress={() => setActiveDriver(index)}
+                style={[
+                  styles.driverTab,
+                  { backgroundColor: active ? theme.primaryMuted : theme.surfaceElevated, borderColor: active ? theme.primary : theme.border },
+                ]}
+              >
+                <Text style={[styles.driverTabName, { color: active ? theme.primary : theme.text }]} numberOfLines={1}>
+                  {d.name || 'Driver'}
+                </Text>
+                <Mono size={11} color={active ? theme.primary : theme.textSecondary}>{d.laps.length} laps</Mono>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
+      ) : null}
+    </>
+  );
+  const clockCard = (
+    <>
+      {/* Hero clock */}
+      <Card
+        padding="xl"
+        style={[styles.clockCard, isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
+      >
+        <View style={styles.clockTopRow}>
+          <Label muted>{isRunning ? 'RECORDING' : 'ELAPSED'}</Label>
+          {isRunning && (
+            <View style={styles.recRow}>
+              <LiveDot size={8} color={theme.danger} />
+              <Label color={theme.danger}>REC</Label>
+            </View>
+          )}
+        </View>
+        <Animated.Text
+          style={[
+            styles.clock,
+            wide && { fontSize: wideClockSize, lineHeight: Math.round(wideClockSize * 1.1), letterSpacing: -wideClockSize / 28, marginVertical: spacing.xl },
+            { color: theme.text, transform: [{ scale: pulseAnim }] },
+          ]}
+        >
+          {elapsedTime.toFixed(2)}
+        </Animated.Text>
+        <View style={styles.clockMeta}>
+          <Label muted size={wide ? typography.body : undefined}>TARGET {driver ? formatTime(driver.targetTime) : '—'}</Label>
+          {driver && (isRunning || lapCount > 0) ? (
+            <Mono size={wide ? 40 : typography.title} weight="bold" color={deltaColor(liveDelta)}>
+              {liveDelta >= 0 ? '+' : ''}{liveDelta.toFixed(2)}
+            </Mono>
+          ) : null}
+        </View>
+        <View style={[styles.statusStrip, { borderColor: statusColor }]}>
+          <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>{getStatusText()}</Text>
+        </View>
+      </Card>
+    </>
+  );
+  const controls = (
+    <>
+      {/* Primary action */}
+      <Button
+        title={isRunning ? 'LAP' : 'START'}
+        icon={isRunning ? 'flag' : 'play'}
+        onPress={addLap}
+        size="lg"
+        style={[styles.primaryBtn, wide && styles.primaryBtnWide, { backgroundColor: isRunning ? theme.broken : theme.bonus }, glowShadow(isRunning ? String(theme.broken) : String(theme.bonus), 0.4, 16)]}
+        textStyle={[styles.primaryBtnText, wide && styles.primaryBtnTextWide]}
+      />
+
+      {/* Secondary controls (one row with manual entry on wide web) */}
+      <View style={wide ? styles.wideControlRow : undefined}>
+      <View style={[styles.secondaryRow, wide && styles.wideControlCell]}>
+        <Button
+          title="Stop"
+          icon="stop"
+          variant="secondary"
+          onPress={handleStopPress}
+          disabled={!isRunning}
+          style={[{ flex: 1 }, !isRunning && { opacity: 0.5 }]}
+        />
+        <Button
+          title="Reset"
+          icon="refresh"
+          variant="secondary"
+          onPress={handleResetPress}
+          disabled={elapsedTime === 0 && !isRunning}
+          style={[{ flex: 1 }, elapsedTime === 0 && !isRunning && { opacity: 0.5 }]}
+        />
+      </View>
+
+      {/* Manual entry */}
+      <View style={[styles.manualRow, wide && styles.wideControlCell]}>
+        <TextField
+          mono
+          placeholder="MM:SS.mmm"
+          value={lapInput}
+          onChangeText={setLapInput}
+          keyboardType="numbers-and-punctuation"
+          containerStyle={{ flex: 1 }}
+        />
+        <IconButton icon="add" variant="primary" size={24} onPress={addLap} accessibilityLabel="Add manual lap" />
+      </View>
+      </View>
+    </>
+  );
+  const historyHeader = (
+    <>
+      {/* Lap history */}
+      <View style={styles.historyHeader}>
+        <Label size={13}>Lap History</Label>
+        {lapCount > 0 && (
+          <View style={styles.historyActions}>
+            <Button title="End Session" icon="checkmark-circle-outline" size="sm" variant="secondary" onPress={endSession} />
+            <Button
+              title="Clear"
+              icon="trash-outline"
+              size="sm"
+              variant="secondary"
+              onPress={clearSession}
+              textStyle={{ color: theme.danger }}
+            />
+          </View>
+        )}
+      </View>
+    </>
+  );
+  // Wide web: at-a-glance numbers for the selected driver above the lap history.
+  const driverLaps = driver?.laps ?? [];
+  const lastLap = driverLaps.length ? driverLaps[driverLaps.length - 1] : null;
+  const avgDelta = driverLaps.length ? driverLaps.reduce((sum, l) => sum + l.delta, 0) / driverLaps.length : null;
+  const bonusCount = driverLaps.filter((l) => l.lapType === 'bonus').length;
+  const driverSummary = (
+    <Surface level="base" padding="md" style={styles.summaryRow}>
+      <StatTile size="sm" label="Laps" value={String(lapCount)} style={styles.summaryCell} />
+      <StatTile size="sm" label="Last" value={lastLap ? formatTime(lastLap.time) : '—'} style={styles.summaryCell} />
+      <StatTile
+        size="sm"
+        label="Avg Δ"
+        value={avgDelta === null ? '—' : `${avgDelta >= 0 ? '+' : '\u2212'}${Math.abs(avgDelta).toFixed(2)}`}
+        valueColor={avgDelta === null ? undefined : deltaColor(avgDelta)}
+        style={styles.summaryCell}
+      />
+      <StatTile size="sm" label="Bonus" value={String(bonusCount)} valueColor={theme.bonus} style={styles.summaryCell} />
+    </Surface>
+  );
+  const lapList = (
+    <>
+      {lapCount === 0 ? (
+        <Surface level="base" padding="xl" style={styles.emptyCard}>
+          <Ionicons name="time-outline" size={28} color={theme.textMuted as string} />
+          <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No laps recorded yet</Text>
+        </Surface>
+      ) : (
+        <Surface level="base" padding={0} style={styles.lapList}>
+          {(driver?.laps ?? []).slice().reverse().map((lap, index, arr) => {
+            const renderRightActions = () => (
+              <Pressable style={styles.deleteAction} onPress={() => deleteLap(index)}>
+                <Ionicons name="trash" size={24} color="#fff" />
+                <Text style={styles.deleteActionText}>DELETE</Text>
+              </Pressable>
+            );
+            return (
+              <Swipeable key={lap.number} renderRightActions={renderRightActions} overshootRight={false}>
+                <Pressable
+                  onLongPress={() => showLapOptions(index)}
+                  delayLongPress={500}
+                  style={[
+                    styles.lapRow,
+                    { backgroundColor: theme.surface, borderBottomColor: theme.borderFaint },
+                    index === arr.length - 1 && { borderBottomWidth: 0 },
+                  ]}
+                >
+                  <Mono size={13} weight="bold" color={theme.textMuted} numberOfLines={1} style={styles.lapNum}>{lap.number}</Mono>
+                  <Mono size={16} weight="medium" color={theme.text} numberOfLines={1} style={styles.lapTime}>{formatTime(lap.time)}</Mono>
+                  <View style={styles.lapDeltaWrap}>
+                    <Mono size={14} weight="bold" color={deltaColor(lap.delta)} numberOfLines={1} style={styles.lapDelta}>
+                      {`${lap.delta >= 0 ? '+' : '\u2212'}${Math.abs(lap.delta).toFixed(2)}`}
+                    </Mono>
+                  </View>
+                  <Chip label={lap.lapType} color={lapTypeColor(lap.lapType)} active size="sm" uppercase style={styles.lapChip} />
+                </Pressable>
+              </Swipeable>
+            );
+          })}
+        </Surface>
+      )}
+    </>
+  );
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <LiveShareBanner />
@@ -1275,270 +1604,40 @@ export default function TimerScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
       >
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-          {/* A live session is running for the team that this device isn't recording
-              (a teammate, or an orphaned session this device lost track of). Offer
-              to view it, and a kill switch to end it without needing the DB. */}
-          {showViewLive || showKillSwitch ? (
-            <View style={styles.peerLiveWrap}>
-              {showViewLive ? (
-                <Pressable
-                  onPress={() => router.push(`/live/${teamLivePublicToken}` as any)}
-                  style={[styles.peerLive, { borderColor: theme.livePulse, backgroundColor: theme.surfaceElevated }]}
-                >
-                  <LiveDot size={8} color={theme.livePulse} />
-                  <Text style={[styles.peerLiveText, { color: theme.text }]}>A live session is running for your team</Text>
-                  <Ionicons name="chevron-forward" size={16} color={theme.textSecondary as string} />
-                </Pressable>
-              ) : null}
-              {showKillSwitch ? (
-                <Button
-                  title="End Live Session"
-                  icon="stop-circle-outline"
-                  size="sm"
-                  variant="secondary"
-                  fullWidth
-                  onPress={handleEndLiveSession}
-                  textStyle={{ color: theme.danger }}
-                />
-              ) : null}
+        {wide ? (
+          <View style={styles.wideRoot}>
+            {notices}
+            <View style={styles.wideTopBar}>
+              <View style={styles.wideTopHeader}>{header}</View>
+              <View style={styles.wideTopTabs}>{driverTabs}</View>
             </View>
-          ) : null}
-          {/* Header — tap to edit the race / session details */}
-          <Pressable
-            style={styles.header}
-            onPress={() => openSessionSetup('edit')}
-            accessibilityRole="button"
-            accessibilityLabel="Edit session details"
-          >
-            <View style={{ flex: 1 }}>
-              <Label muted>{team?.raceName || 'Tap to set race name'}</Label>
-              <View style={styles.headerTitleRow}>
-                <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-                  {team?.name || 'New Session'}
-                </Text>
-                {team?.sessionNumber ? <Chip label={`S${team.sessionNumber}`} color={theme.accent} active size="sm" /> : null}
+            {rejectedBanner}
+            <View style={styles.wideColumns}>
+              <ScrollView style={styles.wideLeft} contentContainerStyle={styles.wideLeftContent} keyboardShouldPersistTaps="handled">
+                {clockCard}
+                {controls}
+              </ScrollView>
+              <View style={styles.wideRight}>
+                {driverSummary}
+                {historyHeader}
+                <ScrollView style={styles.wideLapScroll} keyboardShouldPersistTaps="handled">
+                  {lapList}
+                </ScrollView>
               </View>
             </View>
-            <Ionicons name="create-outline" size={20} color={theme.primary as string} />
-          </Pressable>
-
-          {/* Rejected lap message with Override option */}
-          {rejectedLap && (
-            <Surface
-              level="base"
-              style={[
-                styles.rejected,
-                {
-                  borderColor: theme.danger,
-                  backgroundColor: theme.surfaceElevated,
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  paddingVertical: spacing.sm,
-                  paddingHorizontal: spacing.md,
-                },
-              ]}
-            >
-              <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', marginRight: spacing.sm }}>
-                <Ionicons name="warning-outline" size={22} color={theme.danger as string} style={{ marginRight: spacing.sm }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.rejectedText, { color: theme.text, fontWeight: fontWeights.bold }]}>
-                    Lap rejected: {rejectedLap.time.toFixed(2)}s
-                  </Text>
-                  <Text style={{ color: theme.textSecondary, fontSize: 11, marginTop: 2 }}>
-                    Expected {rejectedLap.minTime.toFixed(1)}–{rejectedLap.maxTime.toFixed(1)}s (Safety car: {rejectedLap.safetyCarThreshold.toFixed(1)}s+)
-                  </Text>
-                </View>
-              </View>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs }}>
-                <Button
-                  title="Override"
-                  icon="flash-outline"
-                  size="sm"
-                  onPress={overrideRejectedLap}
-                  style={{
-                    backgroundColor: theme.warning,
-                    paddingHorizontal: spacing.md,
-                    height: 34,
-                    borderRadius: radius.full,
-                  }}
-                  textStyle={{
-                    color: '#000',
-                    fontWeight: fontWeights.bold,
-                    fontSize: 12,
-                    letterSpacing: 0.2,
-                  }}
-                />
-                <IconButton
-                  icon="close"
-                  size={18}
-                  variant="ghost"
-                  onPress={() => {
-                    if (rejectedLapTimerRef.current) clearTimeout(rejectedLapTimerRef.current);
-                    setRejectedLap(null);
-                  }}
-                  accessibilityLabel="Dismiss rejection message"
-                />
-              </View>
-            </Surface>
-          )}
-
-          {/* Driver tabs */}
-          {team?.drivers?.length ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.driverTabs} contentContainerStyle={styles.driverTabsContent}>
-              {(team?.drivers ?? []).map((d, index) => {
-                const active = activeDriver === index;
-                return (
-                  <Pressable
-                    key={d.id}
-                    onPress={() => setActiveDriver(index)}
-                    style={[
-                      styles.driverTab,
-                      { backgroundColor: active ? theme.primaryMuted : theme.surfaceElevated, borderColor: active ? theme.primary : theme.border },
-                    ]}
-                  >
-                    <Text style={[styles.driverTabName, { color: active ? theme.primary : theme.text }]} numberOfLines={1}>
-                      {d.name || 'Driver'}
-                    </Text>
-                    <Mono size={11} color={active ? theme.primary : theme.textSecondary}>{d.laps.length} laps</Mono>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          ) : null}
-
-          {/* Hero clock */}
-          <Card
-            padding="xl"
-            style={[styles.clockCard, isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
-          >
-            <View style={styles.clockTopRow}>
-              <Label muted>{isRunning ? 'RECORDING' : 'ELAPSED'}</Label>
-              {isRunning && (
-                <View style={styles.recRow}>
-                  <LiveDot size={8} color={theme.danger} />
-                  <Label color={theme.danger}>REC</Label>
-                </View>
-              )}
-            </View>
-            <Animated.Text style={[styles.clock, { color: theme.text, transform: [{ scale: pulseAnim }] }]}>
-              {elapsedTime.toFixed(2)}
-            </Animated.Text>
-            <View style={styles.clockMeta}>
-              <Label muted>TARGET {driver ? formatTime(driver.targetTime) : '—'}</Label>
-              {driver && (isRunning || lapCount > 0) ? (
-                <Mono size={typography.title} weight="bold" color={deltaColor(liveDelta)}>
-                  {liveDelta >= 0 ? '+' : ''}{liveDelta.toFixed(2)}
-                </Mono>
-              ) : null}
-            </View>
-            <View style={[styles.statusStrip, { borderColor: statusColor }]}>
-              <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>{getStatusText()}</Text>
-            </View>
-          </Card>
-
-          {/* Primary action */}
-          <Button
-            title={isRunning ? 'LAP' : 'START'}
-            icon={isRunning ? 'flag' : 'play'}
-            onPress={addLap}
-            size="lg"
-            style={[styles.primaryBtn, { backgroundColor: isRunning ? theme.broken : theme.bonus }, glowShadow(isRunning ? String(theme.broken) : String(theme.bonus), 0.4, 16)]}
-            textStyle={styles.primaryBtnText}
-          />
-
-          {/* Secondary controls */}
-          <View style={styles.secondaryRow}>
-            <Button
-              title="Stop"
-              icon="stop"
-              variant="secondary"
-              onPress={handleStopPress}
-              disabled={!isRunning}
-              style={[{ flex: 1 }, !isRunning && { opacity: 0.5 }]}
-            />
-            <Button
-              title="Reset"
-              icon="refresh"
-              variant="secondary"
-              onPress={handleResetPress}
-              disabled={elapsedTime === 0 && !isRunning}
-              style={[{ flex: 1 }, elapsedTime === 0 && !isRunning && { opacity: 0.5 }]}
-            />
           </View>
-
-          {/* Manual entry */}
-          <View style={styles.manualRow}>
-            <TextField
-              mono
-              placeholder="MM:SS.mmm"
-              value={lapInput}
-              onChangeText={setLapInput}
-              keyboardType="numbers-and-punctuation"
-              containerStyle={{ flex: 1 }}
-            />
-            <IconButton icon="add" variant="primary" size={24} onPress={addLap} accessibilityLabel="Add manual lap" />
-          </View>
-
-          {/* Lap history */}
-          <View style={styles.historyHeader}>
-            <Label size={13}>Lap History</Label>
-            {lapCount > 0 && (
-              <View style={styles.historyActions}>
-                <Button title="End Session" icon="checkmark-circle-outline" size="sm" variant="secondary" onPress={endSession} />
-                <Button
-                  title="Clear"
-                  icon="trash-outline"
-                  size="sm"
-                  variant="secondary"
-                  onPress={clearSession}
-                  textStyle={{ color: theme.danger }}
-                />
-              </View>
-            )}
-          </View>
-
-          {lapCount === 0 ? (
-            <Surface level="base" padding="xl" style={styles.emptyCard}>
-              <Ionicons name="time-outline" size={28} color={theme.textMuted as string} />
-              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No laps recorded yet</Text>
-            </Surface>
-          ) : (
-            <Surface level="base" padding={0} style={styles.lapList}>
-              {(driver?.laps ?? []).slice().reverse().map((lap, index, arr) => {
-                const renderRightActions = () => (
-                  <Pressable style={styles.deleteAction} onPress={() => deleteLap(index)}>
-                    <Ionicons name="trash" size={24} color="#fff" />
-                    <Text style={styles.deleteActionText}>DELETE</Text>
-                  </Pressable>
-                );
-                return (
-                  <Swipeable key={lap.number} renderRightActions={renderRightActions} overshootRight={false}>
-                    <Pressable
-                      onLongPress={() => showLapOptions(index)}
-                      delayLongPress={500}
-                      style={[
-                        styles.lapRow,
-                        { backgroundColor: theme.surface, borderBottomColor: theme.borderFaint },
-                        index === arr.length - 1 && { borderBottomWidth: 0 },
-                      ]}
-                    >
-                      <Mono size={13} weight="bold" color={theme.textMuted} numberOfLines={1} style={styles.lapNum}>{lap.number}</Mono>
-                      <Mono size={16} weight="medium" color={theme.text} numberOfLines={1} style={styles.lapTime}>{formatTime(lap.time)}</Mono>
-                      <View style={styles.lapDeltaWrap}>
-                        <Mono size={14} weight="bold" color={deltaColor(lap.delta)} numberOfLines={1} style={styles.lapDelta}>
-                          {`${lap.delta >= 0 ? '+' : '\u2212'}${Math.abs(lap.delta).toFixed(2)}`}
-                        </Mono>
-                      </View>
-                      <Chip label={lap.lapType} color={lapTypeColor(lap.lapType)} active size="sm" uppercase style={styles.lapChip} />
-                    </Pressable>
-                  </Swipeable>
-                );
-              })}
-            </Surface>
-          )}
-        </ScrollView>
+        ) : (
+          <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+            {notices}
+            {header}
+            {rejectedBanner}
+            {driverTabs}
+            {clockCard}
+            {controls}
+            {historyHeader}
+            {lapList}
+          </ScrollView>
+        )}
       </KeyboardAvoidingView>
 
       {/* Edit Lap Sheet */}
@@ -1719,6 +1818,24 @@ const styles = StyleSheet.create({
   deleteActionText: { color: '#fff', fontSize: 11, fontWeight: '800', marginTop: 2, letterSpacing: 0.8 },
 
   sheetBtns: { flexDirection: 'row', gap: spacing.md },
+
+  // Wide web (two columns)
+  flushBottom: { marginBottom: 0 },
+  wideRoot: { flex: 1, width: '100%', maxWidth: WIDE_MAX_WIDTH, alignSelf: 'center', paddingHorizontal: spacing.xl, paddingTop: spacing.lg },
+  wideTopBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.xl, marginBottom: spacing.lg },
+  wideTopHeader: { flexShrink: 0, maxWidth: '45%' },
+  wideTopTabs: { flex: 1, minWidth: 0 },
+  wideColumns: { flex: 1, flexDirection: 'row', gap: spacing.xl, minHeight: 0 },
+  wideLeft: { flex: 1 },
+  wideLeftContent: { paddingBottom: spacing.xl },
+  wideRight: { width: '40%', minWidth: 360, maxWidth: 520, minHeight: 0, paddingBottom: spacing.lg },
+  wideLapScroll: { flex: 1 },
+  primaryBtnWide: { height: 96, borderRadius: radius.xl },
+  primaryBtnTextWide: { fontSize: 32, letterSpacing: 2 },
+  wideControlRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
+  wideControlCell: { flex: 1, marginBottom: 0 },
+  summaryRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
+  summaryCell: { flex: 1 },
   sheetSubtitle: { fontSize: typography.body, marginBottom: spacing.lg },
   sheetFields: { gap: spacing.md },
 });
