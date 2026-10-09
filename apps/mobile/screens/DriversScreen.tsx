@@ -21,6 +21,7 @@ import { Driver } from '../types';
 import { useAlert } from '../components/CustomAlert';
 import { api } from '../lib/api';
 import { Mono, Label, Card, Surface, Button, IconButton, StatTile, TextField, Sheet, Divider, Chip } from '../components/ui';
+import { ReorderList } from '../components/ReorderList';
 
 interface TeamMemberLite {
   id: string;
@@ -29,8 +30,10 @@ interface TeamMemberLite {
   role: string;
 }
 
+const REORDER_ROW_HEIGHT = 64;
+
 export default function DriversScreen() {
-  const { teams, setTeams, activeTeam, isDarkMode, audioSettings, activeServerTeamId } = useApp();
+  const { teams, setTeams, activeTeam, isDarkMode, audioSettings, activeServerTeamId, activeDriver, setActiveDriver, liveSession } = useApp();
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
@@ -39,6 +42,9 @@ export default function DriversScreen() {
   // from the measured grid container so 2-up cards fill the row exactly (no wrap).
   const isWeb = Platform.OS === 'web';
   const [gridW, setGridW] = useState(0);
+  // Drag-to-reorder mode (compact rows with a handle).
+  const [reordering, setReordering] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const cols = isWeb && gridW >= 700 ? 2 : 1;
   const cardWidth = cols > 1 && gridW > 0 ? (gridW - spacing.lg * (cols - 1)) / cols : undefined;
 
@@ -189,6 +195,32 @@ export default function DriversScreen() {
     });
   };
 
+  // Move a driver; the Timer's selected driver follows it to its new position.
+  const moveDriver = (from: number, to: number) => {
+    if (!team || from === to) return;
+    const drivers = [...team.drivers];
+    const [moved] = drivers.splice(from, 1);
+    drivers.splice(to, 0, moved);
+    const updatedTeams = [...teams];
+    updatedTeams[activeTeam] = { ...team, drivers };
+    setTeams(updatedTeams);
+    const selected = team.drivers[activeDriver];
+    const nextActive = selected ? drivers.indexOf(selected) : -1;
+    if (nextActive >= 0 && nextActive !== activeDriver) setActiveDriver(nextActive);
+  };
+
+  const toggleReorder = () => {
+    // Live laps are streamed by roster position, so the order is fixed while recording.
+    if (!reordering && liveSession) {
+      showAlert({
+        title: 'Live session running',
+        message: 'Driver order is locked while a live session is recording. End the session to reorder drivers.',
+      });
+      return;
+    }
+    setReordering((r) => !r);
+  };
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <KeyboardAvoidingView
@@ -198,6 +230,7 @@ export default function DriversScreen() {
         <ScrollView
           style={styles.scrollView}
           contentContainerStyle={styles.scrollContent}
+          scrollEnabled={!dragActive}
           keyboardShouldPersistTaps="handled"
         >
           {/* Header */}
@@ -211,8 +244,48 @@ export default function DriversScreen() {
                 {team?.drivers.length ?? 0}
               </Mono>
             </View>
+            {(team?.drivers.length ?? 0) > 1 ? (
+              <Button
+                title={reordering ? 'Done' : 'Reorder'}
+                icon={reordering ? 'checkmark' : 'swap-vertical'}
+                size="sm"
+                variant={reordering ? 'primary' : 'secondary'}
+                onPress={toggleReorder}
+                style={styles.reorderBtn}
+              />
+            ) : null}
           </View>
 
+          {reordering && team ? (
+            <View style={styles.reorderWrap}>
+              <Text style={[styles.reorderHint, { color: theme.textSecondary }]}>
+                Drag the handle to change the driver order.
+              </Text>
+              <ReorderList
+                items={team.drivers}
+                keyOf={(d) => d.id}
+                rowHeight={REORDER_ROW_HEIGHT}
+                onReorder={moveDriver}
+                onDragActiveChange={setDragActive}
+                renderRow={(d, index, { dragging, handleProps }) => (
+                  <View
+                    style={[
+                      styles.reorderRow,
+                      { backgroundColor: dragging ? theme.surfaceElevated : theme.card, borderColor: dragging ? theme.primary : theme.border },
+                      dragging && glowShadow(String(theme.primary), 0.3, 12),
+                    ]}
+                  >
+                    <Mono size={13} weight="bold" color={theme.textMuted} style={styles.reorderIndex}>{String(index + 1)}</Mono>
+                    <Text style={[styles.reorderName, { color: theme.text }]} numberOfLines={1}>{d.name || `Driver ${index + 1}`}</Text>
+                    <Mono size={13} color={theme.textSecondary}>{formatTargetTime(d.targetTime)}</Mono>
+                    <View {...handleProps} style={styles.reorderHandle} accessibilityLabel={`Drag to move ${d.name}`}>
+                      <Ionicons name="reorder-three" size={26} color={theme.textSecondary as string} />
+                    </View>
+                  </View>
+                )}
+              />
+            </View>
+          ) : (
           <View style={styles.content} onLayout={(e) => setGridW(e.nativeEvent.layout.width - spacing.lg * 2)}>
             {team?.drivers.map((driver, index) => (
               <Card key={driver.id} padding="lg" style={[styles.driverCard, cardWidth ? { width: cardWidth } : styles.fullWidthCard]}>
@@ -351,6 +424,7 @@ export default function DriversScreen() {
               </Card>
             ))}
           </View>
+          )}
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -446,6 +520,21 @@ const styles = StyleSheet.create({
     paddingTop: spacing.lg,
     paddingBottom: spacing.sm,
   },
+  reorderBtn: { position: 'absolute', right: spacing.lg, bottom: spacing.sm },
+  reorderWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  reorderHint: { fontSize: typography.caption, marginBottom: spacing.md },
+  reorderRow: {
+    height: REORDER_ROW_HEIGHT - spacing.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.md,
+    paddingLeft: spacing.lg,
+    borderWidth: 1,
+    borderRadius: radius.md,
+  },
+  reorderIndex: { width: 18 },
+  reorderName: { flex: 1, fontSize: typography.bodyLg, fontWeight: fontWeights.semibold },
+  reorderHandle: { height: '100%', paddingHorizontal: spacing.lg, justifyContent: 'center', cursor: 'grab' } as any,
   headerTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
