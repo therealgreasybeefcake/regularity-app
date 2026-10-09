@@ -1,7 +1,9 @@
 # API service image. Deterministic Node 22 + pnpm 11 (Nixpacks defaulted to
 # Node 18, which pnpm 11 can't run). Also builds the Expo web bundle and serves
 # it same-origin from the API.
-FROM node:22-slim
+# Same official image via AWS's public mirror: Docker Hub rate-limits Railway's
+# anonymous pulls (429 Too Many Requests), which failed deploys.
+FROM public.ecr.aws/docker/library/node:22-slim
 
 ENV PNPM_HOME=/root/.local/share/pnpm
 ENV PATH=$PNPM_HOME:$PATH
