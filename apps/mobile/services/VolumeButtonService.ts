@@ -20,6 +20,10 @@ class VolumeButtonServiceClass {
   private debounceTime = 300; // ms to prevent double triggers
   private initialVolume: number | null = null;
   private volumeListener: any = null;
+  // enable()/disable() are async (volume + audio-session calls). Run them one at
+  // a time so a disable still restoring the old volume can't land after a new
+  // enable — which left the volume at max/min and swallowed the next press.
+  private queue: Promise<void> = Promise.resolve();
 
   async initialize() {
     // No initialization needed
@@ -41,7 +45,17 @@ class VolumeButtonServiceClass {
     return null;
   }
 
-  async enable(backgroundEnabled: boolean = false) {
+  enable(backgroundEnabled: boolean = false): Promise<void> {
+    this.queue = this.queue.then(() => this.doEnable(backgroundEnabled));
+    return this.queue;
+  }
+
+  disable(): Promise<void> {
+    this.queue = this.queue.then(() => this.doDisable());
+    return this.queue;
+  }
+
+  private async doEnable(backgroundEnabled: boolean) {
     if (Platform.OS === 'web') return;
     if (this.isEnabled) return;
 
@@ -116,7 +130,7 @@ class VolumeButtonServiceClass {
     }
   }
 
-  async disable() {
+  private async doDisable() {
     if (Platform.OS === 'web') return;
     if (!this.isEnabled) return;
 

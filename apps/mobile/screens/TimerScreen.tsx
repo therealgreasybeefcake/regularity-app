@@ -479,6 +479,11 @@ export default function TimerScreen() {
     };
   }, [isRunning, keepAlivePlayer, driver, audioSettings]);
 
+  // The volume listener reads the current driver through a ref, so it isn't torn
+  // down and re-armed (async, racy) every time the roster data changes.
+  const driverRef = useRef(driver);
+  driverRef.current = driver;
+
   // Volume button listener for lap recording
   useEffect(() => {
     console.log('[TimerScreen] Volume button enabled setting:', audioSettings.volumeButtonsEnabled);
@@ -494,6 +499,7 @@ export default function TimerScreen() {
 
     // Add lap recording listener that returns lap details
     const handleLapRecording = (): LapDetails | null => {
+      const driver = driverRef.current;
       console.log('[TimerScreen] handleLapRecording called, driver:', driver?.name);
 
       // Store the current lap count before attempting to add a lap
@@ -531,7 +537,7 @@ export default function TimerScreen() {
       VolumeButtonService.removeListener(handleLapRecording);
       VolumeButtonService.disable();
     };
-  }, [audioSettings.volumeButtonsEnabled, driver]);
+  }, [audioSettings.volumeButtonsEnabled]);
 
   // Volume button UX - show hint when disabled (native only)
   useEffect(() => {
@@ -1355,7 +1361,7 @@ export default function TimerScreen() {
       title: team?.raceName || team?.name || 'Session',
       message: team?.sessionNumber ? `Session ${team.sessionNumber}` : undefined,
       buttons: [
-        { text: 'Edit Session Details', onPress: () => openSessionSetup('edit') },
+        { text: 'Edit Session', onPress: () => openSessionSetup('edit') },
         ...(liveSession && liveShareUrl
           ? [
               { text: 'Open Live View', onPress: () => router.push(`/live/${liveSession.publicToken}` as any) },

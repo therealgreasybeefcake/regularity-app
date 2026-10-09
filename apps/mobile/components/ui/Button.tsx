@@ -81,7 +81,8 @@ export function Button({
         <View style={styles.row}>
           {icon && iconPosition === 'left' && <Ionicons name={icon} size={s.icon} color={fg[variant] as string} />}
           {(title || children) != null && (
-            <Text numberOfLines={1} style={[{ color: fg[variant], fontSize: s.font, fontWeight: fontWeights.semibold }, textStyle]}>
+            // Shrink a long label a little before it truncates (Android measures tight).
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[{ color: fg[variant], fontSize: s.font, fontWeight: fontWeights.semibold, flexShrink: 1 }, textStyle]}>
               {title ?? children}
             </Text>
           )}
