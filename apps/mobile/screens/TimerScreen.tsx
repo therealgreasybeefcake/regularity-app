@@ -46,6 +46,7 @@ import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService
 import { TimerNotificationService } from '../services/TimerNotificationService';
 import { useAlert } from '../components/CustomAlert';
 import LiveShareBanner from '../components/LiveShareBanner';
+import { shareLiveLink } from '../lib/shareLiveLink';
 import { Mono, Label, Card, Surface, Button, IconButton, Chip, TextField, Sheet, LiveDot, StatTile } from '../components/ui';
 
 // Why the session setup sheet is open: first-run setup, editing the current
@@ -90,6 +91,7 @@ export default function TimerScreen() {
     syncLapEdit,
     syncLapDelete,
     liveSession,
+    liveShareUrl,
     teamLivePublicToken,
     refreshTeamLive,
     endActiveLiveSession,
@@ -1319,6 +1321,42 @@ export default function TimerScreen() {
   const showKillSwitch = teamHasLive && (!liveSession || lapCount === 0);
   const statusColor = getStatusColor();
 
+  // Manual entry read-back: seconds ("105.3") or M:SS ("1:45.3").
+  const manualTime = lapInput.trim() ? parseTimeInput(lapInput) : null;
+  const manualPreview = manualTime !== null && manualTime > 0
+    ? { time: manualTime, delta: driver ? manualTime - driver.targetTime : null }
+    : null;
+
+  // Session actions (the header's ••• menu): edit details, live link, end / clear.
+  const openSessionMenu = () => {
+    const hasLaps = !!team?.drivers?.some((d) => d.laps.length > 0);
+    showAlert({
+      title: team?.raceName || team?.name || 'Session',
+      message: team?.sessionNumber ? `Session ${team.sessionNumber}` : undefined,
+      buttons: [
+        { text: 'Edit Session Details', onPress: () => openSessionSetup('edit') },
+        ...(liveSession && liveShareUrl
+          ? [
+              { text: 'Open Live View', onPress: () => router.push(`/live/${liveSession.publicToken}` as any) },
+              {
+                text: 'Share Live Link',
+                onPress: async () => {
+                  if (await shareLiveLink(liveShareUrl)) showAlert({ title: 'Link copied', message: liveShareUrl });
+                },
+              },
+            ]
+          : []),
+        ...(hasLaps
+          ? [
+              { text: 'End Session', onPress: endSession },
+              { text: 'Clear Session', style: 'destructive' as const, onPress: clearSession },
+            ]
+          : []),
+        { text: 'Cancel', style: 'cancel' as const },
+      ],
+    });
+  };
+
   // Layout pieces shared by the phone (single column) and wide-web layouts.
   const notices = (
     <>
@@ -1354,12 +1392,12 @@ export default function TimerScreen() {
   );
   const header = (
     <>
-      {/* Header — tap to edit the race / session details */}
+      {/* Header — opens the session actions menu */}
       <Pressable
         style={[styles.header, wide && styles.flushBottom]}
-        onPress={() => openSessionSetup('edit')}
+        onPress={openSessionMenu}
         accessibilityRole="button"
-        accessibilityLabel="Edit session details"
+        accessibilityLabel="Session actions"
       >
         <View style={{ flex: 1 }}>
           <Label muted>{team?.raceName || 'Tap to set race name'}</Label>
@@ -1370,7 +1408,7 @@ export default function TimerScreen() {
             {team?.sessionNumber ? <Chip label={`S${team.sessionNumber}`} color={theme.accent} active size="sm" /> : null}
           </View>
         </View>
-        <Ionicons name="create-outline" size={20} color={theme.primary as string} />
+        <Ionicons name="ellipsis-horizontal-circle" size={26} color={theme.primary as string} />
       </Pressable>
     </>
   );
@@ -1583,14 +1621,28 @@ export default function TimerScreen() {
 
       {/* Manual entry */}
       <View style={[styles.manualRow, wide && styles.wideControlCell]}>
-        <TextField
-          mono
-          placeholder="MM:SS.mmm"
-          value={lapInput}
-          onChangeText={setLapInput}
-          keyboardType="numbers-and-punctuation"
-          containerStyle={{ flex: 1 }}
-        />
+        <View style={{ flex: 1 }}>
+          <TextField
+            mono
+            placeholder="Manual lap, in seconds (e.g. 105.3)"
+            value={lapInput}
+            onChangeText={setLapInput}
+            keyboardType="decimal-pad"
+            returnKeyType="done"
+            onSubmitEditing={addLap}
+          />
+          {/* Read the entry back as a lap time + gap so typos are obvious before adding */}
+          {manualPreview ? (
+            <Text style={[styles.manualPreview, { color: theme.textSecondary }]}>
+              {'= '}{formatTime(manualPreview.time)}
+              {manualPreview.delta !== null ? (
+                <Text style={{ color: deltaColor(manualPreview.delta) }}>
+                  {`  ${manualPreview.delta >= 0 ? '+' : '\u2212'}${Math.abs(manualPreview.delta).toFixed(2)}s vs target`}
+                </Text>
+              ) : null}
+            </Text>
+          ) : null}
+        </View>
         <IconButton icon="add" variant="primary" size={24} onPress={addLap} accessibilityLabel="Add manual lap" />
       </View>
       </View>
@@ -1601,19 +1653,6 @@ export default function TimerScreen() {
       {/* Lap history */}
       <View style={styles.historyHeader}>
         <Label size={13}>Lap History</Label>
-        {lapCount > 0 && (
-          <View style={styles.historyActions}>
-            <Button title="End Session" icon="checkmark-circle-outline" size="sm" variant="secondary" onPress={endSession} />
-            <Button
-              title="Clear"
-              icon="trash-outline"
-              size="sm"
-              variant="secondary"
-              onPress={clearSession}
-              textStyle={{ color: theme.danger }}
-            />
-          </View>
-        )}
       </View>
     </>
   );
@@ -1915,10 +1954,10 @@ const styles = StyleSheet.create({
   changeoverStrip: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   changeoverTitle: { fontSize: typography.body, fontWeight: fontWeights.heavy, letterSpacing: 0.3, textTransform: 'uppercase' },
   changeoverSub: { fontSize: typography.caption, marginTop: 2 },
-  manualRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center', marginBottom: spacing.xl },
+  manualRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start', marginBottom: spacing.xl },
+  manualPreview: { fontSize: typography.caption, fontFamily: 'JetBrainsMono-Medium', marginTop: 4, marginLeft: 2 },
 
   historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
-  historyActions: { flexDirection: 'row', gap: spacing.sm, alignItems: 'center' },
 
   emptyCard: { alignItems: 'center', gap: spacing.sm },
   emptyText: { fontSize: typography.body },

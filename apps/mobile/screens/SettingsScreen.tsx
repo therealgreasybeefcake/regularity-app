@@ -578,6 +578,8 @@ export default function SettingsScreen() {
     setAutoJoinLive,
     liveSoundDefault,
     setLiveSoundDefault,
+    showLiveBanner,
+    setShowLiveBanner,
   } = useApp();
   const { user, signOut, deleteAccount } = useAuth();
   const { showAlert } = useAlert();
@@ -900,6 +902,14 @@ export default function SettingsScreen() {
             subtitle="Start the live view with per-lap sounds enabled"
             value={liveSoundDefault}
             onValueChange={setLiveSoundDefault}
+            theme={theme}
+          />
+          <Divider faint />
+          <ToggleRow
+            title="Show live session banner"
+            subtitle="Banner on the Timer while recording. The link is also in the Timer's ••• menu."
+            value={showLiveBanner}
+            onValueChange={setShowLiveBanner}
             theme={theme}
           />
         </Collapsible>

@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
-import { View, TouchableOpacity, StyleSheet, Share, Platform } from 'react-native';
+import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useRouter } from 'expo-router';
 import { useApp } from '../context/AppContext';
+import { shareLiveLink } from '../lib/shareLiveLink';
 import { spacing, radius, typography } from '../constants/theme';
 import { useTheme } from '../hooks/useTheme';
 import { Mono, Label, LiveDot, IconButton } from './ui';
@@ -13,7 +14,7 @@ import { Mono, Label, LiveDot, IconButton } from './ui';
  * only hides the banner until the next session).
  */
 export default function LiveShareBanner() {
-  const { liveShareUrl, liveSession } = useApp();
+  const { liveShareUrl, liveSession, showLiveBanner } = useApp();
   const { theme } = useTheme();
   const router = useRouter();
   const [dismissed, setDismissed] = useState(false);
@@ -24,26 +25,14 @@ export default function LiveShareBanner() {
     setDismissed(false);
   }, [liveSession?.publicToken]);
 
-  if (!liveShareUrl || !liveSession || dismissed) return null;
+  if (!showLiveBanner || !liveShareUrl || !liveSession || dismissed) return null;
 
   const openLive = () => router.push(`/live/${liveSession.publicToken}` as any);
 
   const onShare = async () => {
-    try {
-      if (Platform.OS === 'web') {
-        const nav: any = (globalThis as any).navigator;
-        if (nav?.share) {
-          await nav.share({ title: 'Live timing', url: liveShareUrl });
-        } else if (nav?.clipboard?.writeText) {
-          await nav.clipboard.writeText(liveShareUrl);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        }
-      } else {
-        await Share.share({ message: liveShareUrl, url: liveShareUrl });
-      }
-    } catch {
-      /* user cancelled */
+    if (await shareLiveLink(liveShareUrl)) {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     }
   };
 
