@@ -1448,10 +1448,22 @@ export default function TimerScreen() {
             return (
               <Pressable
                 key={d.id}
-                onPress={() => setActiveDriver(index)}
+                onPress={() => {
+                  // The running lap belongs to the driver being timed — switching
+                  // mid-lap would record it (and judge it) against someone else.
+                  if (isRunning && index !== activeDriver) {
+                    showAlert({
+                      title: 'Timer running',
+                      message: `${driver?.name?.trim() || 'This driver'} is being timed. Use Change Driver to hand over, or stop the timer to switch drivers.`,
+                    });
+                    return;
+                  }
+                  setActiveDriver(index);
+                }}
                 style={[
                   styles.driverTab,
                   { backgroundColor: active ? theme.primaryMuted : theme.surfaceElevated, borderColor: active ? theme.primary : theme.border },
+                  isRunning && !active && { opacity: 0.45 },
                 ]}
               >
                 <Text style={[styles.driverTabName, { color: active ? theme.primary : theme.text }]} numberOfLines={1}>
@@ -1473,7 +1485,13 @@ export default function TimerScreen() {
         style={[styles.clockCard, isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
       >
         <View style={styles.clockTopRow}>
-          <Label muted>{isRunning ? 'RECORDING' : 'ELAPSED'}</Label>
+          {/* Whose lap this is */}
+          <View style={styles.clockDriverWrap}>
+            <Label muted>{isRunning ? 'TIMING' : 'DRIVER'}</Label>
+            <Text style={[styles.clockDriver, { color: theme.text }]} numberOfLines={1}>
+              {driver?.name?.trim() || 'No driver selected'}
+            </Text>
+          </View>
           {isRunning && (
             <View style={styles.recRow}>
               <LiveDot size={8} color={theme.danger} />
@@ -1882,6 +1900,8 @@ const styles = StyleSheet.create({
   clockCard: { alignItems: 'stretch', marginBottom: spacing.lg },
   clockTopRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   recRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  clockDriverWrap: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, flexShrink: 1 },
+  clockDriver: { fontSize: typography.title, fontWeight: fontWeights.heavy, flexShrink: 1 },
   clock: { fontSize: typography.hero, fontFamily: 'JetBrainsMono-ExtraBold', letterSpacing: -2, textAlign: 'center', marginVertical: spacing.sm },
   clockMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   statusStrip: { marginTop: spacing.lg, borderWidth: 1, borderRadius: radius.full, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
