@@ -156,7 +156,10 @@ export default function StatsScreen() {
     const map = new Map<string, Session>();
     for (const s of s3Sessions) map.set(s.id, s);
     for (const s of team.sessionHistory) if (!map.has(s.id)) map.set(s.id, s);
-    return dedupeSessions(Array.from(map.values())).sort((a, b) => b.timestamp - a.timestamp);
+    // Sessions with no laps (e.g. a START that was ended without recording) aren't
+    // worth listing and would only pad the Event Total.
+    const withLaps = Array.from(map.values()).filter((s) => s.drivers.some((d) => d.laps.length > 0));
+    return dedupeSessions(withLaps).sort((a, b) => b.timestamp - a.timestamp);
   }, [team.sessionHistory, s3Sessions]);
 
   // Event Total: every session of the displayed race (plus the one in progress),
@@ -381,9 +384,14 @@ export default function StatsScreen() {
   const EventTotalSection = () => {
     if (eventSessions.length === 0) return null;
     const includesCurrent = eventSessions.some((s) => s.id === 'current');
-    const sessionList = eventSessions
-      .map((s) => (s.id === 'current' ? `S${s.sessionNumber || '?'} (in progress)` : `S${s.sessionNumber || '?'}`))
-      .join(' · ');
+    const ended = eventSessions.filter((s) => s.id !== 'current');
+    const day = (t: number) => new Date(t).toLocaleDateString([], { day: 'numeric', month: 'short' });
+    const first = ended.length ? Math.min(...ended.map((s) => s.timestamp)) : null;
+    const last = ended.length ? Math.max(...ended.map((s) => s.timestamp)) : null;
+    const sessionList =
+      first === null || last === null
+        ? 'Session in progress only'
+        : `Sessions ended ${day(first) === day(last) ? day(first) : `${day(first)} – ${day(last)}`}`;
     return (
       <Card padding="lg" style={styles.panel}>
         <View style={styles.panelHeader}>
@@ -411,7 +419,7 @@ export default function StatsScreen() {
           <StatTile size="lg" label="Goal Laps" value={eventStats.goalLaps.toFixed(2)} style={styles.teamStatItem} />
         </View>
         <Text style={[styles.eventNote, { color: theme.textMuted }]}>
-          {sessionList}. Scored as one event: each driver's share of all the team's laps × event length ÷ their nominated time, doubled (regs 6.1).
+          {sessionList}. Includes every session named "{displayData.raceName}" — use a new race name for each event. Scored as one event: each driver's share of all the team's laps × event length ÷ their nominated time, doubled (regs 6.1).
           {includesCurrent ? ' Includes the session in progress.' : ''}
         </Text>
       </Card>
