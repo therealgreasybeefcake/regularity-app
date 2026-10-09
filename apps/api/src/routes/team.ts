@@ -243,9 +243,16 @@ teamRouter.patch('/:id', async (c) => {
   const parsed = updateTeamInputSchema.safeParse(body);
   if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
 
+  // The column is sessionDurationMin — Drizzle silently drops unknown keys, so
+  // spreading sessionDuration straight in never saved it (it reverted to 120).
+  const { sessionDuration, ...rest } = parsed.data;
   const [updated] = await db
     .update(teams)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({
+      ...rest,
+      ...(sessionDuration !== undefined ? { sessionDurationMin: sessionDuration } : {}),
+      updatedAt: new Date(),
+    })
     .where(eq(teams.id, id))
     .returning();
   rooms.broadcast(teamRoom(id), { type: 'teamChanged' });
