@@ -829,6 +829,27 @@ export default function SettingsScreen() {
     }
   };
 
+  // Device-only: forget the ended sessions saved on this phone. The roster,
+  // settings and the server's copies are untouched (sessionHistory isn't synced).
+  const clearDeviceHistory = () => {
+    const count = teams.reduce((sum, t) => sum + (t.sessionHistory?.length ?? 0), 0);
+    showAlert({
+      title: 'Clear Session History',
+      message: `Remove the ${count} ended session${count === 1 ? '' : 's'} saved on this device? Drivers, settings and anything saved to your account are kept.`,
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear History',
+          style: 'destructive',
+          onPress: () => {
+            setTeams(teams.map((t) => ({ ...t, sessionHistory: [] })));
+            showAlert({ title: 'Done', message: 'Session history cleared on this device.' });
+          },
+        },
+      ],
+    });
+  };
+
   const clearAllData = () => {
     showAlert({
       title: 'Reset Current Team',
@@ -1099,6 +1120,14 @@ export default function SettingsScreen() {
             icon="cloud-upload-outline"
             variant="secondary"
             onPress={() => setShowImportModal(true)}
+            fullWidth
+            style={styles.cardBtn}
+          />
+          <Button
+            title="Clear Session History (This Device)"
+            icon="time-outline"
+            variant="secondary"
+            onPress={clearDeviceHistory}
             fullWidth
             style={styles.cardBtn}
           />
