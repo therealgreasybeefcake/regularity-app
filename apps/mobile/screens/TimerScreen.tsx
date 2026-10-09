@@ -81,6 +81,9 @@ export default function TimerScreen() {
     ensureLiveSession,
     discardLiveSession,
     endLiveSession,
+    reportTimerState,
+    syncLapEdit,
+    syncLapDelete,
     liveSession,
     teamLivePublicToken,
     refreshTeamLive,
@@ -688,7 +691,7 @@ export default function TimerScreen() {
     afterStartBeepPlayedRef.current = false;
     lastLockScreenSecondRef.current = -1;
     scheduleBeeps(start, driver?.targetTime);
-    void ensureLiveSession();
+    void ensureLiveSession().then(() => reportTimerState(true, start));
   };
 
   const overrideRejectedLap = () => {
@@ -732,6 +735,7 @@ export default function TimerScreen() {
       afterStartBeepPlayedRef.current = false;
       lastLockScreenSecondRef.current = -1;
       scheduleBeeps(recordedAt, currentDriver.targetTime);
+      reportTimerState(true, recordedAt);
     } else {
       startStopwatch();
     }
@@ -866,6 +870,7 @@ export default function TimerScreen() {
           onPress: () => {
             setIsRunning(false);
             clearBeepTimeouts();
+            reportTimerState(false, startTimeRef.current, Date.now());
           },
         },
       ],
@@ -895,6 +900,7 @@ export default function TimerScreen() {
   const resetTimer = () => {
     setIsRunning(false);
     setElapsedTime(0);
+    reportTimerState(false, null);
     if (intervalRef.current) clearInterval(intervalRef.current);
     clearBeepTimeouts();
     beforeTargetBeepPlayedRef.current = false;
@@ -937,7 +943,8 @@ export default function TimerScreen() {
             const updatedTeams = [...teams];
             const targetTeam = updatedTeams[activeTeam] ?? updatedTeams[0];
             const targetDriver = targetTeam?.drivers?.[activeDriver] ?? targetTeam?.drivers?.[0];
-            if (!targetDriver?.laps) return;
+            if (!targetDriver?.laps?.[actualIndex]) return;
+            syncLapDelete(activeDriver, targetDriver.laps[actualIndex]);
             targetDriver.laps.splice(actualIndex, 1);
             // Renumber remaining laps
             targetDriver.laps.forEach((lap, idx) => {
@@ -1008,6 +1015,7 @@ export default function TimerScreen() {
     lap.delta = newTime - driver.targetTime;
     lap.lapType = calculateLapType(lap.delta, lap.lapType === 'changeover', lap.lapType === 'safety');
     lap.lapValue = calculateLapValue(lap.lapType, lapTypeValues);
+    syncLapEdit(activeDriver, lap);
 
     setTeams(updatedTeams);
     setEditModalVisible(false);
@@ -1033,6 +1041,7 @@ export default function TimerScreen() {
     }
 
     lap.lapValue = calculateLapValue(lap.lapType, lapTypeValues);
+    syncLapEdit(activeDriver, lap);
     setTeams(updatedTeams);
   };
 

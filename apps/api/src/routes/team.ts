@@ -32,6 +32,7 @@ async function endLiveSessionsForTeam(teamId: string): Promise<number> {
     .returning({ publicToken: raceSessions.publicToken, id: raceSessions.id });
   for (const s of ended) {
     rooms.broadcast(s.publicToken, { type: 'sessionEnded', sessionId: s.id });
+    rooms.clearTimer(s.publicToken);
   }
   if (ended.length) rooms.broadcast(teamRoom(teamId), { type: 'teamChanged' });
   return ended.length;

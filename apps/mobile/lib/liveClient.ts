@@ -30,12 +30,21 @@ export interface LiveSnapshot {
   lapTypeValues: { bonus: number; base: number; changeover: number; broken: number; safety: number };
   drivers: LiveDriver[];
   teamStats: { goalLaps: number; achievedLaps: number; percentageFactor: number };
+  /** Recorder's stopwatch (server-time epoch ms); null when unknown (older app / server restart). */
+  timer?: LiveTimer | null;
+}
+
+export interface LiveTimer {
+  running: boolean;
+  lapStartedAt: number | null;
+  stoppedAt: number | null;
 }
 
 interface Handlers {
   onSnapshot: (s: LiveSnapshot) => void;
   onLap: (lap: any) => void;
   onEnded: () => void;
+  onTimer?: (timer: LiveTimer) => void;
   onStatus?: (connected: boolean) => void;
 }
 
@@ -80,7 +89,25 @@ export function subscribeLive(publicToken: string, h: Handlers): () => void {
       }
     };
     es.addEventListener('lap', onLapEvt);
-    es.addEventListener('lapEdited', onLapEvt);
+    // Edits/deletes can change types and renumber later laps — refetch the whole
+    // session rather than patching it piecemeal.
+    const resync = () => {
+      fetch(`${base}/snapshot`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((s) => {
+          if (s) h.onSnapshot(s);
+        })
+        .catch(() => {});
+    };
+    es.addEventListener('lapEdited', resync);
+    es.addEventListener('lapDeleted', resync);
+    es.addEventListener('timer', (e: any) => {
+      try {
+        h.onTimer?.(JSON.parse(e.data).timer);
+      } catch {
+        /* ignore */
+      }
+    });
     es.addEventListener('sessionEnded', () => h.onEnded());
     return () => es.close();
   }

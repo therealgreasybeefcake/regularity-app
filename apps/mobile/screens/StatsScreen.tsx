@@ -170,19 +170,29 @@ export default function StatsScreen() {
     }
   };
 
-  const handleOpenSessionPicker = async () => {
+  // Fetch the team's saved sessions up front (not just when the picker opens),
+  // so the selector shows on devices with no local history — e.g. the web.
+  useEffect(() => {
+    setS3Sessions([]);
+    setSelectedSession(null);
+    if (!activeServerTeamId) return;
+    let cancelled = false;
+    setIsLoadingSessions(true);
+    loadSessionsFromS3()
+      .then((sessions) => {
+        if (!cancelled) setS3Sessions(sessions);
+      })
+      .catch((err) => console.warn('Failed to load S3 sessions:', err))
+      .finally(() => {
+        if (!cancelled) setIsLoadingSessions(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeServerTeamId, loadSessionsFromS3]);
+
+  const handleOpenSessionPicker = () => {
     setShowSessionPicker(true);
-    if (s3Sessions.length === 0 && !isLoadingSessions) {
-      setIsLoadingSessions(true);
-      try {
-        const sessions = await loadSessionsFromS3();
-        setS3Sessions(sessions);
-      } catch (err) {
-        console.warn('Failed to load S3 sessions:', err);
-      } finally {
-        setIsLoadingSessions(false);
-      }
-    }
   };
 
   // --- Pit Wall presentation helpers ---
@@ -212,7 +222,7 @@ export default function StatsScreen() {
   // --- Shared sub-components ---
 
   const SessionSelector = () => {
-    if (team.sessionHistory.length === 0 && s3Sessions.length === 0) return null;
+    if (allSessions.length === 0 && !isLoadingSessions) return null;
     return (
       <Card padding="lg" style={styles.panel}>
         <Label size={13} style={styles.panelTitle}>View Session</Label>

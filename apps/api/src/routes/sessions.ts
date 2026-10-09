@@ -1,5 +1,5 @@
 import { Hono } from 'hono';
-import { and, count, eq } from 'drizzle-orm';
+import { and, count, eq, gt, sql } from 'drizzle-orm';
 import { db } from '../db';
 import { requireAuth, type AppVariables } from '../middleware';
 import {
@@ -9,8 +9,8 @@ import {
   roleAtLeast,
 } from '../lib/domain';
 import { laps, raceSessions, sessionDrivers, teams, teamMembers } from '@regularity/db';
-import { appendLapInputSchema } from '@regularity/schemas';
-import { rooms, teamRoom } from '../rooms';
+import { appendLapInputSchema, updateLapInputSchema } from '@regularity/schemas';
+import { rooms, teamRoom, type TimerState } from '../rooms';
 
 export const sessionRouter = new Hono<{ Variables: AppVariables }>();
 sessionRouter.use('*', requireAuth);
@@ -40,6 +40,7 @@ sessionRouter.post('/:id/end', async (c) => {
 
   rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
   rooms.broadcast(teamRoom(owned.session.teamId), { type: 'teamChanged' });
+  rooms.clearTimer(owned.session.publicToken);
   return c.json({ session: ended });
 });
 
@@ -53,8 +54,30 @@ sessionRouter.delete('/:id', async (c) => {
   if (!roleAtLeast(owned.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
   rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
   rooms.broadcast(teamRoom(owned.session.teamId), { type: 'teamChanged' });
+  rooms.clearTimer(owned.session.publicToken);
   await db.delete(raceSessions).where(eq(raceSessions.id, sessionId));
   return c.json({ ok: true });
+});
+
+// POST /api/sessions/:id/timer — the recorder's stopwatch started/stopped/reset,
+// relayed to spectators so their clock matches the phone (owner|admin|member).
+sessionRouter.post('/:id/timer', async (c) => {
+  const user = c.get('user');
+  const owned = await getOwnedSession(c.req.param('id'), user.id);
+  if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+  if (owned.session.status !== 'live') return c.json({ error: 'session_not_live' }, 409);
+
+  const body = await c.req.json().catch(() => null);
+  const ms = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+  if (typeof body?.running !== 'boolean') return c.json({ error: 'invalid' }, 400);
+  const timer: TimerState = {
+    running: body.running,
+    lapStartedAt: ms(body.lapStartedAt),
+    stoppedAt: body.running ? null : ms(body.stoppedAt),
+  };
+  rooms.setTimer(owned.session.publicToken, timer);
+  return c.json({ timer });
 });
 
 // POST /api/sessions/:id/laps — the offline-sync hot path. Idempotent on clientLapId.
@@ -130,6 +153,79 @@ sessionRouter.post('/:id/laps', async (c) => {
     lap: { ...lap, sessionDriverId: sd.id },
   });
   return c.json({ lap });
+});
+
+/** A session's lap by its device-generated clientLapId (what the recorder knows). */
+async function lapByClientId(sessionId: string, clientLapId: string) {
+  const rows = await db
+    .select({ lap: laps, sd: sessionDrivers })
+    .from(laps)
+    .innerJoin(sessionDrivers, eq(sessionDrivers.id, laps.sessionDriverId))
+    .where(and(eq(sessionDrivers.sessionId, sessionId), eq(laps.clientLapId, clientLapId)))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+// PATCH /api/sessions/:id/laps/:clientLapId — the recorder corrected a lap's time
+// or toggled changeover/safety; derived fields are recomputed (owner|admin|member).
+sessionRouter.patch('/:id/laps/:clientLapId', async (c) => {
+  const user = c.get('user');
+  const sessionId = c.req.param('id');
+  const owned = await getOwnedSession(sessionId, user.id);
+  if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+
+  const parsed = updateLapInputSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const input = parsed.data;
+
+  const found = await lapByClientId(sessionId, c.req.param('clientLapId'));
+  if (!found) return c.json({ error: 'lap_not_found' }, 404);
+
+  const time = input.time ?? found.lap.timeSec;
+  const { delta, lapType, lapValue } = computeLap(
+    time,
+    found.sd.targetTimeSec,
+    owned.team.lapTypeValues,
+    input.isChangeover ?? found.lap.lapType === 'changeover',
+    input.isSafety ?? found.lap.lapType === 'safety',
+  );
+  const [updated] = await db
+    .update(laps)
+    .set({ timeSec: time, delta, lapType, lapValue })
+    .where(eq(laps.id, found.lap.id))
+    .returning();
+
+  rooms.broadcast(owned.session.publicToken, {
+    type: 'lapEdited',
+    lap: { ...updated, sessionDriverId: found.sd.id },
+  });
+  return c.json({ lap: updated });
+});
+
+// DELETE /api/sessions/:id/laps/:clientLapId — the recorder deleted a lap. Later
+// laps are renumbered to close the gap, matching the device (owner|admin|member).
+sessionRouter.delete('/:id/laps/:clientLapId', async (c) => {
+  const user = c.get('user');
+  const sessionId = c.req.param('id');
+  const owned = await getOwnedSession(sessionId, user.id);
+  if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+
+  const found = await lapByClientId(sessionId, c.req.param('clientLapId'));
+  // Already gone (e.g. a replayed delete) — nothing to do.
+  if (!found) return c.json({ ok: true });
+
+  await db.transaction(async (tx) => {
+    await tx.delete(laps).where(eq(laps.id, found.lap.id));
+    await tx
+      .update(laps)
+      .set({ number: sql`${laps.number} - 1` })
+      .where(and(eq(laps.sessionDriverId, found.sd.id), gt(laps.number, found.lap.number)));
+  });
+
+  rooms.broadcast(owned.session.publicToken, { type: 'lapDeleted', lapId: found.lap.id });
+  return c.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
