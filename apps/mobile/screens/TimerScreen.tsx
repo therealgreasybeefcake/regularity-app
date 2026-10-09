@@ -707,7 +707,8 @@ export default function TimerScreen() {
     afterStartBeepPlayedRef.current = false;
     lastLockScreenSecondRef.current = -1;
     scheduleBeeps(start, targetTime);
-    void ensureLiveSession().then(() => reportTimerState(true, start));
+    // A fresh start (not a lap rollover) re-checks a reused live session is still live.
+    void ensureLiveSession(!isRunning).then(() => reportTimerState(true, start));
   };
 
   const overrideRejectedLap = () => {
