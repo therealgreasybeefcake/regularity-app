@@ -700,7 +700,7 @@ export default function TimerScreen() {
     }
   };
 
-  const startStopwatch = (customStartTime?: number) => {
+  const startStopwatch = (customStartTime?: number, verifyLive = !isRunning) => {
     const start = customStartTime ?? Date.now();
     startTimeRef.current = start;
     const initialElapsed = Math.max(0, Math.floor((Date.now() - start) / 10) / 100);
@@ -711,7 +711,28 @@ export default function TimerScreen() {
     lastLockScreenSecondRef.current = -1;
     scheduleBeeps(start, driver?.targetTime);
     // A fresh start (not a lap rollover) re-checks a reused live session is still live.
-    void ensureLiveSession(!isRunning).then(() => reportTimerState(true, start));
+    void ensureLiveSession(verifyLive).then(() => reportTimerState(true, start));
+  };
+
+  // START from a stopped timer: settle the live session first (a stale one is
+  // replaced) behind a brief spinner, so the stopwatch can't start and then get
+  // reset by the session check. Timed from the press, so no time is lost; capped
+  // so a slow connection never holds the clock back.
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const startFresh = async () => {
+    if (startingRef.current) return;
+    const pressedAt = Date.now();
+    lastLapTimeRef.current = pressedAt;
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      await Promise.race([ensureLiveSession(true), new Promise((r) => setTimeout(r, 1500))]);
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
+    startStopwatch(pressedAt, false);
   };
 
   const overrideRejectedLap = () => {
@@ -816,8 +837,7 @@ export default function TimerScreen() {
     }
 
     if (!isRunning) {
-      startStopwatch();
-      lastLapTimeRef.current = Date.now();
+      void startFresh();
     } else {
       const lapTime = elapsedTime;
       const changeover = pendingChangeover;
@@ -1567,6 +1587,7 @@ export default function TimerScreen() {
         title={isRunning ? 'LAP' : 'START'}
         icon={isRunning ? 'flag' : 'play'}
         onPress={addLap}
+        loading={starting}
         size="lg"
         style={[styles.primaryBtn, wide && styles.primaryBtnWide, { backgroundColor: isRunning ? theme.broken : theme.bonus }, glowShadow(isRunning ? String(theme.broken) : String(theme.bonus), 0.4, 16)]}
         textStyle={[styles.primaryBtnText, wide && styles.primaryBtnTextWide]}
