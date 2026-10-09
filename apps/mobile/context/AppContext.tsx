@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback, ReactNode } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useColorScheme, AppState } from 'react-native';
+import { useColorScheme, AppState, Platform } from 'react-native';
 import { Team, Driver, AudioSettings, LapTypeValues, Session, Lap, SyncStatus } from '../types';
 import { useAuth } from './AuthContext';
 import { api, ApiError } from '../lib/api';
@@ -70,7 +70,8 @@ interface AppContextType {
   // Live session for the real-time web view (laps streamed as recorded).
   liveSession: { id: string; publicToken: string } | null;
   liveShareUrl: string | null;
-  ensureLiveSession: () => Promise<string | null>;
+  /** Start (or reuse) the live session. `verify` re-checks a reused one is still live server-side. */
+  ensureLiveSession: (verify?: boolean) => Promise<string | null>;
   endLiveSession: () => Promise<void>;
   /** Push a corrected lap (time / changeover / safety) to the live session. */
   syncLapEdit: (driverIndex: number, lap: Lap) => void;
@@ -876,13 +877,41 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     return state;
   }, [activeServerTeamId, activeTeam]);
 
-  const ensureLiveSession = useCallback(async (): Promise<string | null> => {
+  const ensureLiveSession = useCallback(async (verify = false): Promise<string | null> => {
     let live = liveSessionRef.current;
+    // A session ended elsewhere (web live view, another device) can linger here
+    // until the next refresh. When the stopwatch starts, check before reusing it,
+    // and swap in a new session directly — never via "no session", which the
+    // Timer treats as the session ending and resets the stopwatch.
+    if (live && verify && !syncQueue.hasPendingStart(live.id)) {
+      try {
+        const snap = await api.get<{ status?: string }>(`/api/live/${live.publicToken}/snapshot`);
+        if (snap?.status && snap.status !== 'live') live = null;
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) live = null; // deleted remotely
+        // network/5xx: keep it — an offline recorder must survive
+      }
+      if (!live) {
+        endedLiveTokenRef.current = liveSessionRef.current?.publicToken ?? null;
+        streamedKeysRef.current.clear();
+      }
+    }
     if (!live) {
       live = await startLiveSessionInternal();
     }
     return live ? `${WEB_URL}/live/${live.publicToken}` : null;
   }, [startLiveSessionInternal]);
+
+  // Native has no team event stream, so while recording, poll whether our live
+  // session was ended elsewhere (web live view, another device) — otherwise the
+  // phone only finds out on its next foreground and keeps timing a dead session.
+  useEffect(() => {
+    if (!liveSession || Platform.OS === 'web') return;
+    const t = setInterval(() => {
+      if (AppState.currentState === 'active') void refreshTeamLive();
+    }, 15000);
+    return () => clearInterval(t);
+  }, [liveSession?.id, refreshTeamLive]);
 
   const endLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
