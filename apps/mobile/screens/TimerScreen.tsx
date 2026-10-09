@@ -913,6 +913,16 @@ export default function TimerScreen() {
     }
   };
 
+  // When this device's live session ends by any route (kill switch, ended from
+  // the web or another device, deleted remotely), stop and zero the stopwatch —
+  // otherwise it keeps running and the next lap silently starts a new session.
+  const prevLiveIdRef = useRef(liveSession?.id ?? null);
+  useEffect(() => {
+    const prev = prevLiveIdRef.current;
+    prevLiveIdRef.current = liveSession?.id ?? null;
+    if (prev && !liveSession) resetTimer();
+  }, [liveSession?.id]);
+
   const handleStartSession = () => {
     const duration = parseInt(setupSessionDuration) || 120;
     const updatedTeams = [...teams];
@@ -1233,6 +1243,7 @@ export default function TimerScreen() {
           onPress: async () => {
             try {
               await endActiveLiveSession();
+              resetTimer();
               await refreshTeamLive();
             } catch {
               showAlert({ title: 'Could not end session', message: 'Check your connection and try again.' });
