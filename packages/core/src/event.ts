@@ -11,22 +11,37 @@ const lapCount = (s: Session) => s.drivers.reduce((sum, d) => sum + d.laps.lengt
 const SAME_SESSION_WINDOW_MS = 10 * 60 * 1000;
 
 /**
- * Collapse copies of the same ended session. A session ended on a device is kept
- * both in local history (device id) and on the server (live-session id), so the
- * ids differ; they match on race + session number + end time. The copy with more
- * laps wins (ties keep the earlier entry, so pass the preferred source first).
+ * Merge the server's ended sessions with this device's local history, collapsing
+ * the two copies of one session. A session ended on a device is kept both in local
+ * history (device id) and on the server (live-session id), so the ids differ; they
+ * match on race + session number + end time. Only a local copy is ever collapsed
+ * into a server one — two server sessions (or two local ones) are always separate
+ * sessions, even when they share a number and end minutes apart. The copy with
+ * more laps wins; ties keep the server copy.
  */
-export function dedupeSessions(sessions: Session[]): Session[] {
-  const kept: Session[] = [];
-  for (const s of sessions) {
-    const i = kept.findIndex(
-      (k) =>
-        norm(k.raceName) === norm(s.raceName) &&
-        norm(k.sessionNumber) === norm(s.sessionNumber) &&
-        Math.abs(k.timestamp - s.timestamp) <= SAME_SESSION_WINDOW_MS,
-    );
-    if (i === -1) kept.push(s);
-    else if (lapCount(s) > lapCount(kept[i])) kept[i] = s;
+export function dedupeSessions(server: Session[], local: Session[] = []): Session[] {
+  const kept = [...server];
+  const claimed = new Set<number>();
+  for (const s of local) {
+    // The nearest-ending unclaimed server session of the same race + number.
+    let i = -1;
+    for (let idx = 0; idx < server.length; idx++) {
+      const k = server[idx];
+      const gap = Math.abs(k.timestamp - s.timestamp);
+      if (
+        claimed.has(idx) ||
+        norm(k.raceName) !== norm(s.raceName) ||
+        norm(k.sessionNumber) !== norm(s.sessionNumber) ||
+        gap > SAME_SESSION_WINDOW_MS
+      ) continue;
+      if (i === -1 || gap < Math.abs(server[i].timestamp - s.timestamp)) i = idx;
+    }
+    if (i === -1) {
+      kept.push(s);
+      continue;
+    }
+    claimed.add(i);
+    if (lapCount(s) > lapCount(kept[i])) kept[i] = s;
   }
   return kept;
 }

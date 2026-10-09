@@ -230,6 +230,8 @@ const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   showPenaltyLaps: true,
 };
 
+const AUTO_JOIN_LIVE_KEY = Platform.OS === 'web' ? 'autoJoinLiveWeb' : 'autoJoinLive';
+
 const DEFAULT_LAP_TYPE_VALUES: LapTypeValues = {
   bonus: 2,
   base: 1,
@@ -262,7 +264,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [lapTypeValues, setLapTypeValues] = useState<LapTypeValues>(DEFAULT_LAP_TYPE_VALUES);
   const [isLoading, setIsLoading] = useState(true);
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
-  const [autoJoinLive, setAutoJoinLive] = useState(false);
+  // The web is mostly used as a pit-wall viewer, so it auto-opens a live session by
+  // default; phones keep it opt-in. Separate key: the old one already stored the
+  // previous off-by-default on every web browser.
+  const [autoJoinLive, setAutoJoinLive] = useState(Platform.OS === 'web');
   const [liveSoundDefault, setLiveSoundDefault] = useState(true);
   const [showLiveBanner, setShowLiveBanner] = useState(false);
   const [liveEndedByUser, setLiveEndedByUser] = useState(0);
@@ -1106,7 +1111,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   }, [hasSeenWelcome, isLoading]);
 
   useEffect(() => {
-    AsyncStorage.getItem('autoJoinLive').then((v) => {
+    AsyncStorage.getItem(AUTO_JOIN_LIVE_KEY).then((v) => {
       if (v !== null) setAutoJoinLive(JSON.parse(v));
     });
     AsyncStorage.getItem('liveSoundDefault').then((v) => {
@@ -1117,7 +1122,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     });
   }, []);
   useEffect(() => {
-    if (!isLoading) AsyncStorage.setItem('autoJoinLive', JSON.stringify(autoJoinLive));
+    if (!isLoading) AsyncStorage.setItem(AUTO_JOIN_LIVE_KEY, JSON.stringify(autoJoinLive));
   }, [autoJoinLive, isLoading]);
   useEffect(() => {
     if (!isLoading) AsyncStorage.setItem('liveSoundDefault', JSON.stringify(liveSoundDefault));

@@ -161,6 +161,17 @@ export default function TimerScreen() {
     setShowSessionSetup(true);
   };
 
+  // Skipping the "next session" prompt still moves on to the next session number —
+  // otherwise the next session is recorded under the one just ended.
+  const dismissSessionSetup = () => {
+    if (sessionSetupMode === 'next' && team && setupSessionNumber !== team.sessionNumber) {
+      const updatedTeams = [...teams];
+      updatedTeams[activeTeam] = { ...team, sessionNumber: setupSessionNumber };
+      setTeams(updatedTeams);
+    }
+    setShowSessionSetup(false);
+  };
+
   // "Different race" — blanks the race fields but keeps team name and duration.
   const clearSessionDetails = () => {
     setSetupRaceName('');
@@ -1839,12 +1850,12 @@ export default function TimerScreen() {
       {/* Session Setup Sheet — new session, edit current, or next after ending */}
       <Sheet
         visible={showSessionSetup}
-        onClose={() => setShowSessionSetup(false)}
+        onClose={dismissSessionSetup}
         title={SESSION_SETUP_COPY[sessionSetupMode].title}
         footer={
           <>
             <Button title={SESSION_SETUP_COPY[sessionSetupMode].primaryLabel} icon="checkmark-circle" onPress={handleStartSession} fullWidth size="lg" />
-            <Button title={SESSION_SETUP_COPY[sessionSetupMode].secondaryLabel} variant="ghost" onPress={() => setShowSessionSetup(false)} fullWidth />
+            <Button title={SESSION_SETUP_COPY[sessionSetupMode].secondaryLabel} variant="ghost" onPress={dismissSessionSetup} fullWidth />
             {sessionSetupMode !== 'new' ? (
               <Button
                 title="Clear details for a different race"
@@ -1862,7 +1873,7 @@ export default function TimerScreen() {
         <View style={styles.sheetFields}>
           <TextField label="Team Name" value={setupTeamName} onChangeText={setSetupTeamName} placeholder="Enter team name" />
           <TextField label="Race Name" value={setupRaceName} onChangeText={setSetupRaceName} placeholder="Enter race name" />
-          <TextField label="Session Number" value={setupSessionNumber} onChangeText={setSetupSessionNumber} keyboardType="number-pad" placeholder="e.g., 1, 2, Practice" />
+          <TextField label="Session Number" value={setupSessionNumber} onChangeText={setSetupSessionNumber} placeholder="e.g., 1, 2, Practice" />
           <TextField mono label="Session Duration (minutes)" value={setupSessionDuration} onChangeText={setSetupSessionDuration} keyboardType="number-pad" placeholder="120" />
         </View>
       </Sheet>
