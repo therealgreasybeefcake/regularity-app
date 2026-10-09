@@ -139,17 +139,24 @@ export function canRecord(role: TeamRole | null): boolean {
 // --- Granular roster sync helpers (diff the local roster vs the last server
 // state and emit per-driver create/patch/delete ops keyed by server driver id,
 // so two editors never clobber each other via a full-roster replace). ---
-type DriverFields = { name: string; targetTime: number; penaltyLaps: number; linkedUserId: string | null };
+// sortOrder is the roster position, so a drag-reorder syncs as per-driver patches.
+type DriverFields = { name: string; targetTime: number; penaltyLaps: number; linkedUserId: string | null; sortOrder: number };
 type TeamSettings = { name: string; raceName: string; sessionNumber: string; sessionDuration: number; lapTypeValues: LapTypeValues };
 interface SyncedSnapshot {
   settings: TeamSettings | null;
   drivers: Map<string, DriverFields>; // keyed by server driver id
 }
-function driverFields(d: Driver): DriverFields {
-  return { name: d.name, targetTime: d.targetTime, penaltyLaps: d.penaltyLaps, linkedUserId: d.linkedUserId ?? null };
+function driverFields(d: Driver, sortOrder: number): DriverFields {
+  return { name: d.name, targetTime: d.targetTime, penaltyLaps: d.penaltyLaps, linkedUserId: d.linkedUserId ?? null, sortOrder };
 }
 function driverFieldsEqual(a: DriverFields, b: DriverFields): boolean {
-  return a.name === b.name && a.targetTime === b.targetTime && a.penaltyLaps === b.penaltyLaps && a.linkedUserId === b.linkedUserId;
+  return (
+    a.name === b.name &&
+    a.targetTime === b.targetTime &&
+    a.penaltyLaps === b.penaltyLaps &&
+    a.linkedUserId === b.linkedUserId &&
+    a.sortOrder === b.sortOrder
+  );
 }
 function teamSettings(team: Team, ltv: LapTypeValues): TeamSettings {
   return {
@@ -172,7 +179,9 @@ function settingsEqual(a: TeamSettings, b: TeamSettings): boolean {
 /** Capture a synced snapshot from a hydrated team whose drivers carry serverId. */
 function snapshotFrom(drivers: Driver[], settings: TeamSettings): SyncedSnapshot {
   const map = new Map<string, DriverFields>();
-  for (const d of drivers) if (d.serverId) map.set(d.serverId, driverFields(d));
+  drivers.forEach((d, i) => {
+    if (d.serverId) map.set(d.serverId, driverFields(d, i));
+  });
   return { settings, drivers: map };
 }
 interface ServerSessionRow {
@@ -503,7 +512,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         penaltyLaps: d.penaltyLaps,
         linkedUserId: d.linkedUserId,
         serverId: d.id,
-        laps: cur?.drivers[i]?.laps ?? [], // preserve in-progress laps by position
+        // Preserve in-progress laps by driver (a peer may have reordered the roster).
+        laps: cur?.drivers.find((x) => x.serverId === d.id)?.laps ?? cur?.drivers[i]?.laps ?? [],
       }));
       const merged: Team = {
         id: 1,
@@ -743,9 +753,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       // Roster diff — create / patch / delete keyed by server driver id.
       let assignedIds = false;
       const seen = new Set<string>();
-      const nextDrivers = team.drivers.map((d) => {
+      const nextDrivers = team.drivers.map((d, index) => {
         let sid = d.serverId;
-        const fields = driverFields(d);
+        const fields = driverFields(d, index);
         if (!sid) {
           sid = randomUuid();
           assignedIds = true;
