@@ -9,6 +9,7 @@ import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/c
 import { calculateConsistency, analyzePaceTrend, segmentStints, detectOutliers } from '@regularity/core';
 import { Session } from '../types';
 import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
+import { DriverComparisonChart, driverColor } from '../components/DriverComparisonChart';
 import { generatePDF } from '../utils/pdfExport';
 import { exportLapsCsv } from '../lib/csvExport';
 import { api } from '../lib/api';
@@ -44,6 +45,10 @@ export default function StatsScreen() {
   const [showChartsModal, setShowChartsModal] = useState(false);
   const [selectedDriverForCharts, setSelectedDriverForCharts] = useState<number | null>(null);
   const [webSelectedDriver, setWebSelectedDriver] = useState<number | null>(null);
+  // Web: which driver's tab is open, and measured widths for the SVG/gifted charts.
+  const [driverTab, setDriverTab] = useState(0);
+  const [compareW, setCompareW] = useState(0);
+  const [detailW, setDetailW] = useState(0);
   // Measured width of the driver-grid container (exact — avoids scrollbar/rounding
   // estimation errors that caused 2-up cards to wrap to a single column).
   const [gridW, setGridW] = useState(0);
@@ -563,6 +568,91 @@ export default function StatsScreen() {
     );
   };
 
+  // Web: the selected driver, full width — stats grid, stints, then both charts side by side.
+  const WebDriverDetail = (driverIndex: number) => {
+    const driver = displayData.drivers[driverIndex];
+    if (!driver) return null;
+    const stats = calculateDriverStats(driver, lapTypeValues, displayData.drivers, displayData.sessionDuration);
+    const consistency = calculateConsistency(driver.laps);
+    const pace = analyzePaceTrend(driver.laps);
+    const stints = segmentStints(driver);
+    const outlierCount = detectOutliers(driver.laps).length;
+    const grid: Array<{ label: string; value: string; color?: ColorValue }> = [
+      { label: 'Achieved', value: stats.achievedLaps.toFixed(1) },
+      { label: 'Goal', value: stats.goalLaps.toFixed(1) },
+      { label: 'Net Score', value: `${stats.netScore > 0 ? '+' : ''}${stats.netScore}` },
+      { label: 'Avg Delta', value: `${stats.averageDelta >= 0 ? '+' : ''}${stats.averageDelta.toFixed(3)}s`, color: deltaColor(stats.averageDelta) },
+      { label: '3-Lap Avg', value: stats.threelapAvg !== null ? `${stats.threelapAvg >= 0 ? '+' : ''}${stats.threelapAvg.toFixed(3)}s` : 'N/A', color: stats.threelapAvg !== null ? deltaColor(stats.threelapAvg) : undefined },
+      { label: 'Avg Lap', value: formatTime(stats.averageLapTime) },
+      { label: 'Consistency', value: `±${consistency.deltaStdDev.toFixed(3)}s`, color: consistencyColor(consistency.deltaStdDev) },
+      { label: 'Pace', value: paceLabel(pace.direction), color: paceColor(pace.direction) },
+      { label: 'Bonus', value: String(stats.bonusLaps), color: theme.bonus },
+      { label: 'Base', value: String(stats.baseLaps), color: theme.base },
+      { label: 'Broken', value: String(stats.brokenLaps), color: theme.broken },
+      { label: 'Changeover', value: String(stats.changeoverLaps), color: theme.changeover },
+      { label: 'Safety Car', value: String(stats.safetyLaps), color: theme.safety },
+      { label: 'Penalty', value: String(driver.penaltyLaps) },
+      { label: 'Stints', value: String(stints.length) },
+      { label: 'Outliers', value: String(outlierCount), color: outlierCount > 0 ? theme.warning : undefined },
+    ];
+    // Two charts side by side (card padding already excluded by the measured width).
+    const halfW = Math.max((detailW - spacing.xl) / 2 - spacing.xl, 260);
+    return (
+      <View style={styles.webDetail}>
+        <View style={styles.panelHeader}>
+          <Text style={[styles.driverName, { color: theme.text }]} numberOfLines={1}>{driver.name}</Text>
+          <Button title="Driver PDF" icon="document-text-outline" size="sm" variant="secondary" disabled={isGeneratingPDF} onPress={() => handleExportPDF(driver.id)} />
+        </View>
+        <View style={styles.webStatsGrid}>
+          {grid.map((item) => (
+            <View key={item.label} style={styles.webGridItem}>
+              <StatTile size="md" label={item.label} value={item.value} valueColor={item.color} />
+            </View>
+          ))}
+        </View>
+
+        {stints.length > 1 && (
+          <View style={styles.stintTable}>
+            <Label size={13} style={styles.stintTitle}>Stints</Label>
+            <View style={styles.stintHeaderRow}>
+              <Label muted style={styles.stintColStint}>Stint</Label>
+              <Label muted style={styles.stintColLaps}>Laps</Label>
+              <Label muted style={styles.stintColDelta}>Avg Δ</Label>
+              <Label muted style={styles.stintColConsist}>±σ</Label>
+            </View>
+            <Divider faint />
+            {stints.map((stint, i) => (
+              <View key={stint.index}>
+                <View style={styles.stintRow}>
+                  <Mono size={13} weight="medium" color={theme.textSecondary} style={styles.stintColStint}>{String(stint.index + 1)}</Mono>
+                  <Mono size={13} weight="medium" color={theme.text} style={styles.stintColLaps}>{String(stint.count)}</Mono>
+                  <Mono size={13} weight="medium" color={deltaColor(stint.avgDelta)} style={styles.stintColDelta}>
+                    {`${stint.avgDelta >= 0 ? '+' : ''}${stint.avgDelta.toFixed(3)}`}
+                  </Mono>
+                  <Mono size={13} weight="medium" color={consistencyColor(stint.consistency)} style={styles.stintColConsist}>
+                    {stint.consistency.toFixed(3)}
+                  </Mono>
+                </View>
+                {i < stints.length - 1 && <Divider faint />}
+              </View>
+            ))}
+          </View>
+        )}
+
+        {detailW > 0 && (
+          <View style={styles.webChartsRow}>
+            <View style={styles.flex1}>
+              <LapTimesChart driver={driver} theme={theme} chartWidth={halfW} />
+            </View>
+            <View style={styles.flex1}>
+              <DeltaChart driver={driver} theme={theme} chartWidth={halfW} />
+            </View>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   // Which drivers to show in the detail/charts area.
   const detailDriverIndexes = webSelectedDriver !== null
     ? displayData.drivers
@@ -571,7 +661,189 @@ export default function StatsScreen() {
         .map(({ i }) => i)
     : displayData.drivers.map((_, i) => i);
 
-  // --- Single responsive column layout (web + native) ---
+  const sessionPickerSheet = (
+    <>
+      {/* Session Picker Sheet */}
+      <Sheet
+        visible={showSessionPicker}
+        onClose={() => setShowSessionPicker(false)}
+        title="Select Session"
+      >
+        <TouchableOpacity
+          style={[styles.sessionItem, { borderBottomColor: theme.borderFaint }, !selectedSession && { backgroundColor: theme.surface }]}
+          onPress={() => { setSelectedSession(null); setShowSessionPicker(false); }}
+        >
+          <Text style={[styles.sessionItemTitle, { color: theme.text }]}>Current Session</Text>
+          <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>
+            {team.raceName || 'Untitled'} - Session {team.sessionNumber || 'N/A'}
+          </Text>
+        </TouchableOpacity>
+        {isLoadingSessions && (
+          <View style={{ padding: spacing.lg, alignItems: 'center' }}>
+            <ActivityIndicator size="small" color={theme.primary as string} />
+          </View>
+        )}
+        {allSessions.map((session) => (
+          <TouchableOpacity
+            key={session.id}
+            style={[styles.sessionItem, { borderBottomColor: theme.borderFaint }, selectedSession?.id === session.id && { backgroundColor: theme.surface }]}
+            onPress={() => { setSelectedSession(session); setShowSessionPicker(false); }}
+          >
+            <Text style={[styles.sessionItemTitle, { color: theme.text }]}>{session.raceName} - Session {session.sessionNumber}</Text>
+            <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>{formatSessionDate(session.timestamp)}</Text>
+          </TouchableOpacity>
+        ))}
+      </Sheet>
+    </>
+  );
+
+  // --- Web layout: summary, driver comparison, then one full-width driver at a time ---
+  if (isWeb) {
+    const drivers = displayData.drivers;
+    const tabIndex = Math.min(driverTab, Math.max(drivers.length - 1, 0));
+    const totalLaps = drivers.reduce((sum, d) => sum + d.laps.length, 0);
+    const rows = drivers.map((d, i) => {
+      const st = calculateDriverStats(d, lapTypeValues, drivers, displayData.sessionDuration);
+      return { d, i, st, consistency: calculateConsistency(d.laps), pace: analyzePaceTrend(d.laps) };
+    });
+    const sessionLabel = selectedSession ? formatSessionDate(selectedSession.timestamp) : 'Current session';
+
+    return (
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={styles.webContent}>
+          {/* Header: what you're looking at, which session, and exports */}
+          <View style={styles.webHeader}>
+            <View style={{ flex: 1, minWidth: 260 }}>
+              <Label muted>{team.name}</Label>
+              <Text style={[styles.webTitle, { color: theme.text }]} numberOfLines={1}>
+                {displayData.raceName || 'Untitled race'} · Session {displayData.sessionNumber || '—'}
+              </Text>
+              <Text style={[styles.webSubtitle, { color: theme.textSecondary }]}>
+                {sessionLabel} · {displayData.sessionDuration} min · {drivers.length} driver{drivers.length === 1 ? '' : 's'}
+              </Text>
+            </View>
+            <View style={styles.buttonGroup}>
+              <Button
+                title={selectedSession ? 'Change Session' : 'Past Sessions'}
+                icon="calendar-outline"
+                size="sm"
+                variant="secondary"
+                onPress={handleOpenSessionPicker}
+              />
+              {selectedSession ? (
+                <Button title="Current Session" icon="arrow-undo-outline" size="sm" variant="secondary" onPress={() => setSelectedSession(null)} />
+              ) : null}
+              <Button title="CSV" icon="download-outline" size="sm" variant="secondary" onPress={handleExportCsv} />
+              <Button
+                title="Team PDF"
+                icon="document-text-outline"
+                size="sm"
+                variant="primary"
+                loading={isGeneratingPDF}
+                disabled={isGeneratingPDF}
+                onPress={() => handleExportPDF()}
+              />
+            </View>
+          </View>
+
+          {/* Team summary */}
+          <Card padding="lg" style={styles.panel}>
+            <View style={styles.webSummaryRow}>
+              <StatTile size="lg" label="Percentage Factor" value={`${teamStats.percentageFactor.toFixed(2)}%`} valueColor={theme.accent} style={styles.webSummaryItem} />
+              <StatTile size="lg" label="Achieved Laps" value={teamStats.achievedLaps.toFixed(2)} style={styles.webSummaryItem} />
+              <StatTile size="lg" label="Goal Laps" value={teamStats.goalLaps.toFixed(2)} style={styles.webSummaryItem} />
+              <StatTile size="lg" label="Laps Recorded" value={String(totalLaps)} style={styles.webSummaryItem} />
+            </View>
+          </Card>
+
+          {drivers.length === 0 ? (
+            <Surface level="base" padding="xl" style={styles.emptyCard}>
+              <Ionicons name="bar-chart-outline" size={28} color={theme.textMuted as string} />
+              <Text style={[styles.emptyText, { color: theme.textSecondary }]}>No drivers to display</Text>
+            </Surface>
+          ) : (
+            <>
+              {/* Driver comparison: one chart + the same numbers as a table */}
+              <Card padding="lg" style={styles.panel}>
+                <Label size={13} style={styles.panelTitle}>Driver Comparison</Label>
+                <View onLayout={(e) => setCompareW(e.nativeEvent.layout.width)}>
+                  {compareW > 0 && (
+                    <DriverComparisonChart drivers={drivers} theme={theme} isDark={isDarkMode} width={compareW} />
+                  )}
+                </View>
+                <View style={[styles.compareTable, { borderColor: theme.borderFaint }]}>
+                  <View style={[styles.compareRow, { borderBottomColor: theme.borderFaint }]}>
+                    <Label muted style={styles.compareName}>Driver</Label>
+                    {['Laps', 'Achieved', 'Goal', 'Net', 'Avg Δ', 'Consistency', 'Pace'].map((h) => (
+                      <Label key={h} muted style={styles.compareCell}>{h}</Label>
+                    ))}
+                  </View>
+                  {rows.map(({ d, i, st, consistency, pace }) => (
+                    <Pressable
+                      key={d.id}
+                      onPress={() => setDriverTab(i)}
+                      style={[
+                        styles.compareRow,
+                        { borderBottomColor: theme.borderFaint },
+                        i === rows.length - 1 && { borderBottomWidth: 0 },
+                        i === tabIndex && { backgroundColor: theme.primaryMuted },
+                      ]}
+                    >
+                      <View style={[styles.compareName, styles.compareNameInner]}>
+                        <View style={[styles.swatch, { backgroundColor: driverColor(i, isDarkMode) }]} />
+                        <Text style={[styles.compareNameText, { color: theme.text }]} numberOfLines={1}>{d.name}</Text>
+                      </View>
+                      <Mono size={13} style={styles.compareCell}>{String(d.laps.length)}</Mono>
+                      <Mono size={13} style={styles.compareCell}>{st.achievedLaps.toFixed(1)}</Mono>
+                      <Mono size={13} style={styles.compareCell}>{st.goalLaps.toFixed(1)}</Mono>
+                      <Mono size={13} style={styles.compareCell}>{`${st.netScore > 0 ? '+' : ''}${st.netScore}`}</Mono>
+                      <Mono size={13} color={deltaColor(st.averageDelta)} style={styles.compareCell}>
+                        {`${st.averageDelta >= 0 ? '+' : '\u2212'}${Math.abs(st.averageDelta).toFixed(3)}`}
+                      </Mono>
+                      <Mono size={13} color={consistencyColor(consistency.deltaStdDev)} style={styles.compareCell}>
+                        {`±${consistency.deltaStdDev.toFixed(3)}`}
+                      </Mono>
+                      <Text style={[styles.compareCell, styles.comparePace, { color: paceColor(pace.direction) }]}>{paceLabel(pace.direction)}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </Card>
+
+              {/* One driver at a time, full width */}
+              <Card padding="lg" style={styles.panel}>
+                <View style={[styles.tabsRow, { borderBottomColor: theme.borderFaint }]}>
+                  {drivers.map((d, i) => {
+                    const active = i === tabIndex;
+                    return (
+                      <Pressable
+                        key={d.id}
+                        onPress={() => setDriverTab(i)}
+                        style={[styles.tab, active && { borderBottomColor: theme.primary }]}
+                        accessibilityRole="tab"
+                        accessibilityState={{ selected: active }}
+                      >
+                        <View style={[styles.swatch, { backgroundColor: driverColor(i, isDarkMode) }]} />
+                        <Text style={[styles.tabText, { color: active ? theme.text : theme.textSecondary }]} numberOfLines={1}>{d.name}</Text>
+                        <Mono size={11} color={theme.textMuted}>{`${d.laps.length}`}</Mono>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+                <View onLayout={(e) => setDetailW(e.nativeEvent.layout.width)}>
+                  {WebDriverDetail(tabIndex)}
+                </View>
+              </Card>
+            </>
+          )}
+
+          {TrendSection()}
+        </ScrollView>
+        {sessionPickerSheet}
+      </SafeAreaView>
+    );
+  }
+
+  // --- Native: single responsive column ---
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
       <KeyboardAvoidingView
@@ -645,37 +917,7 @@ export default function StatsScreen() {
         )}
       </Sheet>
 
-      {/* Session Picker Sheet */}
-      <Sheet
-        visible={showSessionPicker}
-        onClose={() => setShowSessionPicker(false)}
-        title="Select Session"
-      >
-        <TouchableOpacity
-          style={[styles.sessionItem, { borderBottomColor: theme.borderFaint }, !selectedSession && { backgroundColor: theme.surface }]}
-          onPress={() => { setSelectedSession(null); setShowSessionPicker(false); }}
-        >
-          <Text style={[styles.sessionItemTitle, { color: theme.text }]}>Current Session</Text>
-          <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>
-            {team.raceName || 'Untitled'} - Session {team.sessionNumber || 'N/A'}
-          </Text>
-        </TouchableOpacity>
-        {isLoadingSessions && (
-          <View style={{ padding: spacing.lg, alignItems: 'center' }}>
-            <ActivityIndicator size="small" color={theme.primary as string} />
-          </View>
-        )}
-        {allSessions.map((session) => (
-          <TouchableOpacity
-            key={session.id}
-            style={[styles.sessionItem, { borderBottomColor: theme.borderFaint }, selectedSession?.id === session.id && { backgroundColor: theme.surface }]}
-            onPress={() => { setSelectedSession(session); setShowSessionPicker(false); }}
-          >
-            <Text style={[styles.sessionItemTitle, { color: theme.text }]}>{session.raceName} - Session {session.sessionNumber}</Text>
-            <Text style={[styles.sessionItemSubtitle, { color: theme.textSecondary }]}>{formatSessionDate(session.timestamp)}</Text>
-          </TouchableOpacity>
-        ))}
-      </Sheet>
+      {sessionPickerSheet}
     </SafeAreaView>
   );
 }
@@ -684,6 +926,30 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
+  // Web layout
+  webContent: { padding: spacing.xl, paddingBottom: 80, width: '100%', maxWidth: 1280, alignSelf: 'center' },
+  webHeader: { flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'space-between', flexWrap: 'wrap', gap: spacing.lg, marginBottom: spacing.lg },
+  webTitle: { fontSize: typography.headingLg, fontWeight: fontWeights.heavy, marginTop: 2 },
+  webSubtitle: { fontSize: typography.body, marginTop: 4 },
+  webSummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xl },
+  webSummaryItem: { flexGrow: 1, flexBasis: 180 },
+  compareTable: { marginTop: spacing.lg, borderTopWidth: 1 },
+  compareRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm },
+  compareName: { flex: 2, minWidth: 140 },
+  compareNameInner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  compareNameText: { fontSize: typography.body, fontWeight: fontWeights.semibold, flexShrink: 1 },
+  compareCell: { flex: 1, textAlign: 'right' },
+  comparePace: { fontSize: typography.caption, fontWeight: fontWeights.semibold },
+  swatch: { width: 10, height: 10, borderRadius: 3 },
+  tabsRow: { flexDirection: 'row', flexWrap: 'wrap', borderBottomWidth: 1, marginBottom: spacing.lg },
+  tab: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md, paddingHorizontal: spacing.lg, borderBottomWidth: 2, borderBottomColor: 'transparent', marginBottom: -1 },
+  tabText: { fontSize: typography.body, fontWeight: fontWeights.semibold, maxWidth: 180 },
+  webDetail: {},
+  webStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', rowGap: spacing.lg },
+  webGridItem: { width: '12.5%', minWidth: 110, paddingRight: spacing.md },
+  webChartsRow: { flexDirection: 'row', gap: spacing.xl, marginTop: spacing.xl },
+
   scrollView: {
     flex: 1,
   },
