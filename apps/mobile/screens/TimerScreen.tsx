@@ -139,7 +139,8 @@ export default function TimerScreen() {
   const [showSessionSetup, setShowSessionSetup] = useState(false);
   const [driverPickerVisible, setDriverPickerVisible] = useState(false);
   // Driver change armed during the outgoing driver's in-lap: the next LAP press
-  // records that lap as a changeover for `from`, then times `next` immediately.
+  // records that lap as a changeover for `from`, switches to `next` and stops,
+  // ready for START when the incoming driver crosses the line.
   const [pendingChangeover, setPendingChangeover] = useState<{ from: number; next: number } | null>(null);
   const [changeDriverPickerVisible, setChangeDriverPickerVisible] = useState(false);
   const [setupTeamName, setSetupTeamName] = useState('');
@@ -697,7 +698,7 @@ export default function TimerScreen() {
     }
   };
 
-  const startStopwatch = (customStartTime?: number, targetTime = driver?.targetTime) => {
+  const startStopwatch = (customStartTime?: number) => {
     const start = customStartTime ?? Date.now();
     startTimeRef.current = start;
     const initialElapsed = Math.max(0, Math.floor((Date.now() - start) / 10) / 100);
@@ -706,7 +707,7 @@ export default function TimerScreen() {
     beforeTargetBeepPlayedRef.current = false;
     afterStartBeepPlayedRef.current = false;
     lastLockScreenSecondRef.current = -1;
-    scheduleBeeps(start, targetTime);
+    scheduleBeeps(start, driver?.targetTime);
     // A fresh start (not a lap rollover) re-checks a reused live session is still live.
     void ensureLiveSession(!isRunning).then(() => reportTimerState(true, start));
   };
@@ -869,11 +870,10 @@ export default function TimerScreen() {
       lastLapTimeRef.current = Date.now();
       if (!isWeb) Vibration.vibrate(500);
       if (changeover) {
-        // Hand over: the incoming driver's first lap starts now.
-        const nextDriver = updatedTeams[activeTeam].drivers[changeover.next];
-        setPendingChangeover(null);
+        // Hand over: the incoming driver starts from the line, not when the
+        // outgoing driver finishes — stop and wait for START as they cross it.
         setActiveDriver(changeover.next);
-        startStopwatch(undefined, nextDriver?.targetTime);
+        resetTimer();
       } else {
         startStopwatch();
       }
@@ -1524,7 +1524,7 @@ export default function TimerScreen() {
             <View style={{ flex: 1 }}>
               <Text style={[styles.changeoverTitle, { color: theme.changeover }]}>Changeover lap</Text>
               <Text style={[styles.changeoverSub, { color: theme.textSecondary }]} numberOfLines={2}>
-                Press LAP when {team?.drivers?.[pendingChangeover.from]?.name?.trim() || 'the driver'} finishes — timing switches to {pendingNextName}.
+                Press LAP when {team?.drivers?.[pendingChangeover.from]?.name?.trim() || 'the driver'} finishes, then START when {pendingNextName} crosses the line.
               </Text>
             </View>
             <Button title="Cancel" size="sm" variant="secondary" onPress={() => setPendingChangeover(null)} />
