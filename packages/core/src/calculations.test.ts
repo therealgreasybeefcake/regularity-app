@@ -148,3 +148,48 @@ describe('calculateTrendLine', () => {
     trend.forEach((v) => expect(v).toBeCloseTo(100, 6));
   });
 });
+
+describe('AROCA 10 Hour Regularity Relay worked example (regs 6.1)', () => {
+  // The regs' example team. "Base Laps" there are every completed lap; bonus and
+  // broken laps are subsets of them, plus one changeover lap each. (The printed
+  // table lists driver C with 2 bonus laps, but its row/column totals only add
+  // up with 3.) Team penalty: 7 laps.
+  const rows = [
+    { name: 'A', target: 102, base: 75, bonus: 23, broken: 2 },
+    { name: 'B', target: 102, base: 67, bonus: 22, broken: 5 },
+    { name: 'C', target: 106, base: 47, bonus: 3, broken: 0 },
+    { name: 'D', target: 110, base: 55, bonus: 23, broken: 8 },
+    { name: 'E', target: 111, base: 53, bonus: 17, broken: 2 },
+  ];
+  const drivers: Driver[] = rows.map((r, i) => {
+    const types: Lap['lapType'][] = [
+      ...Array<Lap['lapType']>(r.bonus).fill('bonus'),
+      ...Array<Lap['lapType']>(r.broken).fill('broken'),
+      ...Array<Lap['lapType']>(r.base - r.bonus - r.broken).fill('base'),
+      'changeover',
+    ];
+    return {
+      id: i + 1,
+      name: r.name,
+      targetTime: r.target,
+      penaltyLaps: i === 0 ? 7 : 0,
+      laps: types.map((t, n) => lap({ number: n + 1, time: r.target, delta: 0, lapType: t })),
+    };
+  });
+  const team = { id: 1, name: 'Example', drivers, sessionDuration: 600, sessionHistory: [] } as unknown as Team;
+
+  it('shares goal laps by every completed lap (base + bonus + broken + changeover)', () => {
+    const a = calculateDriverStats(drivers[0], lapTypeValues, drivers, 600);
+    // A: 76 of the team's 302 laps x 36000s / 102s, doubled = 2 x 88.8196
+    expect(a.goalLaps).toBeCloseTo(2 * 88.8196, 3);
+  });
+
+  it('matches the example team totals', () => {
+    const s = calculateTeamStats(team, lapTypeValues);
+    expect(s.achievedLaps).toBe(366);
+    // Regs: theoretical maxima sum to 340.95 (printed "341"), doubled = 682.
+    expect(s.goalLaps).toBeCloseTo(681.895, 2);
+    // Regs print 366 / 682 = 53.6657% using the rounded goal.
+    expect((s.achievedLaps / Math.round(s.goalLaps)) * 100).toBeCloseTo(53.6657, 4);
+  });
+});

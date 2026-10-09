@@ -92,13 +92,14 @@ export const calculateDriverStats = (
     ? laps.reduce((sum, lap) => sum + lap.time, 0) / laps.length
     : 0;
 
-  // Goal laps (Winton formula)
-  const teamTotal = teamDrivers.reduce((sum, d) => {
-    const driverLaps = d.laps.filter(l => l.lapType === 'base' || l.lapType === 'changeover');
-    return sum + driverLaps.length;
-  }, 0);
-
-  const driverTotal = laps.filter(l => l.lapType === 'base' || l.lapType === 'changeover').length;
+  // Goal laps (AROCA 10 Hour Regularity Relay regs, 6.1): a driver's share of the
+  // event is their Base + Changeover Laps over the team's. In the regs a "Base
+  // Lap" is every completed lap — bonus and broken are adjustments on top — so the
+  // share counts all of a driver's laps, not just the ones typed 'base'. The share
+  // x event seconds / nominated time is that driver's theoretical maximum; the
+  // team's sum is doubled to allow for Bonus Laps.
+  const teamTotal = teamDrivers.reduce((sum, d) => sum + d.laps.length, 0);
+  const driverTotal = laps.length;
   const percentage = teamTotal > 0 ? driverTotal / teamTotal : 0;
   const goalLaps = driver.targetTime > 0 && sessionDuration > 0
     ? (percentage * sessionDuration * 60 / driver.targetTime) * 2
