@@ -68,6 +68,8 @@ interface AppContextType {
   liveShareUrl: string | null;
   ensureLiveSession: () => Promise<string | null>;
   endLiveSession: () => Promise<void>;
+  /** Relay the stopwatch state (local epoch ms) so spectators' clocks follow it. */
+  reportTimerState: (running: boolean, lapStartedAt: number | null, stoppedAt?: number | null) => void;
   discardLiveSession: () => Promise<void>;
   /** Kill switch: end any live session(s) the server still has for the team. */
   endActiveLiveSession: () => Promise<void>;
@@ -881,6 +883,16 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
   }, [teardownLiveSessionLocal]);
 
+  const reportTimerState = useCallback(
+    (running: boolean, lapStartedAt: number | null, stoppedAt: number | null = null) => {
+      const live = liveSessionRef.current;
+      if (!live) return;
+      if (userRoleRef.current && !canRecord(userRoleRef.current)) return;
+      void syncQueue.enqueue({ kind: 'timerState', sessionId: live.id, running, lapStartedAt, stoppedAt });
+    },
+    [],
+  );
+
   // Discard (not save) the current session — deletes it server-side too, so a
   // cleared session leaves nothing in the DB. Nulls the ref BEFORE the lap-diff
   // effect runs so it doesn't also auto-end the (now deleted) session.
@@ -1051,6 +1063,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         liveShareUrl,
         ensureLiveSession,
         endLiveSession,
+        reportTimerState,
         discardLiveSession,
         endActiveLiveSession,
       }}

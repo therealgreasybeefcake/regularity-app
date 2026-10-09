@@ -26,12 +26,13 @@ export function StatTile({ label, value, unit, valueColor, mono = true, size = '
     <View style={[{ alignItems: align }, style]}>
       <Label muted style={{ marginBottom: 4 }}>{label}</Label>
       <View style={styles.valueRow}>
+        {/* One line, shrunk to fit — big numerals in narrow phone tiles would wrap. */}
         {mono ? (
-          <Mono size={valueSize} weight="bold" color={valueColor ?? theme.text} tight={size === 'lg'}>
+          <Mono size={valueSize} weight="bold" color={valueColor ?? theme.text} tight={size === 'lg'} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={styles.value}>
             {String(value)}
           </Mono>
         ) : (
-          <Mono size={valueSize} weight="bold" color={valueColor ?? theme.text}>{String(value)}</Mono>
+          <Mono size={valueSize} weight="bold" color={valueColor ?? theme.text} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.5} style={styles.value}>{String(value)}</Mono>
         )}
         {unit ? <Label muted style={{ marginLeft: 4, marginBottom: 3 }}>{unit}</Label> : null}
       </View>
@@ -40,5 +41,6 @@ export function StatTile({ label, value, unit, valueColor, mono = true, size = '
 }
 
 const styles = StyleSheet.create({
-  valueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, paddingTop: spacing.xs / 2 },
+  valueRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, paddingTop: spacing.xs / 2, maxWidth: '100%' },
+  value: { flexShrink: 1 },
 });

@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { AppState } from 'react-native';
 import { api, ApiError } from './api';
+import { syncServerClock, toServerTime } from './serverClock';
 
 /**
  * Durable, offline-first mutation queue. Mutations are persisted to AsyncStorage
@@ -20,6 +21,9 @@ export type SyncOp =
   | { kind: 'completeSession'; teamId: string; payload: unknown }
   | { kind: 'startSession'; teamId: string; payload: unknown }
   | { kind: 'appendLap'; sessionId: string; payload: unknown }
+  // Recorder's stopwatch state for spectators. Timestamps are this device's
+  // clock; they're converted to server time when sent.
+  | { kind: 'timerState'; sessionId: string; running: boolean; lapStartedAt: number | null; stoppedAt: number | null }
   | { kind: 'endSession'; sessionId: string }
   | { kind: 'deleteSession'; sessionId: string };
 
@@ -123,6 +127,12 @@ class SyncQueue {
         (i) => !(i.op.kind === 'patchDriver' && i.op.driverId === op.driverId),
       );
     }
+    // Only the latest stopwatch state matters to spectators.
+    if (op.kind === 'timerState') {
+      this.items = this.items.filter(
+        (i) => !(i.op.kind === 'timerState' && i.op.sessionId === op.sessionId),
+      );
+    }
     this.items.push({
       id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
       op,
@@ -197,6 +207,16 @@ class SyncQueue {
       case 'appendLap':
         await api.post(`/api/sessions/${op.sessionId}/laps`, op.payload);
         break;
+      case 'timerState': {
+        await syncServerClock();
+        const server = (ms: number | null) => (ms === null ? null : toServerTime(ms));
+        await api.post(`/api/sessions/${op.sessionId}/timer`, {
+          running: op.running,
+          lapStartedAt: server(op.lapStartedAt),
+          stoppedAt: server(op.stoppedAt),
+        });
+        break;
+      }
       case 'endSession':
         await api.post(`/api/sessions/${op.sessionId}/end`);
         break;

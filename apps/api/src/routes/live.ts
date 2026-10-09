@@ -29,7 +29,7 @@ liveRouter.get('/:publicToken/snapshot', async (c) => {
   const found = await loadByToken(c.req.param('publicToken'));
   if (!found) return c.json({ error: 'not_found' }, 404);
   const payload = await buildSessionPayload(found.session, found.team.lapTypeValues);
-  return c.json(payload);
+  return c.json({ ...payload, timer: rooms.getTimer(found.session.publicToken) });
 });
 
 liveRouter.get('/:publicToken', async (c) => {
@@ -50,7 +50,10 @@ liveRouter.get('/:publicToken', async (c) => {
     });
 
     // Always send a fresh snapshot first so a (re)connecting client self-heals.
-    const snapshot = await buildSessionPayload(found.session, found.team.lapTypeValues);
+    const snapshot = {
+      ...(await buildSessionPayload(found.session, found.team.lapTypeValues)),
+      timer: rooms.getTimer(token),
+    };
     await stream.writeSSE({ event: 'snapshot', data: JSON.stringify(snapshot), id: '0' });
 
     // Heartbeat keeps proxies from closing an idle connection.

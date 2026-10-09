@@ -10,7 +10,7 @@ import {
 } from '../lib/domain';
 import { laps, raceSessions, sessionDrivers, teams, teamMembers } from '@regularity/db';
 import { appendLapInputSchema } from '@regularity/schemas';
-import { rooms, teamRoom } from '../rooms';
+import { rooms, teamRoom, type TimerState } from '../rooms';
 
 export const sessionRouter = new Hono<{ Variables: AppVariables }>();
 sessionRouter.use('*', requireAuth);
@@ -40,6 +40,7 @@ sessionRouter.post('/:id/end', async (c) => {
 
   rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
   rooms.broadcast(teamRoom(owned.session.teamId), { type: 'teamChanged' });
+  rooms.clearTimer(owned.session.publicToken);
   return c.json({ session: ended });
 });
 
@@ -53,8 +54,30 @@ sessionRouter.delete('/:id', async (c) => {
   if (!roleAtLeast(owned.role, 'admin')) return c.json({ error: 'forbidden' }, 403);
   rooms.broadcast(owned.session.publicToken, { type: 'sessionEnded', sessionId });
   rooms.broadcast(teamRoom(owned.session.teamId), { type: 'teamChanged' });
+  rooms.clearTimer(owned.session.publicToken);
   await db.delete(raceSessions).where(eq(raceSessions.id, sessionId));
   return c.json({ ok: true });
+});
+
+// POST /api/sessions/:id/timer — the recorder's stopwatch started/stopped/reset,
+// relayed to spectators so their clock matches the phone (owner|admin|member).
+sessionRouter.post('/:id/timer', async (c) => {
+  const user = c.get('user');
+  const owned = await getOwnedSession(c.req.param('id'), user.id);
+  if (!owned) return c.json({ error: 'not_found' }, 404);
+  if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
+  if (owned.session.status !== 'live') return c.json({ error: 'session_not_live' }, 409);
+
+  const body = await c.req.json().catch(() => null);
+  const ms = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? v : null);
+  if (typeof body?.running !== 'boolean') return c.json({ error: 'invalid' }, 400);
+  const timer: TimerState = {
+    running: body.running,
+    lapStartedAt: ms(body.lapStartedAt),
+    stoppedAt: body.running ? null : ms(body.stoppedAt),
+  };
+  rooms.setTimer(owned.session.publicToken, timer);
+  return c.json({ timer });
 });
 
 // POST /api/sessions/:id/laps — the offline-sync hot path. Idempotent on clientLapId.

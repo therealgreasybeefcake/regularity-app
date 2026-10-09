@@ -11,6 +11,7 @@ import { useTheme } from '../../hooks/useTheme';
 import { useApp, canEditTeam } from '../../context/AppContext';
 import { useAlert } from '../../components/CustomAlert';
 import { api } from '../../lib/api';
+import { syncServerClock, toServerTime } from '../../lib/serverClock';
 import { LiveDot } from '../../components/ui';
 
 const monoBold = fonts.monoBold;
@@ -69,9 +70,16 @@ export default function LiveView() {
   const canManage = snap?.status === 'live' && canEditTeam(myRole);
   const isRecorder = !!liveSession && liveSession.publicToken === publicToken;
 
+  // Align with the server clock so the recorder's lap-start timestamps (sent in
+  // server time) don't drift by the phone/browser system-clock difference.
+  useEffect(() => {
+    void syncServerClock(true);
+  }, []);
+
+  const timerRunning = snap?.timer ? snap.timer.running : true;
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
-    if (snap?.status !== 'live') return;
+    if (snap?.status !== 'live' || !timerRunning) return;
     let raf = 0;
     const tick = () => {
       setNow(Date.now());
@@ -79,7 +87,7 @@ export default function LiveView() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [snap?.status]);
+  }, [snap?.status, timerRunning]);
 
   const goToPortal = () => {
     if (redirectTimer.current) return;
@@ -197,6 +205,9 @@ export default function LiveView() {
           };
         });
       },
+      onTimer: (timer) => {
+        setSnap((prev) => (prev ? { ...prev, timer } : prev));
+      },
       onEnded: () => {
         setSnap((prev) => (prev ? { ...prev, status: 'ended' } : prev));
         goToPortal();
@@ -283,6 +294,14 @@ export default function LiveView() {
   }
 
   const isLive = snap.status === 'live';
+  const timerStopped = !!snap.timer && !snap.timer.running;
+  // The recorder's stopwatch (server-time ms): counts while running, frozen when
+  // stopped, zero after a reset. Without it (older app) we infer from the last lap.
+  const timerClock = (t: NonNullable<LiveSnapshot['timer']>) => {
+    if (t.lapStartedAt === null) return '0:00.00';
+    const end = t.running ? toServerTime(now) : t.stoppedAt ?? toServerTime(now);
+    return fmtElapsed(end - t.lapStartedAt);
+  };
   const progressRatio = teamStats.goalLaps > 0 ? Math.min(100, Math.max(0, (teamStats.achievedLaps / teamStats.goalLaps) * 100)) : 0;
 
   return (
@@ -353,9 +372,11 @@ export default function LiveView() {
 
               {/* Huge Live Clock Display */}
               <View style={styles.clockSection}>
-                <Text style={styles.clockSubLabel}>CURRENT LAP TIME</Text>
+                <Text style={styles.clockSubLabel}>{isLive && timerStopped ? 'TIMER STOPPED' : 'CURRENT LAP TIME'}</Text>
                 <Text style={styles.giantClock} numberOfLines={1} adjustsFontSizeToFit>
-                  {isLive && activeDriver.last
+                  {isLive && snap.timer
+                    ? timerClock(snap.timer)
+                    : isLive && activeDriver.last
                     ? fmtElapsed(now - activeDriver.last.timestamp)
                     : activeDriver.last
                     ? formatTime(activeDriver.last.time)
@@ -570,7 +591,8 @@ export default function LiveView() {
 
 // Elapsed current-lap time ticking (60fps)
 function fmtElapsed(ms: number): string {
-  const s = Math.max(0, ms) / 1000;
+  // Truncate to hundredths like the phone's stopwatch (rounding can show 60.00).
+  const s = Math.floor(Math.max(0, ms) / 10) / 100;
   if (s < 60) return `${s.toFixed(2)}s`;
   if (s < 3600) {
     const m = Math.floor(s / 60);

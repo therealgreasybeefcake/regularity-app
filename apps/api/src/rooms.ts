@@ -13,10 +13,23 @@ export type LiveEvent =
   | { type: 'lapDeleted'; lapId: string }
   | { type: 'sessionEnded'; sessionId: string }
   | { type: 'driverChanged'; sessionDriverId: string }
+  | { type: 'timer'; timer: TimerState }
   // Authenticated per-team channel (keyed `team:<teamId>`): peers see roster /
   // settings edits, and that a teammate started recording.
   | { type: 'teamChanged' }
   | { type: 'sessionStarted'; publicToken: string; sessionId: string };
+
+/**
+ * The recorder's stopwatch, so spectators' clocks stop/reset with the phone.
+ * `lapStartedAt` is the epoch ms the current lap started (null after a reset);
+ * `stoppedAt` is set while the timer is stopped. Ephemeral by design: after a
+ * server restart it is unknown (null) and viewers fall back to the last lap.
+ */
+export interface TimerState {
+  running: boolean;
+  lapStartedAt: number | null;
+  stoppedAt: number | null;
+}
 
 /** Room key for a team's authenticated event channel. */
 export const teamRoom = (teamId: string) => `team:${teamId}`;
@@ -26,6 +39,20 @@ type Subscriber = (event: LiveEvent, id: number) => void;
 class RoomManager {
   private rooms = new Map<string, Set<Subscriber>>();
   private lastId = 0;
+  private timers = new Map<string, TimerState>();
+
+  getTimer(publicToken: string): TimerState | null {
+    return this.timers.get(publicToken) ?? null;
+  }
+
+  setTimer(publicToken: string, timer: TimerState): void {
+    this.timers.set(publicToken, timer);
+    this.broadcast(publicToken, { type: 'timer', timer });
+  }
+
+  clearTimer(publicToken: string): void {
+    this.timers.delete(publicToken);
+  }
 
   subscribe(publicToken: string, fn: Subscriber): () => void {
     let set = this.rooms.get(publicToken);
