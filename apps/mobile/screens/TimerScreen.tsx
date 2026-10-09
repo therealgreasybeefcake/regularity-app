@@ -138,6 +138,10 @@ export default function TimerScreen() {
   const [tempSessionNumber, setTempSessionNumber] = useState('');
   const [showSessionSetup, setShowSessionSetup] = useState(false);
   const [driverPickerVisible, setDriverPickerVisible] = useState(false);
+  // Driver change armed during the outgoing driver's in-lap: the next LAP press
+  // records that lap as a changeover for `from`, then times `next` immediately.
+  const [pendingChangeover, setPendingChangeover] = useState<{ from: number; next: number } | null>(null);
+  const [changeDriverPickerVisible, setChangeDriverPickerVisible] = useState(false);
   const [setupTeamName, setSetupTeamName] = useState('');
   const [setupRaceName, setSetupRaceName] = useState('');
   const [setupSessionNumber, setSetupSessionNumber] = useState('');
@@ -693,7 +697,7 @@ export default function TimerScreen() {
     }
   };
 
-  const startStopwatch = (customStartTime?: number) => {
+  const startStopwatch = (customStartTime?: number, targetTime = driver?.targetTime) => {
     const start = customStartTime ?? Date.now();
     startTimeRef.current = start;
     const initialElapsed = Math.max(0, Math.floor((Date.now() - start) / 10) / 100);
@@ -702,7 +706,7 @@ export default function TimerScreen() {
     beforeTargetBeepPlayedRef.current = false;
     afterStartBeepPlayedRef.current = false;
     lastLockScreenSecondRef.current = -1;
-    scheduleBeeps(start, driver?.targetTime);
+    scheduleBeeps(start, targetTime);
     void ensureLiveSession().then(() => reportTimerState(true, start));
   };
 
@@ -812,9 +816,12 @@ export default function TimerScreen() {
       lastLapTimeRef.current = Date.now();
     } else {
       const lapTime = elapsedTime;
+      const changeover = pendingChangeover;
+      // A changeover lap belongs to the outgoing driver even if a tab was tapped since.
+      const lapDriver = changeover ? updatedTeams[activeTeam].drivers[changeover.from] ?? currentDriver : currentDriver;
 
-      // Check lap recording guard
-      if (audioSettings.lapGuardEnabled) {
+      // Check lap recording guard (a changeover in-lap is meant to be slow — skip it)
+      if (audioSettings.lapGuardEnabled && !changeover) {
         const minTime = currentDriver.targetTime - audioSettings.lapGuardRange;
         const maxTime = currentDriver.targetTime + audioSettings.lapGuardRange;
         const safetyCarThreshold = currentDriver.targetTime + audioSettings.lapGuardSafetyCarThreshold;
@@ -844,12 +851,12 @@ export default function TimerScreen() {
       if (rejectedLapTimerRef.current) clearTimeout(rejectedLapTimerRef.current);
       setRejectedLap(null);
 
-      const isChangeover = !!(lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000);
-      const delta = lapTime - currentDriver.targetTime;
+      const isChangeover = !!changeover || !!(lastLapTimeRef.current && Date.now() - lastLapTimeRef.current > 180000);
+      const delta = lapTime - lapDriver.targetTime;
       const lapType = calculateLapType(delta, isChangeover);
 
-      currentDriver.laps.push({
-        number: currentDriver.laps.length + 1,
+      lapDriver.laps.push({
+        number: lapDriver.laps.length + 1,
         time: lapTime,
         delta,
         lapType,
@@ -860,7 +867,30 @@ export default function TimerScreen() {
       setTeams(updatedTeams);
       lastLapTimeRef.current = Date.now();
       if (!isWeb) Vibration.vibrate(500);
-      startStopwatch();
+      if (changeover) {
+        // Hand over: the incoming driver's first lap starts now.
+        const nextDriver = updatedTeams[activeTeam].drivers[changeover.next];
+        setPendingChangeover(null);
+        setActiveDriver(changeover.next);
+        startStopwatch(undefined, nextDriver?.targetTime);
+      } else {
+        startStopwatch();
+      }
+    }
+  };
+
+  // Change Driver: arm a changeover for the lap in progress. With one other
+  // driver there's nothing to choose; otherwise ask who's next.
+  const handleChangeDriverPress = () => {
+    if (pendingChangeover) {
+      setPendingChangeover(null);
+      return;
+    }
+    const others = (team?.drivers ?? []).map((_, i) => i).filter((i) => i !== activeDriver);
+    if (others.length === 1) {
+      setPendingChangeover({ from: activeDriver, next: others[0] });
+    } else if (others.length > 1) {
+      setChangeDriverPickerVisible(true);
     }
   };
 
@@ -882,6 +912,7 @@ export default function TimerScreen() {
           onPress: () => {
             setIsRunning(false);
             clearBeepTimeouts();
+            setPendingChangeover(null);
             reportTimerState(false, startTimeRef.current, Date.now());
           },
         },
@@ -912,6 +943,7 @@ export default function TimerScreen() {
   const resetTimer = () => {
     setIsRunning(false);
     setElapsedTime(0);
+    setPendingChangeover(null);
     reportTimerState(false, null);
     if (intervalRef.current) clearInterval(intervalRef.current);
     clearBeepTimeouts();
@@ -1209,7 +1241,12 @@ export default function TimerScreen() {
     });
   };
 
+  const pendingNextName = pendingChangeover
+    ? team?.drivers?.[pendingChangeover.next]?.name?.trim() || `Driver ${pendingChangeover.next + 1}`
+    : null;
+
   const getStatusColor = () => {
+    if (pendingChangeover) return theme.changeover;
     if (!driver?.laps || driver.laps.length === 0) return theme.textSecondary;
     const lastLap = driver.laps[driver.laps.length - 1];
     if (!lastLap) return theme.textSecondary;
@@ -1221,6 +1258,7 @@ export default function TimerScreen() {
   };
 
   const getStatusText = () => {
+    if (pendingNextName) return `CHANGEOVER LAP \u2192 ${pendingNextName.toUpperCase()}`;
     if (!driver?.laps || driver.laps.length === 0) return 'WAITING';
     const lastLap = driver.laps[driver.laps.length - 1];
     if (!lastLap) return 'WAITING';
@@ -1477,6 +1515,32 @@ export default function TimerScreen() {
         textStyle={[styles.primaryBtnText, wide && styles.primaryBtnTextWide]}
       />
 
+      {/* Driver change: flag this lap as the outgoing driver's changeover */}
+      {isRunning && (team?.drivers?.length ?? 0) > 1 ? (
+        pendingChangeover ? (
+          <View style={[styles.changeoverStrip, { borderColor: theme.changeover, backgroundColor: theme.surfaceElevated }]}>
+            <Ionicons name="swap-horizontal" size={20} color={theme.changeover as string} />
+            <View style={{ flex: 1 }}>
+              <Text style={[styles.changeoverTitle, { color: theme.changeover }]}>Changeover lap</Text>
+              <Text style={[styles.changeoverSub, { color: theme.textSecondary }]} numberOfLines={2}>
+                Press LAP when {team?.drivers?.[pendingChangeover.from]?.name?.trim() || 'the driver'} finishes — timing switches to {pendingNextName}.
+              </Text>
+            </View>
+            <Button title="Cancel" size="sm" variant="secondary" onPress={() => setPendingChangeover(null)} />
+          </View>
+        ) : (
+          <Button
+            title="Change Driver"
+            icon="swap-horizontal"
+            variant="secondary"
+            fullWidth
+            onPress={handleChangeDriverPress}
+            style={[styles.changeDriverBtn, { borderColor: theme.changeover }]}
+            textStyle={{ color: theme.changeover }}
+          />
+        )
+      ) : null}
+
       {/* Secondary controls (one row with manual entry on wide web) */}
       <View style={wide ? styles.wideControlRow : undefined}>
       <View style={[styles.secondaryRow, wide && styles.wideControlCell]}>
@@ -1717,6 +1781,34 @@ export default function TimerScreen() {
         </View>
       </Sheet>
 
+      {/* Change Driver — who takes over after this changeover lap */}
+      <Sheet
+        visible={changeDriverPickerVisible}
+        onClose={() => setChangeDriverPickerVisible(false)}
+        title="Change Driver"
+      >
+        <Text style={[styles.sheetSubtitle, { color: theme.textSecondary }]}>
+          This lap will be recorded as {driver?.name?.trim() || 'the current driver'}'s changeover. Who's driving next?
+        </Text>
+        <View style={styles.sheetFields}>
+          {(team?.drivers ?? []).map((d, index) =>
+            index === activeDriver ? null : (
+              <Button
+                key={d.id}
+                title={d.name?.trim() || `Driver ${index + 1}`}
+                icon="person-outline"
+                variant="secondary"
+                fullWidth
+                onPress={() => {
+                  setPendingChangeover({ from: activeDriver, next: index });
+                  setChangeDriverPickerVisible(false);
+                }}
+              />
+            ),
+          )}
+        </View>
+      </Sheet>
+
       {/* Select-driver prompt — shown when START is pressed with no driver selected */}
       <Sheet
         visible={driverPickerVisible}
@@ -1798,6 +1890,10 @@ const styles = StyleSheet.create({
   primaryBtnText: { fontSize: 22, fontWeight: fontWeights.heavy, letterSpacing: 1 },
 
   secondaryRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
+  changeDriverBtn: { marginBottom: spacing.md, borderWidth: 1 },
+  changeoverStrip: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
+  changeoverTitle: { fontSize: typography.body, fontWeight: fontWeights.heavy, letterSpacing: 0.3, textTransform: 'uppercase' },
+  changeoverSub: { fontSize: typography.caption, marginTop: 2 },
   manualRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center', marginBottom: spacing.xl },
 
   historyHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.md },
