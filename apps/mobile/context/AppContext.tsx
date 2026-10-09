@@ -80,6 +80,13 @@ interface AppContextType {
   syncLapEdit: (driverIndex: number, lap: Lap) => void;
   /** Remove a deleted lap from the live session. */
   syncLapDelete: (driverIndex: number, lap: Lap) => void;
+  /**
+   * Bumped each time the user ends or discards the live session on this device
+   * (End Session, Clear, End Live Session, or End/Delete on the live view). The
+   * Timer resets its stopwatch on it. Background clean-ups (a session found to
+   * have ended elsewhere) deliberately don't bump it, so they never reset a run.
+   */
+  liveEndedByUser: number;
   /** Relay the stopwatch state (local epoch ms) so spectators' clocks follow it. */
   reportTimerState: (running: boolean, lapStartedAt: number | null, stoppedAt?: number | null) => void;
   discardLiveSession: () => Promise<void>;
@@ -249,6 +256,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [autoJoinLive, setAutoJoinLive] = useState(false);
   const [liveSoundDefault, setLiveSoundDefault] = useState(true);
   const [showLiveBanner, setShowLiveBanner] = useState(false);
+  const [liveEndedByUser, setLiveEndedByUser] = useState(0);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
   const [memberships, setMemberships] = useState<TeamMembership[]>([]);
   const [userRole, setUserRole] = useState<TeamRole | null>(null);
@@ -920,6 +928,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const endLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
     if (!live) return;
+    setLiveEndedByUser((n) => n + 1);
     await teardownLiveSessionLocal();
     await syncQueue.enqueue({ kind: 'endSession', sessionId: live.id });
   }, [teardownLiveSessionLocal]);
@@ -972,6 +981,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // effect runs so it doesn't also auto-end the (now deleted) session.
   const discardLiveSession = useCallback(async () => {
     const live = liveSessionRef.current;
+    setLiveEndedByUser((n) => n + 1);
     await teardownLiveSessionLocal();
     if (live) await syncQueue.enqueue({ kind: 'deleteSession', sessionId: live.id });
   }, [teardownLiveSessionLocal]);
@@ -985,6 +995,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     if (!teamId) return;
     endedLiveTokenRef.current = teamLivePublicTokenRef.current; // may be a peer's token, which teardown can't know
     await api.post(`/api/teams/${teamId}/live/end`);
+    setLiveEndedByUser((n) => n + 1);
     await teardownLiveSessionLocal();
   }, [activeServerTeamId, teardownLiveSessionLocal]);
 
@@ -1146,6 +1157,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         ensureLiveSession,
         endLiveSession,
         reportTimerState,
+        liveEndedByUser,
         syncLapEdit,
         syncLapDelete,
         discardLiveSession,

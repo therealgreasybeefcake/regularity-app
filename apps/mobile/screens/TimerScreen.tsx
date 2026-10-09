@@ -88,6 +88,7 @@ export default function TimerScreen() {
     discardLiveSession,
     endLiveSession,
     reportTimerState,
+    liveEndedByUser,
     syncLapEdit,
     syncLapDelete,
     liveSession,
@@ -980,15 +981,15 @@ export default function TimerScreen() {
     }
   };
 
-  // When this device's live session ends by any route (kill switch, ended from
-  // the web or another device, deleted remotely), stop and zero the stopwatch —
-  // otherwise it keeps running and the next lap silently starts a new session.
-  const prevLiveIdRef = useRef(liveSession?.id ?? null);
+  // Ending the live session on this device (from here or the live view) stops
+  // and zeroes the stopwatch. Only user-initiated ends count — background
+  // clean-ups at launch/refresh used to reset a run the moment it started.
+  const seenLiveEndRef = useRef(liveEndedByUser);
   useEffect(() => {
-    const prev = prevLiveIdRef.current;
-    prevLiveIdRef.current = liveSession?.id ?? null;
-    if (prev && !liveSession) resetTimer();
-  }, [liveSession?.id]);
+    if (liveEndedByUser === seenLiveEndRef.current) return;
+    seenLiveEndRef.current = liveEndedByUser;
+    resetTimer();
+  }, [liveEndedByUser]);
 
   const handleStartSession = () => {
     const duration = parseInt(setupSessionDuration) || 120;
@@ -1645,7 +1646,7 @@ export default function TimerScreen() {
         <View style={{ flex: 1 }}>
           <TextField
             mono
-            placeholder="Manual lap, in seconds (e.g. 105.3)"
+            placeholder="Manual Lap, In Seconds"
             value={lapInput}
             onChangeText={setLapInput}
             keyboardType="decimal-pad"
