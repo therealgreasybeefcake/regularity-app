@@ -62,6 +62,9 @@ interface AppContextType {
   /** Default sound state for the live spectator view (user preference). */
   liveSoundDefault: boolean;
   setLiveSoundDefault: (v: boolean) => void;
+  /** Show the live-session share banner on the Timer (user preference, off by default). */
+  showLiveBanner: boolean;
+  setShowLiveBanner: (v: boolean) => void;
   // Persist a finished session to the API (durable offline queue). Kept under
   // the original name so existing callers (StatsScreen) don't change.
   saveSessionToS3: (session: Session) => Promise<void>;
@@ -245,6 +248,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const [hasSeenWelcome, setHasSeenWelcome] = useState(false);
   const [autoJoinLive, setAutoJoinLive] = useState(false);
   const [liveSoundDefault, setLiveSoundDefault] = useState(true);
+  const [showLiveBanner, setShowLiveBanner] = useState(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('offline');
   const [memberships, setMemberships] = useState<TeamMembership[]>([]);
   const [userRole, setUserRole] = useState<TeamRole | null>(null);
@@ -1087,6 +1091,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     AsyncStorage.getItem('liveSoundDefault').then((v) => {
       if (v !== null) setLiveSoundDefault(JSON.parse(v));
     });
+    AsyncStorage.getItem('showLiveBanner').then((v) => {
+      if (v !== null) setShowLiveBanner(JSON.parse(v));
+    });
   }, []);
   useEffect(() => {
     if (!isLoading) AsyncStorage.setItem('autoJoinLive', JSON.stringify(autoJoinLive));
@@ -1094,6 +1101,9 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   useEffect(() => {
     if (!isLoading) AsyncStorage.setItem('liveSoundDefault', JSON.stringify(liveSoundDefault));
   }, [liveSoundDefault, isLoading]);
+  useEffect(() => {
+    if (!isLoading) AsyncStorage.setItem('showLiveBanner', JSON.stringify(showLiveBanner));
+  }, [showLiveBanner, isLoading]);
 
   return (
     <AppContext.Provider
@@ -1127,6 +1137,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         setAutoJoinLive,
         liveSoundDefault,
         setLiveSoundDefault,
+        showLiveBanner,
+        setShowLiveBanner,
         saveSessionToS3,
         loadSessionsFromS3,
         liveSession,
