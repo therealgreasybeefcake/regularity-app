@@ -6,7 +6,7 @@ import { LineChart } from 'react-native-gifted-charts';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, fonts } from '../constants/theme';
 import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/calculations';
-import { calculateConsistency, analyzePaceTrend, segmentStints, detectOutliers } from '@regularity/core';
+import { calculateConsistency, analyzePaceTrend, segmentStints, detectOutliers, dedupeSessions, calculateEventStats, DEFAULT_EVENT_MINUTES } from '@regularity/core';
 import { Session } from '../types';
 import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
 import { DriverComparisonChart, driverColor } from '../components/DriverComparisonChart';
@@ -149,12 +149,41 @@ export default function StatsScreen() {
   };
 
   // Merge local sessionHistory with S3 sessions, deduplicating by id
+  // Merge local history with the server's sessions. The same ended session can be
+  // in both under different ids (device id vs live-session id), so collapse those
+  // too; the server copy goes first so it wins ties.
   const allSessions = React.useMemo(() => {
     const map = new Map<string, Session>();
-    for (const s of team.sessionHistory) map.set(s.id, s);
     for (const s of s3Sessions) map.set(s.id, s);
-    return Array.from(map.values()).sort((a, b) => b.timestamp - a.timestamp);
+    for (const s of team.sessionHistory) if (!map.has(s.id)) map.set(s.id, s);
+    return dedupeSessions(Array.from(map.values())).sort((a, b) => b.timestamp - a.timestamp);
   }, [team.sessionHistory, s3Sessions]);
+
+  // Event Total: every session of the displayed race (plus the one in progress),
+  // scored as one event over the full event length — the official method.
+  const [eventMinutes, setEventMinutes] = useState(String(DEFAULT_EVENT_MINUTES));
+  const eventRace = (displayData.raceName || '').trim().toLowerCase();
+  const eventSessions = React.useMemo(() => {
+    if (!eventRace) return [] as Session[];
+    const sameRace = (name?: string) => (name || '').trim().toLowerCase() === eventRace;
+    const list = allSessions.filter((s) => sameRace(s.raceName));
+    const currentHasLaps = team.drivers.some((d) => d.laps.length > 0);
+    if (sameRace(team.raceName) && currentHasLaps) {
+      list.push({
+        id: 'current',
+        raceName: team.raceName,
+        sessionNumber: team.sessionNumber,
+        sessionDuration: team.sessionDuration,
+        timestamp: Date.now(),
+        drivers: team.drivers,
+      });
+    }
+    return list;
+  }, [allSessions, eventRace, team.drivers, team.raceName, team.sessionNumber, team.sessionDuration]);
+  const eventStats = React.useMemo(
+    () => calculateEventStats(eventSessions, lapTypeValues, Number(eventMinutes) > 0 ? Number(eventMinutes) : DEFAULT_EVENT_MINUTES),
+    [eventSessions, lapTypeValues, eventMinutes],
+  );
 
   const handleExportCsv = async () => {
     try {
@@ -348,6 +377,46 @@ export default function StatsScreen() {
       </View>
     </Card>
   );
+
+  const EventTotalSection = () => {
+    if (eventSessions.length === 0) return null;
+    const includesCurrent = eventSessions.some((s) => s.id === 'current');
+    const sessionList = eventSessions
+      .map((s) => (s.id === 'current' ? `S${s.sessionNumber || '?'} (in progress)` : `S${s.sessionNumber || '?'}`))
+      .join(' · ');
+    return (
+      <Card padding="lg" style={styles.panel}>
+        <View style={styles.panelHeader}>
+          <View style={{ flexShrink: 1 }}>
+            <Label size={13}>Event Total</Label>
+            <Text style={[styles.eventSub, { color: theme.textSecondary }]} numberOfLines={2}>
+              {displayData.raceName} · {eventStats.sessionCount} session{eventStats.sessionCount === 1 ? '' : 's'} · {eventStats.lapCount} laps
+            </Text>
+          </View>
+          <View style={styles.eventLength}>
+            <Label muted>Event length</Label>
+            <TextField
+              mono
+              value={eventMinutes}
+              onChangeText={setEventMinutes}
+              keyboardType="number-pad"
+              containerStyle={styles.eventLengthField}
+            />
+            <Label muted>min</Label>
+          </View>
+        </View>
+        <View style={styles.teamStatsRow}>
+          <StatTile size="lg" label="Percentage Factor" value={`${eventStats.percentageFactor.toFixed(4)}%`} valueColor={theme.accent} style={styles.teamStatItem} />
+          <StatTile size="lg" label="Achieved Laps" value={eventStats.achievedLaps.toFixed(0)} style={styles.teamStatItem} />
+          <StatTile size="lg" label="Goal Laps" value={eventStats.goalLaps.toFixed(2)} style={styles.teamStatItem} />
+        </View>
+        <Text style={[styles.eventNote, { color: theme.textMuted }]}>
+          {sessionList}. Scored as one event: each driver's share of all the team's laps × event length ÷ their nominated time, doubled (regs 6.1).
+          {includesCurrent ? ' Includes the session in progress.' : ''}
+        </Text>
+      </Card>
+    );
+  };
 
   const TrendSection = () => {
     // Only meaningful for the live team (not a historical session view).
@@ -746,6 +815,8 @@ export default function StatsScreen() {
             </View>
           </View>
 
+          {EventTotalSection()}
+
           {/* Team summary */}
           <Card padding="lg" style={styles.panel}>
             <View style={styles.webSummaryRow}>
@@ -862,6 +933,8 @@ export default function StatsScreen() {
             <View style={threeColTop ? styles.flex1 : undefined}>{DriverSelector(threeColTop ? styles.fillCard : undefined)}</View>
           </View>
 
+          {EventTotalSection()}
+
           {TrendSection()}
 
           {detailDriverIndexes.length > 0 ? (
@@ -926,6 +999,12 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
+  // Event Total
+  eventSub: { fontSize: typography.caption, marginTop: 2 },
+  eventLength: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  eventLengthField: { width: 76 },
+  eventNote: { fontSize: typography.caption, marginTop: spacing.md, lineHeight: 17 },
 
   // Web layout
   webContent: { padding: spacing.xl, paddingBottom: 80, width: '100%', maxWidth: 1280, alignSelf: 'center' },
