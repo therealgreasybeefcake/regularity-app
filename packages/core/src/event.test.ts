@@ -17,19 +17,34 @@ describe('dedupeSessions', () => {
   it('collapses the device and server copies of one ended session', () => {
     const server = session('server-uuid', '1', 1_000_000, [driver('A', 102, ['base', 'bonus'])]);
     const local = session('1700000000000', '1', 1_000_000 + 2 * MIN, [driver('A', 102, ['base', 'bonus'])]);
-    expect(dedupeSessions([server, local])).toEqual([server]);
+    expect(dedupeSessions([server], [local])).toEqual([server]);
   });
 
   it('keeps the copy with more laps', () => {
     const server = session('s', '1', 0, [driver('A', 102, ['base'])]);
     const local = session('l', '1', MIN, [driver('A', 102, ['base', 'bonus'])]);
-    expect(dedupeSessions([server, local])).toEqual([local]);
+    expect(dedupeSessions([server], [local])).toEqual([local]);
   });
 
   it('keeps different sessions that reuse a session number hours apart', () => {
     const a = session('a', '1', 0, [driver('A', 102, ['base'])]);
     const b = session('b', '1', 3 * 60 * MIN, [driver('A', 102, ['base'])]);
-    expect(dedupeSessions([a, b])).toHaveLength(2);
+    expect(dedupeSessions([a], [b])).toHaveLength(2);
+  });
+
+  it('never merges two server sessions that reuse a number minutes apart', () => {
+    // A 21-lap practice, then a 1-lap session under the same number ended 5 min later.
+    const practice = session('p', '0', 0, [driver('A', 102, ['base', 'bonus', 'base'])]);
+    const stray = session('s', '0', 5 * MIN, [driver('A', 102, ['base'])]);
+    expect(dedupeSessions([stray, practice])).toEqual([stray, practice]);
+  });
+
+  it('collapses each local copy into its own server copy', () => {
+    const practice = session('p', '0', 0, [driver('A', 102, ['base', 'bonus'])]);
+    const stray = session('s', '0', 5 * MIN, [driver('A', 102, ['base'])]);
+    const localPractice = session('lp', '0', 10_000, [driver('A', 102, ['base', 'bonus'])]);
+    const localStray = session('ls', '0', 5 * MIN + 10_000, [driver('A', 102, ['base'])]);
+    expect(dedupeSessions([stray, practice], [localPractice, localStray])).toEqual([stray, practice]);
   });
 });
 

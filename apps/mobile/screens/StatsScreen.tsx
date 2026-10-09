@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Pressable, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions, ColorValue } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
+import { useFocusEffect } from 'expo-router';
 import { LineChart } from 'react-native-gifted-charts';
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, fonts } from '../constants/theme';
@@ -148,18 +149,17 @@ export default function StatsScreen() {
     }
   };
 
-  // Merge local sessionHistory with S3 sessions, deduplicating by id
   // Merge local history with the server's sessions. The same ended session can be
-  // in both under different ids (device id vs live-session id), so collapse those
-  // too; the server copy goes first so it wins ties.
+  // in both under different ids (device id vs live-session id), so dedupeSessions
+  // collapses a local copy into its server copy.
   const allSessions = React.useMemo(() => {
-    const map = new Map<string, Session>();
-    for (const s of s3Sessions) map.set(s.id, s);
-    for (const s of team.sessionHistory) if (!map.has(s.id)) map.set(s.id, s);
     // Sessions with no laps (e.g. a START that was ended without recording) aren't
     // worth listing and would only pad the Event Total.
-    const withLaps = Array.from(map.values()).filter((s) => s.drivers.some((d) => d.laps.length > 0));
-    return dedupeSessions(withLaps).sort((a, b) => b.timestamp - a.timestamp);
+    const hasLaps = (s: Session) => s.drivers.some((d) => d.laps.length > 0);
+    const serverIds = new Set(s3Sessions.map((s) => s.id));
+    const server = s3Sessions.filter(hasLaps);
+    const local = team.sessionHistory.filter((s) => !serverIds.has(s.id) && hasLaps(s));
+    return dedupeSessions(server, local).sort((a, b) => b.timestamp - a.timestamp);
   }, [team.sessionHistory, s3Sessions]);
 
   // Event Total: every session of the displayed race (plus the one in progress),
@@ -207,26 +207,34 @@ export default function StatsScreen() {
     }
   };
 
-  // Fetch the team's saved sessions up front (not just when the picker opens),
-  // so the selector shows on devices with no local history — e.g. the web.
+  // A different team's history doesn't apply — clear it and the selection.
   useEffect(() => {
     setS3Sessions([]);
     setSelectedSession(null);
-    if (!activeServerTeamId) return;
-    let cancelled = false;
-    setIsLoadingSessions(true);
-    loadSessionsFromS3()
-      .then((sessions) => {
-        if (!cancelled) setS3Sessions(sessions);
-      })
-      .catch((err) => console.warn('Failed to load S3 sessions:', err))
-      .finally(() => {
-        if (!cancelled) setIsLoadingSessions(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [activeServerTeamId, loadSessionsFromS3]);
+  }, [activeServerTeamId]);
+
+  // Fetch the team's saved sessions up front (not just when the picker opens),
+  // so the selector shows on devices with no local history — e.g. the web.
+  // Refetched on every focus: tabs stay mounted, so a session ended since the
+  // first visit would otherwise never show (it only lived in local history).
+  useFocusEffect(
+    React.useCallback(() => {
+      if (!activeServerTeamId) return;
+      let cancelled = false;
+      setIsLoadingSessions(true);
+      loadSessionsFromS3()
+        .then((sessions) => {
+          if (!cancelled) setS3Sessions(sessions);
+        })
+        .catch((err) => console.warn('Failed to load S3 sessions:', err))
+        .finally(() => {
+          if (!cancelled) setIsLoadingSessions(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [activeServerTeamId, loadSessionsFromS3]),
+  );
 
   const handleOpenSessionPicker = () => {
     setShowSessionPicker(true);
