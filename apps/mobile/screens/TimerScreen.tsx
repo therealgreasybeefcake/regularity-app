@@ -149,6 +149,9 @@ export default function TimerScreen() {
       colsH: Math.max(0, rootH - spacing.sm - LAND_TOP_BAR_H - spacing.sm),
       leftW,
       rightW: innerW - spacing.lg - leftW,
+      // The clock grows into the full-height card: capped by the card's width (a
+      // 6-character "123.45" is ~3.7em of mono) and by what's left of the height.
+      clockSize: Math.round(Math.max(52, Math.min(104, (leftW - spacing.lg * 2 - 8) / 3.7, rootH - 290))),
     };
   })();
   // Size the clock to its column so a 6-character time ("123.45") always fits.
@@ -1577,7 +1580,7 @@ export default function TimerScreen() {
     <>
       {/* Driver tabs */}
       {team?.drivers?.length ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.driverTabs, inlineTopBar && styles.flushBottom]} contentContainerStyle={styles.driverTabsContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.driverTabs, inlineTopBar && styles.flushBottom]} contentContainerStyle={[styles.driverTabsContent, phoneLandscape && styles.driverTabsContentEnd]}>
           {(team?.drivers ?? []).map((d, index) => {
             const active = activeDriver === index;
             return (
@@ -1617,7 +1620,7 @@ export default function TimerScreen() {
       {/* Hero clock */}
       <Card
         padding={phoneLandscape ? 'lg' : 'xl'}
-        style={[styles.clockCard, phoneLandscape && styles.flushBottom, isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
+        style={[styles.clockCard, phoneLandscape && [styles.flushBottom, styles.clockCardFill, { minHeight: land.colsH - spacing.sm }], isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
       >
         <View style={styles.clockTopRow}>
           {/* Whose lap this is */}
@@ -1638,7 +1641,7 @@ export default function TimerScreen() {
           style={[
             styles.clock,
             wide && { fontSize: wideClockSize, lineHeight: Math.round(wideClockSize * 1.1), letterSpacing: -wideClockSize / 28, marginVertical: spacing.xl },
-            phoneLandscape && styles.clockCompact,
+            phoneLandscape && [styles.clockCompact, { fontSize: land.clockSize, lineHeight: Math.round(land.clockSize * 1.1), letterSpacing: -land.clockSize / 28 }],
             { color: theme.text, transform: [{ scale: pulseAnim }] },
           ]}
         >
@@ -2093,6 +2096,8 @@ const styles = StyleSheet.create({
 
   driverTabs: { marginBottom: spacing.lg, flexGrow: 0 },
   driverTabsContent: { gap: spacing.sm, paddingRight: spacing.lg },
+  // Phone landscape: tabs sit at the right, next to the ••• menu.
+  driverTabsContentEnd: { flexGrow: 1, justifyContent: 'flex-end', paddingRight: spacing.sm },
   driverTab: { paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.md, borderWidth: 1, minWidth: 96 },
   driverTabName: { fontSize: typography.body, fontWeight: fontWeights.semibold },
 
@@ -2166,7 +2171,9 @@ const styles = StyleSheet.create({
   landMenuBtn: { alignItems: 'flex-end', justifyContent: 'center', height: '100%' },
   landLeftContent: { paddingBottom: spacing.sm },
   landRightContent: { paddingBottom: spacing.lg },
-  clockCompact: { fontSize: 56, lineHeight: 62, marginVertical: 0 },
+  clockCompact: { marginVertical: 0 },
+  // Phone landscape: the card fills the column; driver at the top, status at the bottom.
+  clockCardFill: { justifyContent: 'space-between' },
   lastLapRowCompact: { marginBottom: spacing.xs },
   driveRowCompact: { marginTop: spacing.sm, paddingTop: spacing.sm },
   statusStripCompact: { marginTop: spacing.sm, paddingVertical: spacing.xs },
