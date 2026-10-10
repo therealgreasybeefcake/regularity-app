@@ -249,7 +249,9 @@ async function ownLap(lapId: string, userId: string) {
   return rows[0] ?? null;
 }
 
-// PATCH /api/laps/:id — correct a lap's time; recompute derived fields (owner|admin|member).
+// PATCH /api/laps/:id — correct a lap's time or toggle changeover/safety on any
+// session, live or ended (Stats edits past sessions this way); derived fields are
+// recomputed (owner|admin|member).
 lapRouter.patch('/:id', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
@@ -257,16 +259,17 @@ lapRouter.patch('/:id', async (c) => {
   if (!owned) return c.json({ error: 'not_found' }, 404);
   if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
 
-  const body = await c.req.json().catch(() => null);
-  const time = Number(body?.time);
-  if (!Number.isFinite(time) || time <= 0) return c.json({ error: 'invalid_time' }, 400);
+  const parsed = updateLapInputSchema.safeParse(await c.req.json().catch(() => null));
+  if (!parsed.success) return c.json({ error: 'invalid', details: parsed.error.flatten() }, 400);
+  const input = parsed.data;
 
+  const time = input.time ?? owned.lap.timeSec;
   const { delta, lapType, lapValue } = computeLap(
     time,
     owned.sd.targetTimeSec,
     owned.team.lapTypeValues,
-    owned.lap.lapType === 'changeover',
-    owned.lap.lapType === 'safety',
+    input.isChangeover ?? owned.lap.lapType === 'changeover',
+    input.isSafety ?? owned.lap.lapType === 'safety',
   );
   const [updated] = await db
     .update(laps)
@@ -281,15 +284,22 @@ lapRouter.patch('/:id', async (c) => {
   return c.json({ lap: updated });
 });
 
-// DELETE /api/laps/:id — (owner|admin|member).
+// DELETE /api/laps/:id — later laps are renumbered to close the gap (owner|admin|member).
 lapRouter.delete('/:id', async (c) => {
   const user = c.get('user');
   const id = c.req.param('id');
   const owned = await ownLap(id, user.id);
-  if (!owned) return c.json({ error: 'not_found' }, 404);
+  // Already gone (e.g. a retried delete) — nothing to do.
+  if (!owned) return c.json({ ok: true });
   if (!roleAtLeast(owned.role, 'member')) return c.json({ error: 'forbidden' }, 403);
 
-  await db.delete(laps).where(eq(laps.id, id));
+  await db.transaction(async (tx) => {
+    await tx.delete(laps).where(eq(laps.id, id));
+    await tx
+      .update(laps)
+      .set({ number: sql`${laps.number} - 1` })
+      .where(and(eq(laps.sessionDriverId, owned.sd.id), gt(laps.number, owned.lap.number)));
+  });
   rooms.broadcast(owned.session.publicToken, { type: 'lapDeleted', lapId: id });
   return c.json({ ok: true });
 });
