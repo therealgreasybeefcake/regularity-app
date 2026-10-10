@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Platform, TouchableOpacity, useWindowDimensions } from 'react-native';
 import { Tabs, Slot, useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../context/AppContext';
@@ -63,6 +63,55 @@ function WebSidebarLayout() {
         { text: 'Sign Out', style: 'destructive', onPress: signOut },
       ],
     });
+
+  // Phone-width browser: a 200px sidebar would take half the screen, so use a
+  // slim top bar instead — brand, the live session, and an account menu.
+  const { width } = useWindowDimensions();
+  if (width < WEB_COMPACT_WIDTH) {
+    const activeTeam = memberships.find((m) => m.id === activeServerTeamId);
+    const openAccountMenu = () =>
+      showAlert({
+        title: activeTeam?.name ?? 'Account',
+        message: user ?? undefined,
+        buttons: [
+          ...memberships
+            .filter((m) => m.id !== activeServerTeamId)
+            .map((m) => ({ text: `Switch to ${m.name}`, onPress: () => void switchTeam(m.id) })),
+          { text: 'Sign Out', style: 'destructive' as const, onPress: confirmSignOut },
+          { text: 'Cancel', style: 'cancel' as const },
+        ],
+      });
+    return (
+      <View style={[webStyles.compactRoot, { backgroundColor: theme.background }]}>
+        <View style={[webStyles.topBar, { backgroundColor: sidebarBg, borderBottomColor: sidebarBorder }]}>
+          <Ionicons name="flag" size={20} color={theme.primary} />
+          <Text style={[webStyles.topBarTitle, { color: theme.text }]} numberOfLines={1}>
+            {activeTeam?.name ?? 'Regularity'}
+          </Text>
+          <TouchableOpacity
+            style={[webStyles.topBarLive, { borderColor: liveToken ? '#ef4444' : sidebarBorder }, !!liveToken && { backgroundColor: 'rgba(239,68,68,0.12)' }]}
+            onPress={() => {
+              if (liveToken) router.push(`/live/${liveToken}` as any);
+            }}
+            disabled={!liveToken}
+            activeOpacity={0.7}
+            accessibilityLabel={liveToken ? 'Open the live session' : 'No live session'}
+          >
+            {liveToken ? <View style={webStyles.liveDot} /> : <Ionicons name="radio-outline" size={16} color={theme.textSecondary as string} />}
+            <Text style={[webStyles.topBarLiveText, { color: liveToken ? '#ef4444' : theme.textSecondary }]}>
+              {liveToken ? 'Live' : 'No live'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={openAccountMenu} style={webStyles.topBarIcon} accessibilityLabel="Account and team" activeOpacity={0.7}>
+            <Ionicons name="person-circle-outline" size={26} color={theme.textSecondary as string} />
+          </TouchableOpacity>
+        </View>
+        <View style={webStyles.compactContent}>
+          <Slot />
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={webStyles.root}>
@@ -249,7 +298,40 @@ export default function TabsLayout() {
   );
 }
 
+// Below this browser width the sidebar becomes a top bar.
+const WEB_COMPACT_WIDTH = 768;
+
 const webStyles = StyleSheet.create({
+  compactRoot: {
+    flex: 1,
+    // @ts-ignore
+    minHeight: '100vh',
+  },
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+  },
+  topBarTitle: {
+    flex: 1,
+    fontSize: 16,
+    fontWeight: fontWeights.bold,
+  },
+  topBarLive: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  topBarLiveText: { fontSize: 13, fontWeight: fontWeights.semibold },
+  topBarIcon: { padding: 2 },
+  compactContent: { flex: 1, width: '100%' },
   root: {
     flex: 1,
     flexDirection: 'row',
