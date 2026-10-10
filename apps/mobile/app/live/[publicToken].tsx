@@ -36,8 +36,17 @@ function palette(theme: ReturnType<typeof useTheme>['theme']) {
     accent: String(theme.accent),
     live: String(theme.livePulse),
     warning: String(theme.warning),
+    changeover: String(theme.changeover),
+    safety: String(theme.safety),
   };
 }
+
+// Recent-laps columns; narrower on a phone so the driver name keeps some room.
+const feedCols = (narrow: boolean) =>
+  narrow ? { lap: 34, time: 74, delta: 62, type: 58 } : { lap: 50, time: 90, delta: 85, type: 95 };
+
+// Short lap-type labels for the phone feed ("CHANGEOVER" doesn't fit).
+const SHORT_TYPE: Record<string, string> = { bonus: 'BONUS', base: 'BASE', broken: 'BROKEN', changeover: 'C/O', safety: 'SC' };
 
 export default function LiveView() {
   const { publicToken } = useLocalSearchParams<{ publicToken: string }>();
@@ -46,12 +55,18 @@ export default function LiveView() {
   const { theme } = useTheme();
   const { width: windowWidth } = useWindowDimensions();
   const isWide = windowWidth >= 860;
+  // Phone portrait: stat rows go 2x2 and the lap feed tightens.
+  const isNarrow = windowWidth < 600;
+  const cols = feedCols(isNarrow);
 
   const { liveSoundDefault, memberships, liveSession, endLiveSession, discardLiveSession } = useApp();
   const { showAlert } = useAlert();
   const C = useMemo(() => palette(theme), [theme]);
-  const styles = useMemo(() => makeStyles(C, isWide), [C, isWide]);
+  const styles = useMemo(() => makeStyles(C, isWide, isNarrow), [C, isWide, isNarrow]);
   const deltaColor = (delta: number) => (delta < 0 ? C.red : delta < 1 ? C.green : C.blue);
+  // A changeover / safety-car lap is off target by design — colour it by type, not delta.
+  const lapTypeColor = (lapType: string, delta: number) =>
+    lapType === 'changeover' ? C.changeover : lapType === 'safety' ? C.safety : deltaColor(delta);
 
   const [snap, setSnap] = useState<LiveSnapshot | null>(null);
   const [connected, setConnected] = useState(false);
@@ -311,7 +326,7 @@ export default function LiveView() {
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <View style={styles.titleBadgeRow}>
-              <Text style={styles.kicker}>
+              <Text style={styles.kicker} numberOfLines={1}>
                 {snap.sessionNumber ? `SESSION ${snap.sessionNumber}` : 'LIVE TIMING'} · PIT TELEMETRY
               </Text>
             </View>
@@ -393,8 +408,8 @@ export default function LiveView() {
                         {`${activeDriver.last.delta >= 0 ? '+' : '\u2212'}${Math.abs(activeDriver.last.delta).toFixed(2)}s`}
                       </Text>
                     </View>
-                    <View style={[styles.lapTypeBadge, { backgroundColor: `${deltaColor(activeDriver.last.delta)}18` }]}>
-                      <Text style={[styles.lapTypeText, { color: deltaColor(activeDriver.last.delta) }]}>
+                    <View style={[styles.lapTypeBadge, { backgroundColor: `${lapTypeColor(activeDriver.last.lapType, activeDriver.last.delta)}18` }]}>
+                      <Text style={[styles.lapTypeText, { color: lapTypeColor(activeDriver.last.lapType, activeDriver.last.delta) }]}>
                         {activeDriver.last.lapType.toUpperCase()}
                       </Text>
                     </View>
@@ -556,28 +571,31 @@ export default function LiveView() {
               <View>
                 {/* Table Header Row */}
                 <View style={styles.feedHeaderRow}>
-                  <Text style={[styles.feedHeaderCell, { flex: 1.2 }]}>DRIVER</Text>
-                  <Text style={[styles.feedHeaderCell, { width: 50, textAlign: 'center' }]}>LAP</Text>
-                  <Text style={[styles.feedHeaderCell, { width: 90, textAlign: 'right' }]}>TIME</Text>
-                  <Text style={[styles.feedHeaderCell, { width: 85, textAlign: 'right' }]}>DELTA</Text>
-                  <Text style={[styles.feedHeaderCell, { width: 95, textAlign: 'right' }]}>TYPE</Text>
+                  <Text style={[styles.feedHeaderCell, { flex: 1 }]}>DRIVER</Text>
+                  <Text style={[styles.feedHeaderCell, { width: cols.lap, textAlign: 'center' }]}>LAP</Text>
+                  <Text style={[styles.feedHeaderCell, { width: cols.time, textAlign: 'right' }]}>TIME</Text>
+                  <Text style={[styles.feedHeaderCell, { width: cols.delta, textAlign: 'right' }]}>DELTA</Text>
+                  <Text style={[styles.feedHeaderCell, styles.feedTypeCol, { width: cols.type, textAlign: 'center' }]}>TYPE</Text>
                 </View>
 
-                {recent.map((l, i) => (
-                  <View key={`${l.driver}-${l.number}-${i}`} style={[styles.feedRow, i === recent.length - 1 && { borderBottomWidth: 0 }]}>
-                    <Text style={styles.feedDriver} numberOfLines={1}>{l.driver}</Text>
-                    <Text style={styles.feedLapNumber}>#{l.number}</Text>
-                    <Text style={styles.feedTime} numberOfLines={1}>{formatTime(l.time)}</Text>
-                    <Text style={[styles.feedDelta, { color: deltaColor(l.delta) }]} numberOfLines={1}>
-                      {`${l.delta >= 0 ? '+' : '\u2212'}${Math.abs(l.delta).toFixed(2)}s`}
-                    </Text>
-                    <View style={[styles.feedTypePill, { backgroundColor: `${deltaColor(l.delta)}18`, borderColor: `${deltaColor(l.delta)}33` }]}>
-                      <Text style={[styles.feedType, { color: deltaColor(l.delta) }]} numberOfLines={1}>
-                        {l.lapType.toUpperCase()}
+                {recent.map((l, i) => {
+                  const typeColor = lapTypeColor(l.lapType, l.delta);
+                  return (
+                    <View key={`${l.driver}-${l.number}-${i}`} style={[styles.feedRow, i === recent.length - 1 && { borderBottomWidth: 0 }]}>
+                      <Text style={styles.feedDriver} numberOfLines={1}>{l.driver}</Text>
+                      <Text style={[styles.feedLapNumber, { width: cols.lap }]}>#{l.number}</Text>
+                      <Text style={[styles.feedTime, { width: cols.time }]} numberOfLines={1}>{formatTime(l.time)}</Text>
+                      <Text style={[styles.feedDelta, { width: cols.delta, color: deltaColor(l.delta) }]} numberOfLines={1}>
+                        {`${l.delta >= 0 ? '+' : '\u2212'}${Math.abs(l.delta).toFixed(2)}${isNarrow ? '' : 's'}`}
                       </Text>
+                      <View style={[styles.feedTypePill, styles.feedTypeCol, { width: cols.type, backgroundColor: `${typeColor}18`, borderColor: `${typeColor}33` }]}>
+                        <Text style={[styles.feedType, { color: typeColor }]} numberOfLines={1}>
+                          {isNarrow ? SHORT_TYPE[l.lapType] ?? l.lapType.toUpperCase() : l.lapType.toUpperCase()}
+                        </Text>
+                      </View>
                     </View>
-                  </View>
-                ))}
+                  );
+                })}
               </View>
             )}
           </View>
@@ -605,7 +623,7 @@ function fmtElapsed(ms: number): string {
   return `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
-function makeStyles(C: LivePalette, isWide: boolean) {
+function makeStyles(C: LivePalette, isWide: boolean, isNarrow: boolean) {
   return StyleSheet.create({
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', padding: 24 },
     container: {
@@ -809,6 +827,7 @@ function makeStyles(C: LivePalette, isWide: boolean) {
     // Bottom telemetry boxes inside hero
     heroMetricsRow: {
       flexDirection: 'row',
+      flexWrap: isNarrow ? 'wrap' : 'nowrap',
       gap: 10,
       marginTop: 18,
       paddingTop: 16,
@@ -817,6 +836,8 @@ function makeStyles(C: LivePalette, isWide: boolean) {
     },
     heroMetricItem: {
       flex: 1,
+      // 2x2 on a phone: four across leaves ~50px per value.
+      minWidth: isNarrow ? '40%' : undefined,
       backgroundColor: C.elevated,
       padding: 10,
       borderRadius: 10,
@@ -914,11 +935,13 @@ function makeStyles(C: LivePalette, isWide: boolean) {
     },
     factorStatsGrid: {
       flexDirection: 'row',
+      flexWrap: isNarrow ? 'wrap' : 'nowrap',
       gap: 8,
       marginTop: 4,
     },
     factorStatBox: {
       flex: 1,
+      minWidth: isNarrow ? '40%' : undefined,
       backgroundColor: C.elevated,
       padding: 8,
       borderRadius: 8,
@@ -1049,7 +1072,7 @@ function makeStyles(C: LivePalette, isWide: boolean) {
     feedHeaderRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 14,
+      paddingHorizontal: isNarrow ? 10 : 14,
       paddingVertical: 10,
       backgroundColor: C.elevated,
       borderBottomWidth: StyleSheet.hairlineWidth,
@@ -1064,44 +1087,41 @@ function makeStyles(C: LivePalette, isWide: boolean) {
     feedRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 14,
+      paddingHorizontal: isNarrow ? 10 : 14,
       paddingVertical: 11,
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: C.borderFaint,
     },
     feedDriver: {
       color: C.text,
-      flex: 1.2,
-      fontSize: 14,
+      flex: 1,
+      minWidth: 0,
+      fontSize: isNarrow ? 13 : 14,
       fontWeight: '600',
     },
     feedLapNumber: {
-      width: 50,
       textAlign: 'center',
       color: C.muted,
       fontFamily: monoMed,
-      fontSize: 12,
+      fontSize: isNarrow ? 11 : 12,
     },
     feedTime: {
       color: C.text,
       fontFamily: monoBold,
-      fontSize: 14,
-      width: 90,
+      fontSize: isNarrow ? 13 : 14,
       textAlign: 'right',
     },
     feedDelta: {
       fontFamily: monoBold,
-      fontSize: 13,
-      width: 75,
+      fontSize: isNarrow ? 12 : 13,
       textAlign: 'right',
     },
+    feedTypeCol: { marginLeft: isNarrow ? 6 : 8 },
     feedTypePill: {
-      width: 95,
       alignItems: 'center',
       paddingVertical: 3,
       borderRadius: 6,
       borderWidth: 1,
-      marginLeft: 8,
     },
     feedType: {
       fontSize: 10,
