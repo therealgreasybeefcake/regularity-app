@@ -156,3 +156,35 @@ export function rollingDeltaAverage(laps: Lap[], window = 3): RollingPoint[] {
   }
   return out;
 }
+
+// --- Drive time (track time from recorded lap times) ---
+
+export interface DriveTime {
+  /** Seconds in the driver's current stint: their laps since anyone else's last lap. */
+  stint: number;
+  /** Seconds across all of the driver's laps. */
+  total: number;
+}
+
+/**
+ * How long `drivers[index]` has been driving, from the lap times recorded. The
+ * stint is the run of their laps after the last lap by any other driver, so it
+ * restarts at each changeover whichever driver the changeover lap was booked to.
+ * Excludes the lap in progress — the caller adds the running clock.
+ */
+export function driveTime(drivers: Driver[], index: number): DriveTime {
+  const me = drivers[index];
+  if (!me) return { stint: 0, total: 0 };
+  let othersLast = -Infinity;
+  drivers.forEach((d, i) => {
+    if (i === index) return;
+    for (const l of d.laps) if (l.timestamp > othersLast) othersLast = l.timestamp;
+  });
+  let stint = 0;
+  let total = 0;
+  for (const l of me.laps) {
+    total += l.time;
+    if (l.timestamp > othersLast) stint += l.time;
+  }
+  return { stint, total };
+}

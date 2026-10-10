@@ -5,6 +5,7 @@ import {
   detectOutliers,
   analyzePaceTrend,
   rollingDeltaAverage,
+  driveTime,
 } from './reporting';
 import type { Driver, Lap } from './types';
 
@@ -110,5 +111,38 @@ describe('rollingDeltaAverage', () => {
       lap({ number: 3, time: 104, delta: 4, lapType: 'base' }),
     ], 2);
     expect(r.map((p) => p.avgDelta)).toEqual([0, 1, 3]);
+  });
+});
+
+describe('driveTime', () => {
+  const at = (timestamp: number, time = 100, lapType: Lap['lapType'] = 'base'): Lap => ({
+    number: 1, time, delta: 0, lapType, lapValue: 1, timestamp,
+  });
+  const drv = (id: number, laps: Lap[]): Driver => ({ id, name: `D${id}`, targetTime: 100, penaltyLaps: 0, laps });
+
+  it('counts every lap when only one driver has driven', () => {
+    const drivers = [drv(1, [at(1), at(2), at(3)]), drv(2, [])];
+    expect(driveTime(drivers, 0)).toEqual({ stint: 300, total: 300 });
+    expect(driveTime(drivers, 1)).toEqual({ stint: 0, total: 0 });
+  });
+
+  it('restarts the stint after another driver has driven', () => {
+    // A drives 2 laps (the 2nd is A's changeover in-lap), B 3, then A again for 1.
+    const drivers = [
+      drv(1, [at(1), at(2, 150, 'changeover'), at(6, 90)]),
+      drv(2, [at(3), at(4), at(5)]),
+    ];
+    expect(driveTime(drivers, 0)).toEqual({ stint: 90, total: 340 });
+    // B's stint ended when A took back over.
+    expect(driveTime(drivers, 1)).toEqual({ stint: 0, total: 300 });
+  });
+
+  it('starts a new driver on zero right after the changeover', () => {
+    const drivers = [drv(1, [at(1), at(2, 150, 'changeover')]), drv(2, [])];
+    expect(driveTime(drivers, 1)).toEqual({ stint: 0, total: 0 });
+  });
+
+  it('handles an out-of-range index', () => {
+    expect(driveTime([], 3)).toEqual({ stint: 0, total: 0 });
   });
 });
