@@ -37,6 +37,10 @@ export default function StatsScreen() {
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
   const { width: windowWidth } = useWindowDimensions();
+  // Phone-width browser: smaller tiles, 2-up grids, stacked charts, and the wide
+  // comparison table scrolls sideways.
+  const compactWeb = isWeb && windowWidth < 768;
+  const bigTile = compactWeb ? 'md' : 'lg';
 
   // The past session being viewed, by id, so it follows lap edits (the object
   // itself is rebuilt from the session lists below).
@@ -538,9 +542,9 @@ export default function StatsScreen() {
           </View>
         </View>
         <View style={styles.teamStatsRow}>
-          <StatTile size="lg" label="Percentage Factor" value={`${eventStats.percentageFactor.toFixed(4)}%`} valueColor={theme.accent} style={styles.teamStatItem} />
-          <StatTile size="lg" label="Achieved Laps" value={eventStats.achievedLaps.toFixed(0)} style={styles.teamStatItem} />
-          <StatTile size="lg" label="Goal Laps" value={eventStats.goalLaps.toFixed(2)} style={styles.teamStatItem} />
+          <StatTile size={bigTile} label="Percentage Factor" value={`${eventStats.percentageFactor.toFixed(4)}%`} valueColor={theme.accent} style={styles.teamStatItem} />
+          <StatTile size={bigTile} label="Achieved Laps" value={eventStats.achievedLaps.toFixed(0)} style={styles.teamStatItem} />
+          <StatTile size={bigTile} label="Goal Laps" value={eventStats.goalLaps.toFixed(2)} style={styles.teamStatItem} />
         </View>
         <Text style={[styles.eventNote, { color: theme.textMuted }]}>
           {sessionList}. Includes every session named "{displayData.raceName}" — use a new race name for each event. Scored as one event: each driver's share of all the team's laps × event length ÷ their nominated time, doubled (regs 6.1).
@@ -838,7 +842,7 @@ export default function StatsScreen() {
       { label: 'Outliers', value: String(outlierCount), color: outlierCount > 0 ? theme.warning : undefined },
     ];
     // Two charts side by side (card padding already excluded by the measured width).
-    const halfW = Math.max((detailW - spacing.xl) / 2 - spacing.xl, 260);
+    const halfW = compactWeb ? Math.max(detailW - spacing.sm, 240) : Math.max((detailW - spacing.xl) / 2 - spacing.xl, 260);
     return (
       <View style={styles.webDetail}>
         <View style={styles.panelHeader}>
@@ -847,7 +851,7 @@ export default function StatsScreen() {
         </View>
         <View style={styles.webStatsGrid}>
           {grid.map((item) => (
-            <View key={item.label} style={styles.webGridItem}>
+            <View key={item.label} style={[styles.webGridItem, compactWeb && styles.webGridItemCompact]}>
               <StatTile size="md" label={item.label} value={item.value} valueColor={item.color} />
             </View>
           ))}
@@ -882,7 +886,7 @@ export default function StatsScreen() {
         )}
 
         {detailW > 0 && (
-          <View style={styles.webChartsRow}>
+          <View style={[styles.webChartsRow, compactWeb && styles.webChartsCol]}>
             <View style={styles.flex1}>
               <LapTimesChart driver={driver} theme={theme} chartWidth={halfW} />
             </View>
@@ -952,12 +956,12 @@ export default function StatsScreen() {
 
     return (
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
-        <ScrollView style={styles.scrollView} contentContainerStyle={styles.webContent}>
+        <ScrollView style={styles.scrollView} contentContainerStyle={[styles.webContent, compactWeb && styles.webContentCompact]}>
           {/* Header: what you're looking at, which session, and exports */}
           <View style={styles.webHeader}>
-            <View style={{ flex: 1, minWidth: 260 }}>
+            <View style={{ flex: 1, minWidth: compactWeb ? '100%' : 260 }}>
               <Label muted>{team.name}</Label>
-              <Text style={[styles.webTitle, { color: theme.text }]} numberOfLines={1}>
+              <Text style={[styles.webTitle, compactWeb && styles.webTitleCompact, { color: theme.text }]} numberOfLines={compactWeb ? 2 : 1}>
                 {displayData.raceName || 'Untitled race'} · Session {displayData.sessionNumber || '—'}
               </Text>
               <Text style={[styles.webSubtitle, { color: theme.textSecondary }]}>
@@ -993,10 +997,10 @@ export default function StatsScreen() {
           {/* Team summary */}
           <Card padding="lg" style={styles.panel}>
             <View style={styles.webSummaryRow}>
-              <StatTile size="lg" label="Percentage Factor" value={`${teamStats.percentageFactor.toFixed(2)}%`} valueColor={theme.accent} style={styles.webSummaryItem} />
-              <StatTile size="lg" label="Achieved Laps" value={teamStats.achievedLaps.toFixed(2)} style={styles.webSummaryItem} />
-              <StatTile size="lg" label="Goal Laps" value={teamStats.goalLaps.toFixed(2)} style={styles.webSummaryItem} />
-              <StatTile size="lg" label="Laps Recorded" value={String(totalLaps)} style={styles.webSummaryItem} />
+              <StatTile size={bigTile} label="Percentage Factor" value={`${teamStats.percentageFactor.toFixed(2)}%`} valueColor={theme.accent} style={[styles.webSummaryItem, compactWeb && styles.webSummaryItemCompact]} />
+              <StatTile size={bigTile} label="Achieved Laps" value={teamStats.achievedLaps.toFixed(2)} style={[styles.webSummaryItem, compactWeb && styles.webSummaryItemCompact]} />
+              <StatTile size={bigTile} label="Goal Laps" value={teamStats.goalLaps.toFixed(2)} style={[styles.webSummaryItem, compactWeb && styles.webSummaryItemCompact]} />
+              <StatTile size={bigTile} label="Laps Recorded" value={String(totalLaps)} style={[styles.webSummaryItem, compactWeb && styles.webSummaryItemCompact]} />
             </View>
           </Card>
 
@@ -1015,7 +1019,8 @@ export default function StatsScreen() {
                     <DriverComparisonChart drivers={drivers} theme={theme} isDark={isDarkMode} width={compareW} />
                   )}
                 </View>
-                <View style={[styles.compareTable, { borderColor: theme.borderFaint }]}>
+                <ScrollView horizontal={compactWeb} scrollEnabled={compactWeb} showsHorizontalScrollIndicator={compactWeb}>
+                <View style={[styles.compareTable, compactWeb && styles.compareTableCompact, { borderColor: theme.borderFaint }]}>
                   <View style={[styles.compareRow, { borderBottomColor: theme.borderFaint }]}>
                     <Label muted style={styles.compareName}>Driver</Label>
                     {['Laps', 'Achieved', 'Goal', 'Net', 'Avg Δ', 'Consistency', 'Pace'].map((h) => (
@@ -1051,6 +1056,7 @@ export default function StatsScreen() {
                     </Pressable>
                   ))}
                 </View>
+                </ScrollView>
               </Card>
 
               {/* One driver at a time, full width */}
@@ -1223,6 +1229,12 @@ const styles = StyleSheet.create({
   webSubtitle: { fontSize: typography.body, marginTop: 4 },
   webSummaryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xl },
   webSummaryItem: { flexGrow: 1, flexBasis: 180 },
+  webSummaryItemCompact: { flexBasis: 120 },
+  webContentCompact: { padding: spacing.lg, paddingBottom: 80 },
+  webTitleCompact: { fontSize: typography.heading },
+  compareTableCompact: { minWidth: 640 },
+  webGridItemCompact: { width: '50%', minWidth: 0 },
+  webChartsCol: { flexDirection: 'column' },
   compareTable: { marginTop: spacing.lg, borderTopWidth: 1 },
   compareRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.sm, paddingHorizontal: spacing.sm, borderBottomWidth: StyleSheet.hairlineWidth, borderRadius: radius.sm },
   compareName: { flex: 2, minWidth: 140 },

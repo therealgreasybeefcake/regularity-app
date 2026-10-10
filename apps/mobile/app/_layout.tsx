@@ -1,6 +1,6 @@
 import 'react-native-get-random-values';
 import { useEffect, useRef } from 'react';
-import { ActivityIndicator, View, LogBox } from 'react-native';
+import { ActivityIndicator, View, LogBox, Platform } from 'react-native';
 import { Stack, useRouter, useSegments } from 'expo-router';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -31,7 +31,10 @@ LogBox.ignoreLogs([
 
 function NavigationGuard({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isAuthLoading } = useAuth();
-  const { isLoading, hasSeenWelcome, teamLivePublicToken, liveSession, autoJoinLive } = useApp();
+  const { isLoading, hasSeenWelcome: seenWelcomeOnDevice, teamLivePublicToken, liveSession, autoJoinLive } = useApp();
+  // The welcome tour is about timing on the phone. The website (including
+  // people arriving from a shared live link) never shows it.
+  const hasSeenWelcome = seenWelcomeOnDevice || Platform.OS === 'web';
   const router = useRouter();
   const segments = useSegments();
   const autoJoinedForRef = useRef<string | null>(null);
