@@ -236,6 +236,11 @@ function WebSidebarLayout() {
 export default function TabsLayout() {
   const { isDarkMode } = useApp();
   const theme = isDarkMode ? darkTheme : lightTheme;
+  // A phone in landscape is short: the Timer drops the tab bar there and its
+  // ••• menu carries Drivers / Stats / Settings instead (TimerScreen). Other
+  // screens keep it, so there's always a way back to the Timer.
+  const { width, height } = useWindowDimensions();
+  const phoneLandscape = !isWeb && width > height && height < 600;
 
   if (isWeb) {
     return <WebSidebarLayout />;
@@ -276,13 +281,15 @@ export default function TabsLayout() {
             ]}
           />
         ),
-        tabBarStyle: {
-          position: 'absolute',
-          backgroundColor: 'transparent',
-          borderTopWidth: 0,
-          borderTopColor: 'transparent',
-          elevation: 0,
-        },
+        tabBarStyle: phoneLandscape && route.name === 'index'
+          ? { display: 'none' }
+          : {
+              position: 'absolute',
+              backgroundColor: 'transparent',
+              borderTopWidth: 0,
+              borderTopColor: 'transparent',
+              elevation: 0,
+            },
         tabBarLabelStyle: {
           fontSize: 10,
           fontWeight: fontWeights.semibold,

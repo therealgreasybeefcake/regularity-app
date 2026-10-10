@@ -27,6 +27,8 @@ const WIDE_MAX_WIDTH = 1440;
 const WEB_SIDEBAR_WIDTH = 200;
 // Phone landscape: height of the header + driver tabs row.
 const LAND_TOP_BAR_H = 60;
+// Phone landscape: the ••• menu at the right end of that row.
+const LAND_MENU_W = 44;
 let activateKeepAwakeAsync: () => Promise<void> = async () => {};
 let deactivateKeepAwake: () => void = () => {};
 let useAudioPlayerImport: any = null;
@@ -131,18 +133,19 @@ export default function TimerScreen() {
   const wide = (isWeb && windowWidth >= WIDE_MIN_WIDTH) || (landscape && !phoneLandscape);
   // Header + driver tabs share one row in both split layouts.
   const inlineTopBar = wide || phoneLandscape;
-  // The tab bar floats over the screen; in phone landscape it's iOS's compact bar.
-  const landscapeTabBarH = (Platform.OS === 'ios' ? 32 : 49) + insets.bottom;
+  // Phone landscape hides the tab bar on the Timer (see the tabs layout); only
+  // the home-indicator inset is left at the bottom.
+  const landscapeTabBarH = insets.bottom;
   // Phone landscape sizes, worked out from the window rather than left to flex.
   const land = (() => {
     const rootH = Math.max(0, windowHeight - insets.top - landscapeTabBarH);
     const innerW = Math.max(0, windowWidth - insets.left - insets.right - spacing.lg * 2);
-    const headerW = Math.round(innerW * 0.36);
+    const headerW = Math.round(innerW * 0.34);
     const leftW = Math.round((innerW - spacing.lg) * 0.52);
     return {
       rootH,
       headerW,
-      tabsW: innerW - headerW - spacing.lg,
+      tabsW: innerW - headerW - spacing.lg - LAND_MENU_W,
       colsH: Math.max(0, rootH - spacing.sm - LAND_TOP_BAR_H - spacing.sm),
       leftW,
       rightW: innerW - spacing.lg - leftW,
@@ -1437,6 +1440,14 @@ export default function TimerScreen() {
               { text: 'Clear Session', style: 'destructive' as const, onPress: clearSession },
             ]
           : []),
+        // Phone landscape hides the tab bar on the Timer, so navigation lives here.
+        ...(phoneLandscape
+          ? [
+              { text: 'Drivers', onPress: () => router.push('/(app)/(tabs)/drivers' as any) },
+              { text: 'Stats', onPress: () => router.push('/(app)/(tabs)/stats' as any) },
+              { text: 'Settings', onPress: () => router.push('/(app)/(tabs)/settings' as any) },
+            ]
+          : []),
         { text: 'Cancel', style: 'cancel' as const },
       ],
     });
@@ -1493,7 +1504,8 @@ export default function TimerScreen() {
             {team?.sessionNumber ? <Chip label={`S${team.sessionNumber}`} color={theme.accent} active size="sm" /> : null}
           </View>
         </View>
-        <Ionicons name="ellipsis-horizontal-circle" size={26} color={theme.primary as string} />
+        {/* Phone landscape puts ••• at the far right of the top row instead */}
+        {phoneLandscape ? null : <Ionicons name="ellipsis-horizontal-circle" size={26} color={theme.primary as string} />}
       </Pressable>
     </>
   );
@@ -1838,6 +1850,15 @@ export default function TimerScreen() {
           <View style={[styles.landTopBar, { height: LAND_TOP_BAR_H }]}>
             <View style={{ width: land.headerW }}>{header}</View>
             <View style={{ width: land.tabsW }}>{driverTabs}</View>
+            <Pressable
+              onPress={openSessionMenu}
+              style={[styles.landMenuBtn, { width: LAND_MENU_W }]}
+              accessibilityRole="button"
+              accessibilityLabel="Session actions and navigation"
+              hitSlop={8}
+            >
+              <Ionicons name="ellipsis-horizontal-circle" size={30} color={theme.primary as string} />
+            </Pressable>
           </View>
           <View style={[styles.landColumns, { height: land.colsH }]}>
             <View style={{ width: land.leftW, height: land.colsH }}>
@@ -2142,6 +2163,7 @@ const styles = StyleSheet.create({
   landTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   landColumns: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },
   landScroll: { flex: 1 },
+  landMenuBtn: { alignItems: 'flex-end', justifyContent: 'center', height: '100%' },
   landLeftContent: { paddingBottom: spacing.sm },
   landRightContent: { paddingBottom: spacing.lg },
   clockCompact: { fontSize: 56, lineHeight: 62, marginVertical: 0 },
