@@ -12,7 +12,7 @@ import {
   AppState,
   useWindowDimensions,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Swipeable } from 'react-native-gesture-handler';
@@ -119,11 +119,20 @@ export default function TimerScreen() {
 
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
-  // Laptop/desktop web: two columns (clock + controls | full lap history).
-  const { width: windowWidth } = useWindowDimensions();
-  const wide = isWeb && windowWidth >= WIDE_MIN_WIDTH;
+  // Two columns (clock + controls | full lap history) on laptop/desktop web and
+  // on a tablet in landscape. A phone in landscape is too short for that, so it
+  // gets its own split: clock | controls + laps.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const landscape = !isWeb && windowWidth > windowHeight;
+  const phoneLandscape = landscape && windowHeight < 600;
+  const wide = (isWeb && windowWidth >= WIDE_MIN_WIDTH) || (landscape && !phoneLandscape);
+  // Header + driver tabs share one row in both split layouts.
+  const inlineTopBar = wide || phoneLandscape;
+  // The tab bar floats over the screen; in phone landscape it's iOS's compact bar.
+  const landscapeTabBarH = (Platform.OS === 'ios' ? 32 : 49) + insets.bottom;
   // Size the clock to its column so a 6-character time ("123.45") always fits.
-  const wideContentW = Math.min(windowWidth - WEB_SIDEBAR_WIDTH, WIDE_MAX_WIDTH) - spacing.xl * 2;
+  const wideContentW = Math.min(windowWidth - (isWeb ? WEB_SIDEBAR_WIDTH : 0), WIDE_MAX_WIDTH) - spacing.xl * 2;
   const wideRightW = Math.min(Math.max(wideContentW * 0.4, 360), 520);
   const wideClockSize = Math.round(Math.min(176, (wideContentW - wideRightW - spacing.xl - spacing.xl * 2) / 4));
   const team = teams[activeTeam] ?? teams[0];
@@ -1453,7 +1462,7 @@ export default function TimerScreen() {
     <>
       {/* Header — opens the session actions menu */}
       <Pressable
-        style={[styles.header, wide && styles.flushBottom]}
+        style={[styles.header, inlineTopBar && styles.flushBottom]}
         onPress={openSessionMenu}
         accessibilityRole="button"
         accessibilityLabel="Session actions"
@@ -1539,7 +1548,7 @@ export default function TimerScreen() {
     <>
       {/* Driver tabs */}
       {team?.drivers?.length ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.driverTabs, wide && styles.flushBottom]} contentContainerStyle={styles.driverTabsContent}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={[styles.driverTabs, inlineTopBar && styles.flushBottom]} contentContainerStyle={styles.driverTabsContent}>
           {(team?.drivers ?? []).map((d, index) => {
             const active = activeDriver === index;
             return (
@@ -1578,8 +1587,8 @@ export default function TimerScreen() {
     <>
       {/* Hero clock */}
       <Card
-        padding="xl"
-        style={[styles.clockCard, isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
+        padding={phoneLandscape ? 'lg' : 'xl'}
+        style={[styles.clockCard, phoneLandscape && styles.flushBottom, isRunning && { borderColor: theme.accent }, isRunning && glowShadow(String(theme.accent), 0.4, 18)]}
       >
         <View style={styles.clockTopRow}>
           {/* Whose lap this is */}
@@ -1600,6 +1609,7 @@ export default function TimerScreen() {
           style={[
             styles.clock,
             wide && { fontSize: wideClockSize, lineHeight: Math.round(wideClockSize * 1.1), letterSpacing: -wideClockSize / 28, marginVertical: spacing.xl },
+            phoneLandscape && styles.clockCompact,
             { color: theme.text, transform: [{ scale: pulseAnim }] },
           ]}
         >
@@ -1608,7 +1618,7 @@ export default function TimerScreen() {
         {/* Last recorded lap, so it's readable without scrolling to the history
             (wide web already shows it in the summary row beside the history) */}
         {lastLap && !wide ? (
-          <View style={styles.lastLapRow}>
+          <View style={[styles.lastLapRow, phoneLandscape && styles.lastLapRowCompact]}>
             <Label muted>LAST</Label>
             <Mono size={typography.title} weight="bold" color={theme.text}>{formatTime(lastLap.time)}</Mono>
             <Mono size={typography.body} weight="bold" color={deltaColor(lastLap.delta)}>
@@ -1625,7 +1635,7 @@ export default function TimerScreen() {
           ) : null}
         </View>
         {drive && drive.total > 0 ? (
-          <View style={[styles.driveRow, { borderTopColor: theme.borderFaint }]}>
+          <View style={[styles.driveRow, phoneLandscape && styles.driveRowCompact, { borderTopColor: theme.borderFaint }]}>
             <View style={styles.driveCell}>
               <Label muted>STINT</Label>
               <Mono size={typography.bodyLg} weight="bold" color={theme.text}>{formatDuration(drive.stint)}</Mono>
@@ -1636,7 +1646,7 @@ export default function TimerScreen() {
             </View>
           </View>
         ) : null}
-        <View style={[styles.statusStrip, { borderColor: statusColor }]}>
+        <View style={[styles.statusStrip, phoneLandscape && styles.statusStripCompact, { borderColor: statusColor }]}>
           <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>{getStatusText()}</Text>
         </View>
       </Card>
@@ -1828,6 +1838,25 @@ export default function TimerScreen() {
                   {lapList}
                 </ScrollView>
               </View>
+            </View>
+          </View>
+        ) : phoneLandscape ? (
+          <View style={[styles.landRoot, { paddingBottom: landscapeTabBarH }]}>
+            {notices}
+            <View style={styles.wideTopBar}>
+              <View style={styles.wideTopHeader}>{header}</View>
+              <View style={styles.wideTopTabs}>{driverTabs}</View>
+            </View>
+            {rejectedBanner}
+            <View style={styles.landColumns}>
+              <ScrollView style={styles.landLeft} contentContainerStyle={styles.landLeftContent}>
+                {clockCard}
+              </ScrollView>
+              <ScrollView style={styles.landRight} contentContainerStyle={styles.landRightContent} keyboardShouldPersistTaps="handled">
+                {controls}
+                {historyHeader}
+                {lapList}
+              </ScrollView>
             </View>
           </View>
         ) : (
@@ -2079,5 +2108,17 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', gap: spacing.md, marginBottom: spacing.lg },
   summaryCell: { flex: 1 },
   sheetSubtitle: { fontSize: typography.body, marginBottom: spacing.lg },
+
+  // Phone landscape: clock | controls + laps, all within one screen height
+  landRoot: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  landColumns: { flex: 1, flexDirection: 'row', gap: spacing.lg, minHeight: 0 },
+  landLeft: { flex: 1.1 },
+  landLeftContent: { paddingBottom: spacing.sm },
+  landRight: { flex: 1 },
+  landRightContent: { paddingBottom: spacing.lg },
+  clockCompact: { fontSize: 56, lineHeight: 62, marginVertical: 0 },
+  lastLapRowCompact: { marginBottom: spacing.xs },
+  driveRowCompact: { marginTop: spacing.sm, paddingTop: spacing.sm },
+  statusStripCompact: { marginTop: spacing.sm, paddingVertical: spacing.xs },
   sheetFields: { gap: spacing.md },
 });
