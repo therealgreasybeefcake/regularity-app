@@ -42,6 +42,7 @@ if (!isWeb) {
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, glowShadow } from '../constants/theme';
 import { calculateDriverStats, calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
+import { driveTime } from '@regularity/core';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
 import { TimerNotificationService } from '../services/TimerNotificationService';
 import { useAlert } from '../components/CustomAlert';
@@ -52,6 +53,15 @@ import { Mono, Label, Card, Surface, Button, IconButton, Chip, TextField, Sheet,
 // Why the session setup sheet is open: first-run setup, editing the current
 // session's details, or setting up the next session right after ending one.
 type SessionSetupMode = 'new' | 'edit' | 'next';
+
+// Drive time as M:SS, or H:MM:SS from an hour.
+const formatDuration = (seconds: number): string => {
+  const s = Math.floor(Math.max(0, seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+};
 
 const SESSION_SETUP_COPY: Record<SessionSetupMode, { title: string; subtitle: string; primaryLabel: string; secondaryLabel: string }> = {
   new: {
@@ -1349,6 +1359,16 @@ export default function TimerScreen() {
   const lastLap = lapCount > 0 ? driver!.laps[lapCount - 1] : null;
   const liveDelta = driver ? elapsedTime - driver.targetTime : 0;
 
+  // How long this driver has been out: the current stint restarts at each
+  // changeover. The lap in progress is theirs while the timer runs (switching
+  // tabs mid-lap is blocked).
+  const driverIndex = driver && team ? team.drivers.indexOf(driver) : -1;
+  const recordedDrive = driverIndex >= 0 ? driveTime(team.drivers, driverIndex) : null;
+  const runningLap = isRunning ? elapsedTime : 0;
+  const drive = recordedDrive
+    ? { stint: recordedDrive.stint + runningLap, total: recordedDrive.total + runningLap }
+    : null;
+
   // The server reports a live session for the team. Offer to view it when it
   // isn't this device's own active stream, and show the "End Live Session" kill
   // switch whenever there's no working local way to end it — i.e. this device
@@ -1604,6 +1624,18 @@ export default function TimerScreen() {
             </Mono>
           ) : null}
         </View>
+        {drive && drive.total > 0 ? (
+          <View style={[styles.driveRow, { borderTopColor: theme.borderFaint }]}>
+            <View style={styles.driveCell}>
+              <Label muted>STINT</Label>
+              <Mono size={typography.bodyLg} weight="bold" color={theme.text}>{formatDuration(drive.stint)}</Mono>
+            </View>
+            <View style={[styles.driveCell, styles.driveCellEnd]}>
+              <Label muted>SESSION TOTAL</Label>
+              <Mono size={typography.bodyLg} weight="bold" color={theme.textSecondary}>{formatDuration(drive.total)}</Mono>
+            </View>
+          </View>
+        ) : null}
         <View style={[styles.statusStrip, { borderColor: statusColor }]}>
           <Text style={[styles.statusText, { color: statusColor }]} numberOfLines={1}>{getStatusText()}</Text>
         </View>
@@ -1994,6 +2026,9 @@ const styles = StyleSheet.create({
   clock: { fontSize: typography.hero, fontFamily: 'JetBrainsMono-ExtraBold', letterSpacing: -2, textAlign: 'center', marginVertical: spacing.sm },
   lastLapRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'baseline', gap: spacing.sm, marginBottom: spacing.md },
   clockMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  driveRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.md, paddingTop: spacing.md, borderTopWidth: StyleSheet.hairlineWidth },
+  driveCell: { gap: 2 },
+  driveCellEnd: { alignItems: 'flex-end' },
   statusStrip: { marginTop: spacing.lg, borderWidth: 1, borderRadius: radius.full, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
   statusText: { fontSize: typography.body, fontWeight: fontWeights.bold, letterSpacing: 0.5 },
 
