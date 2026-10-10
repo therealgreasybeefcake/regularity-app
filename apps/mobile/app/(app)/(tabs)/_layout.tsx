@@ -3,6 +3,8 @@ import { View, Text, StyleSheet, Platform, TouchableOpacity } from 'react-native
 import { Tabs, Slot, useRouter, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../context/AppContext';
+import { useAuth } from '../../../context/AuthContext';
+import { useAlert } from '../../../components/CustomAlert';
 import { api } from '../../../lib/api';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights } from '../../../constants/theme';
 
@@ -10,15 +12,17 @@ const isWeb = Platform.OS === 'web';
 
 type WebTab = { href: string; label: string; icon: keyof typeof Ionicons.glyphMap; iconFocused: keyof typeof Ionicons.glyphMap; matchSegment: string };
 
+// The website is view-only: Timer and Settings are phone-only (their routes
+// redirect to Stats on web). Team switching and sign-out live in the sidebar.
 const WEB_TABS: WebTab[] = [
-  { href: '/(app)/(tabs)', label: 'Timer', icon: 'timer-outline', iconFocused: 'timer', matchSegment: '(tabs)' },
-  { href: '/(app)/(tabs)/drivers', label: 'Drivers', icon: 'people-outline', iconFocused: 'people', matchSegment: 'drivers' },
   { href: '/(app)/(tabs)/stats', label: 'Stats', icon: 'stats-chart-outline', iconFocused: 'stats-chart', matchSegment: 'stats' },
-  { href: '/(app)/(tabs)/settings', label: 'Settings', icon: 'settings-outline', iconFocused: 'settings', matchSegment: 'settings' },
+  { href: '/(app)/(tabs)/drivers', label: 'Drivers', icon: 'people-outline', iconFocused: 'people', matchSegment: 'drivers' },
 ];
 
 function WebSidebarLayout() {
-  const { isDarkMode } = useApp();
+  const { isDarkMode, memberships, activeServerTeamId, switchTeam } = useApp();
+  const { user, signOut } = useAuth();
+  const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const router = useRouter();
   const pathname = usePathname();
@@ -47,13 +51,17 @@ function WebSidebarLayout() {
   const sidebarBg = isDarkMode ? '#0a0f1a' : '#f0f2f5';
   const sidebarBorder = isDarkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)';
 
-  const isTabActive = (tab: WebTab) => {
-    if (tab.matchSegment === '(tabs)') {
-      // Timer is the index route — active when path is exactly / or /(tabs)
-      return pathname === '/' || pathname === '/(app)/(tabs)' || pathname === '/(app)/(tabs)/index';
-    }
-    return pathname.includes(tab.matchSegment);
-  };
+  const isTabActive = (tab: WebTab) => pathname.includes(tab.matchSegment);
+
+  const confirmSignOut = () =>
+    showAlert({
+      title: 'Sign Out',
+      message: 'Are you sure you want to sign out?',
+      buttons: [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Sign Out', style: 'destructive', onPress: signOut },
+      ],
+    });
 
   return (
     <View style={webStyles.root}>
@@ -118,6 +126,50 @@ function WebSidebarLayout() {
             >
               {liveToken ? 'Live now' : 'No live session'}
             </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={[webStyles.footer, { borderTopColor: sidebarBorder }]}>
+          {memberships.length > 1 ? (
+            <>
+              <Text style={[webStyles.footerLabel, { color: theme.textMuted }]}>TEAM</Text>
+              {memberships.map((m) => {
+                const active = m.id === activeServerTeamId;
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    style={[webStyles.teamItem, active && { backgroundColor: isDarkMode ? 'rgba(59,130,246,0.12)' : 'rgba(30,64,175,0.08)' }]}
+                    onPress={() => {
+                      if (!active) void switchTeam(m.id);
+                    }}
+                    activeOpacity={0.7}
+                  >
+                    <Text
+                      style={[webStyles.teamName, { color: active ? theme.primary : theme.textSecondary }, active && { fontWeight: fontWeights.semibold }]}
+                      numberOfLines={1}
+                    >
+                      {m.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </>
+          ) : memberships.length === 1 ? (
+            <>
+              <Text style={[webStyles.footerLabel, { color: theme.textMuted }]}>TEAM</Text>
+              <Text style={[webStyles.teamName, webStyles.teamSolo, { color: theme.text }]} numberOfLines={1}>
+                {memberships[0].name}
+              </Text>
+            </>
+          ) : null}
+          {user ? (
+            <Text style={[webStyles.userEmail, { color: theme.textMuted }]} numberOfLines={1}>
+              {user}
+            </Text>
+          ) : null}
+          <TouchableOpacity style={webStyles.navItem} onPress={confirmSignOut} activeOpacity={0.7}>
+            <Ionicons name="log-out-outline" size={20} color={theme.textSecondary as string} />
+            <Text style={[webStyles.navLabel, { color: theme.textSecondary }]}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -235,6 +287,37 @@ const webStyles = StyleSheet.create({
   navLabel: {
     fontSize: typography.body,
     fontWeight: fontWeights.medium,
+  },
+  footer: {
+    marginTop: 'auto',
+    borderTopWidth: 1,
+    paddingTop: 14,
+    paddingBottom: 18,
+    paddingHorizontal: 10,
+    gap: 2,
+  },
+  footerLabel: {
+    fontSize: 11,
+    fontWeight: fontWeights.bold,
+    letterSpacing: 1.2,
+    paddingHorizontal: 12,
+    marginBottom: 4,
+  },
+  teamItem: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: radius.sm,
+  },
+  teamName: {
+    fontSize: typography.body,
+    fontWeight: fontWeights.medium,
+  },
+  teamSolo: { paddingHorizontal: 12, paddingBottom: 6 },
+  userEmail: {
+    fontSize: typography.caption,
+    paddingHorizontal: 12,
+    paddingTop: 10,
+    paddingBottom: 2,
   },
   liveIcon: { width: 20, alignItems: 'center', justifyContent: 'center' },
   liveDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#ef4444' },
