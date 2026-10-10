@@ -3,7 +3,7 @@
     "name": "Regularity Race Timer",
     "slug": "regularity-race-timer",
     "version": "2.0.2",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "description": "Professional regularity race timing app with lap tracking, statistics, and PDF export",

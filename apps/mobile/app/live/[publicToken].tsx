@@ -322,7 +322,7 @@ export default function LiveView() {
   return (
     <View style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Sticky top pit header */}
-      <View style={[styles.headerWrap, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.headerWrap, { paddingTop: insets.top + 8, paddingLeft: insets.left, paddingRight: insets.right }]}>
         <View style={styles.headerRow}>
           <View style={{ flex: 1 }}>
             <View style={styles.titleBadgeRow}>
@@ -359,7 +359,10 @@ export default function LiveView() {
         </View>
       </View>
 
-      <ScrollView style={{ flex: 1 }} contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24 }]}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24, paddingLeft: Math.max(insets.left, isWide ? 24 : 16), paddingRight: Math.max(insets.right, isWide ? 24 : 16) }]}
+      >
         {/* Cockpit Split: Active Driver Hero (Main) + Prominent % Factor */}
         <View style={styles.dashboardSplit}>
           {/* Active Driver Hero Card */}

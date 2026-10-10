@@ -5,7 +5,10 @@ import {
   Modal,
   Pressable,
   Animated,
+  ScrollView,
+  useWindowDimensions,
 } from 'react-native';
+import { SUPPORTED_ORIENTATIONS } from './ui/Sheet';
 import { spacing, radius, typography, shadows } from '../constants/theme';
 import { useTheme } from '../hooks/useTheme';
 import { Mono, Button } from './ui';
@@ -155,9 +158,11 @@ function AlertDialog({
   const cancelButton = buttons.find(b => b.style === 'cancel');
   const actionButtons = buttons.filter(b => b.style !== 'cancel');
   const isActionSheet = buttons.length >= 3;
+  // A five-button action sheet is taller than a phone in landscape — cap it and scroll.
+  const { height } = useWindowDimensions();
 
   return (
-    <Modal transparent animationType="none" statusBarTranslucent>
+    <Modal transparent animationType="none" statusBarTranslucent supportedOrientations={SUPPORTED_ORIENTATIONS}>
       <Pressable style={alertStyles.overlay} onPress={onDismiss}>
         <Animated.View
           style={[
@@ -170,8 +175,10 @@ function AlertDialog({
             },
             { opacity: opacityAnim, transform: [{ scale: scaleAnim }] },
             isActionSheet && alertStyles.actionSheetContainer,
+            { maxHeight: height - spacing.xl * 2 },
           ]}
         >
+          <ScrollView style={alertStyles.scroll} bounces={false} showsVerticalScrollIndicator={false}>
           <Pressable onPress={e => e.stopPropagation()}>
             <Mono size={typography.title} weight="bold" color={theme.text} style={alertStyles.title}>
               {config.title}
@@ -220,6 +227,7 @@ function AlertDialog({
               )}
             </View>
           </Pressable>
+          </ScrollView>
         </Animated.View>
       </Pressable>
     </Modal>
@@ -239,6 +247,7 @@ const alertStyles = StyleSheet.create({
     borderRadius: radius.xl,
     padding: spacing.xl,
   },
+  scroll: { flexGrow: 0 },
   actionSheetContainer: {
     maxWidth: 340,
   },

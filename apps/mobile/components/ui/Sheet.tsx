@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Modal, View, Pressable, Animated, StyleSheet, Platform, ScrollView,
-  useWindowDimensions, ViewStyle, StyleProp, Keyboard,
+  useWindowDimensions, ViewStyle, StyleProp, Keyboard, ModalProps,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { radius, spacing } from '../../constants/theme';
@@ -27,10 +27,14 @@ export interface SheetProps {
 export function Sheet({ visible, onClose, title, children, footer, scroll = true, maxWidth = 520, contentStyle }: SheetProps) {
   const { theme } = useTheme();
   const insets = useSafeAreaInsets();
-  const { height } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
+  // Phone landscape leaves ~390pt: the body gets less of it so header + footer
+  // still fit, and the panel stays a readable width instead of edge to edge.
+  const landscape = !isWeb && width > height;
   const anim = useRef(new Animated.Value(0)).current;
   const keyboardHeightAnim = useRef(new Animated.Value(0)).current;
   const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const bodyMax = keyboardOpen ? height * 0.45 : height * (landscape ? 0.5 : 0.7);
 
   useEffect(() => {
     if (visible) {
@@ -88,7 +92,14 @@ export function Sheet({ visible, onClose, title, children, footer, scroll = true
   const Body = scroll ? ScrollView : View;
 
   return (
-    <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      supportedOrientations={SUPPORTED_ORIENTATIONS}
+    >
       <View style={[styles.root, isWeb && styles.rootWeb]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Dismiss" />
         <Animated.View
@@ -109,6 +120,7 @@ export function Sheet({ visible, onClose, title, children, footer, scroll = true
                 paddingBottom: isWeb ? spacing.lg : (keyboardOpen ? spacing.md : insets.bottom + spacing.md),
               },
               isWeb ? { width: '100%', maxWidth, borderRadius: radius.xl, borderWidth: 1 } : styles.panelNative,
+              landscape && { width: '100%', maxWidth: Math.max(maxWidth, 560), alignSelf: 'center' },
               contentStyle,
             ]}
           >
@@ -121,7 +133,7 @@ export function Sheet({ visible, onClose, title, children, footer, scroll = true
             )}
             <Body
               {...(scroll ? { showsVerticalScrollIndicator: false, keyboardShouldPersistTaps: 'handled' as const } : {})}
-              style={scroll ? { maxHeight: keyboardOpen ? height * 0.45 : height * 0.7 } : undefined}
+              style={scroll ? { maxHeight: bodyMax } : undefined}
               contentContainerStyle={scroll ? { paddingBottom: spacing.sm } : undefined}
             >
               {children}
@@ -133,6 +145,9 @@ export function Sheet({ visible, onClose, title, children, footer, scroll = true
     </Modal>
   );
 }
+
+// Without this an iOS modal is portrait-only and rotates a landscape app back.
+export const SUPPORTED_ORIENTATIONS: ModalProps['supportedOrientations'] = ['portrait', 'portrait-upside-down', 'landscape', 'landscape-left', 'landscape-right'];
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },

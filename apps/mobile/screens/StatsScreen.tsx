@@ -951,7 +951,7 @@ export default function StatsScreen() {
     const sessionLabel = selectedSession ? formatSessionDate(selectedSession.timestamp) : 'Current session';
 
     return (
-      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.webContent}>
           {/* Header: what you're looking at, which session, and exports */}
           <View style={styles.webHeader}>
@@ -1089,7 +1089,7 @@ export default function StatsScreen() {
 
   // --- Native: single responsive column ---
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={{ flex: 1 }}
