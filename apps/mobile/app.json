@@ -2,7 +2,7 @@
   "expo": {
     "name": "Regularity Race Timer",
     "slug": "regularity-race-timer",
-    "version": "2.0.2",
+    "version": "2.0.3",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -17,7 +17,7 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.regularity.racetimer",
-      "buildNumber": "2",
+      "buildNumber": "3",
       "usesAppleSignIn": true,
       "runtimeVersion": "39725300a5f85ff40b150953a03e572b6d781526",
       "infoPlist": {
@@ -47,7 +47,7 @@
         "POST_NOTIFICATIONS"
       ],
       "runtimeVersion": "2f7e0f18e35966239f05422156dcc8be5e6dda45",
-      "versionCode": 3
+      "versionCode": 4
     },
     "scheme": "regularity",
     "updates": {
