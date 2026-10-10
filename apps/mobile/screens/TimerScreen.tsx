@@ -41,7 +41,7 @@ if (!isWeb) {
 }
 import { useApp } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, glowShadow } from '../constants/theme';
-import { calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
+import { calculateDriverStats, calculateLapType, calculateLapValue, formatTime, parseTimeInput } from '../utils/calculations';
 import { VolumeButtonService, LapDetails } from '../services/VolumeButtonService';
 import { TimerNotificationService } from '../services/TimerNotificationService';
 import { useAlert } from '../components/CustomAlert';
@@ -1709,7 +1709,7 @@ export default function TimerScreen() {
   );
   // Wide web: at-a-glance numbers for the selected driver above the lap history.
   const driverLaps = driver?.laps ?? [];
-  const avgDelta = driverLaps.length ? driverLaps.reduce((sum, l) => sum + l.delta, 0) / driverLaps.length : null;
+  const avgDelta = driverLaps.length ? calculateDriverStats(driver!, lapTypeValues, team.drivers, team.sessionDuration).averageDelta : null;
   const bonusCount = driverLaps.filter((l) => l.lapType === 'bonus').length;
   const driverSummary = (
     <Surface level="base" padding="md" style={styles.summaryRow}>

@@ -94,6 +94,35 @@ describe('calculateDriverStats', () => {
     expect(s.netScore).toBe(0);
   });
 
+  it('leaves changeover and safety-car laps out of the averages', () => {
+    const withAnomalies: Driver = {
+      ...driver,
+      laps: [
+        ...driver.laps,
+        lap({ number: 4, time: 160, delta: 60, lapType: 'changeover' }),
+        lap({ number: 5, time: 140, delta: 40, lapType: 'safety' }),
+      ],
+    };
+    const s = calculateDriverStats(withAnomalies, lapTypeValues, [withAnomalies], 120);
+    // Only laps 1-3 count: deltas 0.4, 1.0, -0.5 and times 100.4, 101, 99.5.
+    expect(s.averageDelta).toBeCloseTo(0.3, 10);
+    expect(s.averageLapTime).toBeCloseTo(100.3, 10);
+    // ...but they still score and still count toward the share.
+    expect(s.changeoverLaps).toBe(1);
+    expect(s.safetyLaps).toBe(1);
+    expect(s.achievedLaps).toBe(3); // 2 + 1 + 0 + 1 + 0 - 1 penalty
+  });
+
+  it('averages to 0 when every lap is a changeover or safety lap', () => {
+    const onlyAnomalies: Driver = {
+      ...driver,
+      laps: [lap({ number: 1, time: 160, delta: 60, lapType: 'changeover' })],
+    };
+    const s = calculateDriverStats(onlyAnomalies, lapTypeValues, [onlyAnomalies], 120);
+    expect(s.averageDelta).toBe(0);
+    expect(s.averageLapTime).toBe(0);
+  });
+
   it('never produces NaN when targetTime is 0', () => {
     const bad = { ...driver, targetTime: 0 };
     const s = calculateDriverStats(bad, lapTypeValues, [bad], 120);

@@ -75,21 +75,25 @@ export const calculateDriverStats = (
   // Net score
   const netScore = bonusLaps - brokenLaps;
 
+  // Averages and the 3-lap rolling average use regular laps only: a changeover
+  // (pit in/out) or safety-car lap is meant to be off the nominated time and
+  // would drag the averages tens of seconds off what the driver actually ran.
+  const regularLaps = laps.filter(l => l.lapType !== 'changeover' && l.lapType !== 'safety');
+
   // Average delta
-  const averageDelta = laps.length > 0
-    ? laps.reduce((sum, lap) => sum + lap.delta, 0) / laps.length
+  const averageDelta = regularLaps.length > 0
+    ? regularLaps.reduce((sum, lap) => sum + lap.delta, 0) / regularLaps.length
     : 0;
 
-  // 3-lap rolling average (exclude changeover and safety)
-  const regularLaps = laps.filter(l => l.lapType !== 'changeover' && l.lapType !== 'safety');
+  // 3-lap rolling average
   const last3Laps = regularLaps.slice(-3);
   const threelapAvg = last3Laps.length === 3
     ? last3Laps.reduce((sum, lap) => sum + lap.delta, 0) / 3
     : null;
 
   // Average lap time
-  const averageLapTime = laps.length > 0
-    ? laps.reduce((sum, lap) => sum + lap.time, 0) / laps.length
+  const averageLapTime = regularLaps.length > 0
+    ? regularLaps.reduce((sum, lap) => sum + lap.time, 0) / regularLaps.length
     : 0;
 
   // Goal laps (AROCA 10 Hour Regularity Relay regs, 6.1): a driver's share of the
