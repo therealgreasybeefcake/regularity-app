@@ -12,11 +12,12 @@ const isWeb = Platform.OS === 'web';
 
 type WebTab = { href: string; label: string; icon: keyof typeof Ionicons.glyphMap; iconFocused: keyof typeof Ionicons.glyphMap; matchSegment: string };
 
-// The website is view-only: Timer and Settings are phone-only (their routes
-// redirect to Stats on web). Team switching and sign-out live in the sidebar.
+// The website is view-only: just Stats and the live view. Timer, Drivers and
+// Settings are phone-only (their routes redirect to Stats on web), so nobody can
+// change timing or the roster from a browser. Team switching and sign-out live
+// in the sidebar.
 const WEB_TABS: WebTab[] = [
   { href: '/(app)/(tabs)/stats', label: 'Stats', icon: 'stats-chart-outline', iconFocused: 'stats-chart', matchSegment: 'stats' },
-  { href: '/(app)/(tabs)/drivers', label: 'Drivers', icon: 'people-outline', iconFocused: 'people', matchSegment: 'drivers' },
 ];
 
 function WebSidebarLayout() {
