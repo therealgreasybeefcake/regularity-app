@@ -10,6 +10,8 @@ export interface Lap {
   lapType: LapType;
   lapValue: number;
   timestamp: number;
+  /** Server lap id, on laps loaded from the API — lets a past session's lap be edited. */
+  serverId?: string;
 }
 
 export interface Driver {

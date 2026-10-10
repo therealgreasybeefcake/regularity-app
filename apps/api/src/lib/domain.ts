@@ -117,6 +117,7 @@ function lapRowToCore(row: LapRow): CoreLap {
     lapType: row.lapType,
     lapValue: row.lapValue,
     timestamp: row.recordedAt.getTime(),
+    serverId: row.id,
   };
 }
 

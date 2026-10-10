@@ -4,18 +4,18 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import { LineChart } from 'react-native-gifted-charts';
-import { useApp } from '../context/AppContext';
+import { useApp, canRecord } from '../context/AppContext';
 import { lightTheme, darkTheme, spacing, radius, typography, fontWeights, fonts } from '../constants/theme';
-import { calculateDriverStats, calculateTeamStats, formatTime } from '../utils/calculations';
-import { calculateConsistency, analyzePaceTrend, segmentStints, detectOutliers, dedupeSessions, calculateEventStats, DEFAULT_EVENT_MINUTES } from '@regularity/core';
-import { Session } from '../types';
+import { calculateDriverStats, calculateTeamStats, formatTime, parseTimeInput } from '../utils/calculations';
+import { calculateConsistency, analyzePaceTrend, segmentStints, detectOutliers, dedupeSessions, calculateEventStats, editSessionLap, DEFAULT_EVENT_MINUTES, type LapEdit } from '@regularity/core';
+import { Lap, Session } from '../types';
 import { LapTimesChart, DeltaChart } from '../components/DriverCharts';
 import { DriverComparisonChart, driverColor } from '../components/DriverComparisonChart';
 import { generatePDF } from '../utils/pdfExport';
 import { exportLapsCsv } from '../lib/csvExport';
 import { api } from '../lib/api';
 import { useAlert } from '../components/CustomAlert';
-import { Mono, Label, Card, Surface, Divider, Button, IconButton, StatTile, TextField, Sheet } from '../components/ui';
+import { Mono, Label, Card, Surface, Divider, Button, IconButton, StatTile, TextField, Sheet, Chip } from '../components/ui';
 
 interface TrendPoint {
   sessionId: string;
@@ -32,13 +32,16 @@ const cs = (color: ColorValue): string => color as string;
 const isWeb = Platform.OS === 'web';
 
 export default function StatsScreen() {
-  const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues, loadSessionsFromS3, activeServerTeamId } = useApp();
+  const { teams, setTeams, activeTeam, isDarkMode, lapTypeValues, loadSessionsFromS3, activeServerTeamId, userRole } = useApp();
   const { showAlert } = useAlert();
   const theme = isDarkMode ? darkTheme : lightTheme;
   const team = teams[activeTeam];
   const { width: windowWidth } = useWindowDimensions();
 
-  const [selectedSession, setSelectedSession] = useState<Session | null>(null);
+  // The past session being viewed, by id, so it follows lap edits (the object
+  // itself is rebuilt from the session lists below).
+  const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
+  const setSelectedSession = (s: Session | null) => setSelectedSessionId(s?.id ?? null);
   const [showSessionPicker, setShowSessionPicker] = useState(false);
   const [s3Sessions, setS3Sessions] = useState<Session[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
@@ -59,6 +62,8 @@ export default function StatsScreen() {
   // Measured width of the trend chart container (gifted-charts needs an explicit width).
   const [trendW, setTrendW] = useState(0);
 
+  // Bumped after a past session's lap is edited, so the trend re-reads its PF.
+  const [trendsVersion, setTrendsVersion] = useState(0);
   useEffect(() => {
     if (!activeServerTeamId) {
       setTrends([]);
@@ -76,7 +81,21 @@ export default function StatsScreen() {
     return () => {
       cancelled = true;
     };
-  }, [activeServerTeamId]);
+  }, [activeServerTeamId, trendsVersion]);
+
+  // Merge local history with the server's sessions. The same ended session can be
+  // in both under different ids (device id vs live-session id), so dedupeSessions
+  // collapses a local copy into its server copy.
+  const allSessions = React.useMemo(() => {
+    // Sessions with no laps (e.g. a START that was ended without recording) aren't
+    // worth listing and would only pad the Event Total.
+    const hasLaps = (s: Session) => s.drivers.some((d) => d.laps.length > 0);
+    const serverIds = new Set(s3Sessions.map((s) => s.id));
+    const server = s3Sessions.filter(hasLaps);
+    const local = team.sessionHistory.filter((s) => !serverIds.has(s.id) && hasLaps(s));
+    return dedupeSessions(server, local).sort((a, b) => b.timestamp - a.timestamp);
+  }, [team.sessionHistory, s3Sessions]);
+  const selectedSession = selectedSessionId ? allSessions.find((s) => s.id === selectedSessionId) ?? null : null;
 
   // Use selected session if available, otherwise use current team data
   const displayData = selectedSession || {
@@ -149,18 +168,115 @@ export default function StatsScreen() {
     }
   };
 
-  // Merge local history with the server's sessions. The same ended session can be
-  // in both under different ids (device id vs live-session id), so dedupeSessions
-  // collapses a local copy into its server copy.
-  const allSessions = React.useMemo(() => {
-    // Sessions with no laps (e.g. a START that was ended without recording) aren't
-    // worth listing and would only pad the Event Total.
-    const hasLaps = (s: Session) => s.drivers.some((d) => d.laps.length > 0);
-    const serverIds = new Set(s3Sessions.map((s) => s.id));
-    const server = s3Sessions.filter(hasLaps);
-    const local = team.sessionHistory.filter((s) => !serverIds.has(s.id) && hasLaps(s));
-    return dedupeSessions(server, local).sort((a, b) => b.timestamp - a.timestamp);
-  }, [team.sessionHistory, s3Sessions]);
+  // --- Editing a past session's laps (phone only; the website is view-only) ---
+  // The current session's laps are edited on the Timer.
+  const canEditPast = !!selectedSession && !isWeb && (!activeServerTeamId || canRecord(userRole));
+  const [openLapLists, setOpenLapLists] = useState<Set<number>>(new Set());
+  const [retimeLap, setRetimeLap] = useState<{ driverName: string; lap: Lap; value: string } | null>(null);
+  const [savingLap, setSavingLap] = useState(false);
+  useEffect(() => setOpenLapLists(new Set()), [selectedSessionId]);
+
+  const toggleLapList = (driverIndex: number) =>
+    setOpenLapLists((prev) => {
+      const next = new Set(prev);
+      if (next.has(driverIndex)) next.delete(driverIndex);
+      else next.add(driverIndex);
+      return next;
+    });
+
+  // A session can exist twice — the server's copy and this device's local
+  // history copy — so an edit is applied to every copy holding that lap (matched
+  // by driver + recorded time). Otherwise a lap deleted on the server would come
+  // back from the local copy. The server is written first; nothing changes
+  // locally if that fails.
+  const applyLapEdit = async (driverName: string, lap: Lap, edit: LapEdit) => {
+    if (savingLap) return;
+    setSavingLap(true);
+    try {
+      const serverEdits = s3Sessions.map((sess) => editSessionLap(sess, driverName, lap.timestamp, edit, lapTypeValues));
+      for (let i = 0; i < s3Sessions.length; i++) {
+        const edited = serverEdits[i];
+        if (!edited) continue;
+        const original = s3Sessions[i].drivers
+          .flatMap((d) => d.laps)
+          .find((l) => l.timestamp === lap.timestamp);
+        const lapId = original?.serverId;
+        if (!lapId) throw new Error('lap_without_server_id');
+        if (edit.kind === 'delete') {
+          await api.del(`/api/laps/${lapId}`);
+        } else {
+          const after = edited.drivers.flatMap((d) => d.laps).find((l) => l.timestamp === lap.timestamp)!;
+          await api.patch(`/api/laps/${lapId}`, {
+            time: after.time,
+            isChangeover: after.lapType === 'changeover',
+            isSafety: after.lapType === 'safety',
+          });
+        }
+      }
+      if (serverEdits.some(Boolean)) {
+        setS3Sessions((prev) => prev.map((sess) => editSessionLap(sess, driverName, lap.timestamp, edit, lapTypeValues) ?? sess));
+        setTrendsVersion((v) => v + 1);
+      }
+      const localEdits = team.sessionHistory.map((sess) => editSessionLap(sess, driverName, lap.timestamp, edit, lapTypeValues));
+      if (localEdits.some(Boolean)) {
+        const updatedTeams = [...teams];
+        updatedTeams[activeTeam] = {
+          ...team,
+          sessionHistory: team.sessionHistory.map((sess, i) => localEdits[i] ?? sess),
+        };
+        setTeams(updatedTeams);
+      }
+    } catch (error) {
+      console.warn('Lap edit failed:', error);
+      showAlert({ title: 'Could not save', message: 'The lap was not changed. Check your connection and try again.' });
+    } finally {
+      setSavingLap(false);
+    }
+  };
+
+  const showPastLapOptions = (driverName: string, lap: Lap) => {
+    showAlert({
+      title: `${driverName} · Lap #${lap.number}`,
+      message: `${formatTime(lap.time)} · ${lap.lapType}`,
+      buttons: [
+        { text: 'Edit Time', onPress: () => setRetimeLap({ driverName, lap, value: lap.time.toFixed(3) }) },
+        {
+          text: lap.lapType === 'changeover' ? 'Remove Changeover' : 'Mark as Changeover',
+          onPress: () => void applyLapEdit(driverName, lap, { kind: 'toggle', lapType: 'changeover' }),
+        },
+        {
+          text: lap.lapType === 'safety' ? 'Remove Safety Car' : 'Mark as Safety Car',
+          onPress: () => void applyLapEdit(driverName, lap, { kind: 'toggle', lapType: 'safety' }),
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () =>
+            showAlert({
+              title: 'Delete Lap',
+              message: `Delete ${driverName}'s lap #${lap.number} from this session? Later laps are renumbered.`,
+              buttons: [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Delete', style: 'destructive', onPress: () => void applyLapEdit(driverName, lap, { kind: 'delete' }) },
+              ],
+            }),
+        },
+        { text: 'Cancel', style: 'cancel' },
+      ],
+    });
+  };
+
+  const saveRetime = () => {
+    if (!retimeLap) return;
+    const time = parseTimeInput(retimeLap.value);
+    if (time === null || time <= 0) {
+      showAlert({ title: 'Invalid Time', message: 'Please enter a valid lap time (e.g. 85.5 or 1:25.5)' });
+      return;
+    }
+    const { driverName, lap } = retimeLap;
+    setRetimeLap(null);
+    void applyLapEdit(driverName, lap, { kind: 'time', time });
+  };
 
   // Event Total: every session of the displayed race (plus the one in progress),
   // scored as one event over the full event length — the official method.
@@ -642,6 +758,47 @@ export default function StatsScreen() {
           </View>
         )}
 
+        {/* Past session: every lap, tap to correct it */}
+        {canEditPast && (
+          <View style={styles.lapsSection}>
+            <Pressable onPress={() => toggleLapList(driverIndex)} style={styles.lapsHeader} accessibilityRole="button">
+              <Label size={13}>Laps</Label>
+              <Mono size={12} color={theme.textSecondary}>{String(driver.laps.length)}</Mono>
+              <View style={styles.flex1} />
+              {savingLap ? <ActivityIndicator size="small" color={theme.primary as string} /> : null}
+              <Text style={[styles.lapsToggle, { color: theme.primary }]}>{openLapLists.has(driverIndex) ? 'Hide' : 'Edit laps'}</Text>
+              <Ionicons name={openLapLists.has(driverIndex) ? 'chevron-up' : 'chevron-down'} size={16} color={theme.primary as string} />
+            </Pressable>
+            {openLapLists.has(driverIndex) && (
+              <>
+                <Text style={[styles.lapsHint, { color: theme.textMuted }]}>Tap a lap to re-time it, mark a changeover or safety car lap, or delete it.</Text>
+                <Surface level="base" padding={0} style={styles.lapsList}>
+                  {driver.laps.map((lap, i) => (
+                    <Pressable
+                      key={lap.timestamp}
+                      onPress={() => showPastLapOptions(driver.name, lap)}
+                      disabled={savingLap}
+                      style={({ pressed }) => [
+                        styles.pastLapRow,
+                        { borderBottomColor: theme.borderFaint },
+                        i === driver.laps.length - 1 && { borderBottomWidth: 0 },
+                        pressed && { backgroundColor: theme.primaryMuted },
+                      ]}
+                    >
+                      <Mono size={13} weight="bold" color={theme.textMuted} style={styles.pastLapNum}>{String(lap.number)}</Mono>
+                      <Mono size={15} weight="medium" color={theme.text} style={styles.flex1}>{formatTime(lap.time)}</Mono>
+                      <Mono size={13} weight="bold" color={deltaColor(lap.delta)} style={styles.pastLapDelta}>
+                        {`${lap.delta >= 0 ? '+' : '\u2212'}${Math.abs(lap.delta).toFixed(2)}`}
+                      </Mono>
+                      <Chip label={lap.lapType} color={lapTypeColor(lap.lapType)} active size="sm" uppercase style={styles.pastLapChip} />
+                    </Pressable>
+                  ))}
+                </Surface>
+              </>
+            )}
+          </View>
+        )}
+
         {/* Charts inline (web shows them in-panel; native uses the Charts sheet) */}
         {isWeb && (
           <View style={styles.chartsWrap}>
@@ -1007,6 +1164,31 @@ export default function StatsScreen() {
       </Sheet>
 
       {sessionPickerSheet}
+
+      {/* Re-time a past session's lap */}
+      <Sheet
+        visible={!!retimeLap}
+        onClose={() => setRetimeLap(null)}
+        title={retimeLap ? `${retimeLap.driverName} · Lap #${retimeLap.lap.number}` : 'Edit Lap Time'}
+        footer={
+          <View style={styles.sheetBtns}>
+            <Button title="Cancel" variant="secondary" onPress={() => setRetimeLap(null)} style={styles.flex1} />
+            <Button title="Save" onPress={saveRetime} style={styles.flex1} />
+          </View>
+        }
+      >
+        <TextField
+          mono
+          label="Lap time (seconds or M:SS.mmm)"
+          value={retimeLap?.value ?? ''}
+          onChangeText={(value) => setRetimeLap((prev) => (prev ? { ...prev, value } : prev))}
+          keyboardType="decimal-pad"
+          placeholder="e.g. 85.500 or 1:25.500"
+          returnKeyType="done"
+          onSubmitEditing={saveRetime}
+          autoFocus
+        />
+      </Sheet>
     </SafeAreaView>
   );
 }
@@ -1015,6 +1197,18 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
   },
+
+  // Past-session lap editor
+  lapsSection: { marginTop: spacing.lg },
+  lapsHeader: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.sm },
+  lapsToggle: { fontSize: typography.body, fontWeight: fontWeights.semibold },
+  lapsHint: { fontSize: typography.caption, marginBottom: spacing.sm },
+  lapsList: { overflow: 'hidden' },
+  pastLapRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: spacing.md, paddingHorizontal: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth },
+  pastLapNum: { width: 28 },
+  pastLapDelta: { minWidth: 64, textAlign: 'right' },
+  pastLapChip: { marginLeft: spacing.sm, minWidth: 78, alignItems: 'center' },
+  sheetBtns: { flexDirection: 'row', gap: spacing.md },
 
   // Event Total
   eventSub: { fontSize: typography.caption, marginTop: 2 },
