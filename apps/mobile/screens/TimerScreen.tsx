@@ -1346,6 +1346,7 @@ export default function TimerScreen() {
   };
 
   const lapCount = driver?.laps.length ?? 0;
+  const lastLap = lapCount > 0 ? driver!.laps[lapCount - 1] : null;
   const liveDelta = driver ? elapsedTime - driver.targetTime : 0;
 
   // The server reports a live session for the team. Offer to view it when it
@@ -1584,6 +1585,17 @@ export default function TimerScreen() {
         >
           {elapsedTime.toFixed(2)}
         </Animated.Text>
+        {/* Last recorded lap, so it's readable without scrolling to the history
+            (wide web already shows it in the summary row beside the history) */}
+        {lastLap && !wide ? (
+          <View style={styles.lastLapRow}>
+            <Label muted>LAST</Label>
+            <Mono size={typography.title} weight="bold" color={theme.text}>{formatTime(lastLap.time)}</Mono>
+            <Mono size={typography.body} weight="bold" color={deltaColor(lastLap.delta)}>
+              {lastLap.delta >= 0 ? '+' : ''}{lastLap.delta.toFixed(2)}
+            </Mono>
+          </View>
+        ) : null}
         <View style={styles.clockMeta}>
           <Label muted size={wide ? typography.body : undefined}>TARGET {driver ? formatTime(driver.targetTime) : '—'}</Label>
           {driver && (isRunning || lapCount > 0) ? (
@@ -1697,7 +1709,6 @@ export default function TimerScreen() {
   );
   // Wide web: at-a-glance numbers for the selected driver above the lap history.
   const driverLaps = driver?.laps ?? [];
-  const lastLap = driverLaps.length ? driverLaps[driverLaps.length - 1] : null;
   const avgDelta = driverLaps.length ? driverLaps.reduce((sum, l) => sum + l.delta, 0) / driverLaps.length : null;
   const bonusCount = driverLaps.filter((l) => l.lapType === 'bonus').length;
   const driverSummary = (
@@ -1981,6 +1992,7 @@ const styles = StyleSheet.create({
   clockDriverWrap: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm, flexShrink: 1 },
   clockDriver: { fontSize: typography.title, fontWeight: fontWeights.heavy, flexShrink: 1 },
   clock: { fontSize: typography.hero, fontFamily: 'JetBrainsMono-ExtraBold', letterSpacing: -2, textAlign: 'center', marginVertical: spacing.sm },
+  lastLapRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'baseline', gap: spacing.sm, marginBottom: spacing.md },
   clockMeta: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   statusStrip: { marginTop: spacing.lg, borderWidth: 1, borderRadius: radius.full, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, alignItems: 'center' },
   statusText: { fontSize: typography.body, fontWeight: fontWeights.bold, letterSpacing: 0.5 },
