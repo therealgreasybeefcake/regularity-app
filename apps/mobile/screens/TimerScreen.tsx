@@ -25,6 +25,8 @@ const isWeb = Platform.OS === 'web';
 const WIDE_MIN_WIDTH = 1100;
 const WIDE_MAX_WIDTH = 1440;
 const WEB_SIDEBAR_WIDTH = 200;
+// Phone landscape: height of the header + driver tabs row.
+const LAND_TOP_BAR_H = 60;
 let activateKeepAwakeAsync: () => Promise<void> = async () => {};
 let deactivateKeepAwake: () => void = () => {};
 let useAudioPlayerImport: any = null;
@@ -131,6 +133,21 @@ export default function TimerScreen() {
   const inlineTopBar = wide || phoneLandscape;
   // The tab bar floats over the screen; in phone landscape it's iOS's compact bar.
   const landscapeTabBarH = (Platform.OS === 'ios' ? 32 : 49) + insets.bottom;
+  // Phone landscape sizes, worked out from the window rather than left to flex.
+  const land = (() => {
+    const rootH = Math.max(0, windowHeight - insets.top - landscapeTabBarH);
+    const innerW = Math.max(0, windowWidth - insets.left - insets.right - spacing.lg * 2);
+    const headerW = Math.round(innerW * 0.36);
+    const leftW = Math.round((innerW - spacing.lg) * 0.52);
+    return {
+      rootH,
+      headerW,
+      tabsW: innerW - headerW - spacing.lg,
+      colsH: Math.max(0, rootH - spacing.sm - LAND_TOP_BAR_H - spacing.sm),
+      leftW,
+      rightW: innerW - spacing.lg - leftW,
+    };
+  })();
   // Size the clock to its column so a 6-character time ("123.45") always fits.
   const wideContentW = Math.min(windowWidth - (isWeb ? WEB_SIDEBAR_WIDTH : 0), WIDE_MAX_WIDTH) - spacing.xl * 2;
   const wideRightW = Math.min(Math.max(wideContentW * 0.4, 360), 520);
@@ -1813,6 +1830,34 @@ export default function TimerScreen() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top', 'left', 'right']}>
+      {phoneLandscape ? (
+        // Explicit sizes, not flex: on the phone a flex: 1 chain here collapsed
+        // the columns to nothing (the web, which this was first checked on, laid
+        // it out fine). The live banner is left out — the link is in the ••• menu.
+        <View style={[styles.landRoot, { height: land.rootH }]}>
+          <View style={[styles.landTopBar, { height: LAND_TOP_BAR_H }]}>
+            <View style={{ width: land.headerW }}>{header}</View>
+            <View style={{ width: land.tabsW }}>{driverTabs}</View>
+          </View>
+          <View style={[styles.landColumns, { height: land.colsH }]}>
+            <View style={{ width: land.leftW, height: land.colsH }}>
+              <ScrollView style={styles.landScroll} contentContainerStyle={styles.landLeftContent}>
+                {clockCard}
+              </ScrollView>
+            </View>
+            <View style={{ width: land.rightW, height: land.colsH }}>
+              <ScrollView style={styles.landScroll} contentContainerStyle={styles.landRightContent} keyboardShouldPersistTaps="handled">
+                {notices}
+                {rejectedBanner}
+                {controls}
+                {historyHeader}
+                {lapList}
+              </ScrollView>
+            </View>
+          </View>
+        </View>
+      ) : (
+      <>
       <LiveShareBanner />
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1840,25 +1885,6 @@ export default function TimerScreen() {
               </View>
             </View>
           </View>
-        ) : phoneLandscape ? (
-          <View style={[styles.landRoot, { paddingBottom: landscapeTabBarH }]}>
-            {notices}
-            <View style={styles.wideTopBar}>
-              <View style={styles.wideTopHeader}>{header}</View>
-              <View style={styles.wideTopTabs}>{driverTabs}</View>
-            </View>
-            {rejectedBanner}
-            <View style={styles.landColumns}>
-              <ScrollView style={styles.landLeft} contentContainerStyle={styles.landLeftContent}>
-                {clockCard}
-              </ScrollView>
-              <ScrollView style={styles.landRight} contentContainerStyle={styles.landRightContent} keyboardShouldPersistTaps="handled">
-                {controls}
-                {historyHeader}
-                {lapList}
-              </ScrollView>
-            </View>
-          </View>
         ) : (
           <ScrollView style={styles.scrollView} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             {notices}
@@ -1872,6 +1898,8 @@ export default function TimerScreen() {
           </ScrollView>
         )}
       </KeyboardAvoidingView>
+      </>
+      )}
 
       {/* Edit Lap Sheet */}
       <Sheet
@@ -2110,11 +2138,11 @@ const styles = StyleSheet.create({
   sheetSubtitle: { fontSize: typography.body, marginBottom: spacing.lg },
 
   // Phone landscape: clock | controls + laps, all within one screen height
-  landRoot: { flex: 1, paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
-  landColumns: { flex: 1, flexDirection: 'row', gap: spacing.lg, minHeight: 0 },
-  landLeft: { flex: 1.1 },
+  landRoot: { paddingHorizontal: spacing.lg, paddingTop: spacing.sm },
+  landTopBar: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  landColumns: { flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.sm },
+  landScroll: { flex: 1 },
   landLeftContent: { paddingBottom: spacing.sm },
-  landRight: { flex: 1 },
   landRightContent: { paddingBottom: spacing.lg },
   clockCompact: { fontSize: 56, lineHeight: 62, marginVertical: 0 },
   lastLapRowCompact: { marginBottom: spacing.xs },
