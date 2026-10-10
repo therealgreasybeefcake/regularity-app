@@ -9,6 +9,7 @@ import { ensureLiveAudio, playLapTone } from '../../lib/liveSounds';
 import { fonts } from '../../constants/theme';
 import { useTheme } from '../../hooks/useTheme';
 import { useApp, canEditTeam } from '../../context/AppContext';
+import { useAuth } from '../../context/AuthContext';
 import { useAlert } from '../../components/CustomAlert';
 import { api } from '../../lib/api';
 import { syncServerClock, toServerTime } from '../../lib/serverClock';
@@ -104,8 +105,14 @@ export default function LiveView() {
     return () => cancelAnimationFrame(raf);
   }, [snap?.status, timerRunning]);
 
+  // When the session ends, a signed-in teammate is taken back into the app. Anyone
+  // else (a public link, no account) stays here on the final results — sending
+  // them to the app would only land them on the login page.
+  const { isAuthenticated } = useAuth();
+  const signedInRef = useRef(isAuthenticated);
+  signedInRef.current = isAuthenticated;
   const goToPortal = () => {
-    if (redirectTimer.current) return;
+    if (!signedInRef.current || redirectTimer.current) return;
     redirectTimer.current = setTimeout(() => router.replace('/(app)/(tabs)' as any), 2200);
   };
 
@@ -294,7 +301,7 @@ export default function LiveView() {
       <View style={[styles.center, { backgroundColor: C.bg }]}>
         <Text style={styles.title}>Session ended</Text>
         <Text style={styles.dim}>This live session has ended or its link expired.</Text>
-        <Text style={[styles.dim, { marginTop: 12 }]}>Returning to the portal…</Text>
+        {isAuthenticated ? <Text style={[styles.dim, { marginTop: 12 }]}>Returning to the portal…</Text> : null}
       </View>
     );
   }
@@ -363,6 +370,13 @@ export default function LiveView() {
         style={{ flex: 1 }}
         contentContainerStyle={[styles.container, { paddingBottom: insets.bottom + 24, paddingLeft: Math.max(insets.left, isWide ? 24 : 16), paddingRight: Math.max(insets.right, isWide ? 24 : 16) }]}
       >
+        {!isLive ? (
+          <View style={styles.endedBanner}>
+            <Ionicons name="flag-outline" size={16} color={C.dim} />
+            <Text style={styles.endedText}>This session has ended. These are its final results.</Text>
+          </View>
+        ) : null}
+
         {/* Cockpit Split: Active Driver Hero (Main) + Prominent % Factor */}
         <View style={styles.dashboardSplit}>
           {/* Active Driver Hero Card */}
@@ -372,7 +386,7 @@ export default function LiveView() {
                 <View style={styles.heroDriverIdentity}>
                   <View style={styles.onTrackBadge}>
                     <LiveDot size={8} color={C.live} active={isLive} />
-                    <Text style={styles.onTrackText}>ON TRACK</Text>
+                    <Text style={styles.onTrackText}>{isLive ? 'ON TRACK' : 'LAST ON TRACK'}</Text>
                   </View>
                   <Text style={styles.heroDriverName} numberOfLines={1}>{activeDriver.d.name}</Text>
                   {activeDriver.d.targetTime > 0 && (
@@ -390,7 +404,7 @@ export default function LiveView() {
 
               {/* Huge Live Clock Display */}
               <View style={styles.clockSection}>
-                <Text style={styles.clockSubLabel}>{isLive && timerStopped ? 'TIMER STOPPED' : 'CURRENT LAP TIME'}</Text>
+                <Text style={styles.clockSubLabel}>{!isLive ? 'LAST LAP TIME' : timerStopped ? 'TIMER STOPPED' : 'CURRENT LAP TIME'}</Text>
                 <Text style={styles.giantClock} numberOfLines={1} adjustsFontSizeToFit>
                   {isLive && snap.timer
                     ? timerClock(snap.timer)
@@ -637,6 +651,19 @@ function makeStyles(C: LivePalette, isWide: boolean, isNarrow: boolean) {
       alignSelf: 'center',
     },
     dim: { color: C.dim, fontSize: 13 },
+    endedBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: C.elevated,
+      borderWidth: 1,
+      borderColor: C.borderFaint,
+      borderRadius: 12,
+      paddingHorizontal: 14,
+      paddingVertical: 10,
+      marginBottom: 16,
+    },
+    endedText: { color: C.dim, fontSize: 13, fontWeight: '600', flexShrink: 1 },
     headerWrap: {
       backgroundColor: C.bg,
       paddingBottom: 10,
