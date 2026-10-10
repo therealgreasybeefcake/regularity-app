@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, useWi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { calculateDriverStats, formatTime, type Driver as CoreDriver } from '@regularity/core';
+import { calculateDriverStats, calculateConsistency, driveTime, formatTime, type Driver as CoreDriver } from '@regularity/core';
 import { subscribeLive, normalizeLap, type LiveSnapshot } from '../../lib/liveClient';
 import { ensureLiveAudio, playLapTone } from '../../lib/liveSounds';
 import { fonts } from '../../constants/theme';
@@ -42,9 +42,22 @@ function palette(theme: ReturnType<typeof useTheme>['theme']) {
   };
 }
 
-// Recent-laps columns; narrower on a phone so the driver name keeps some room.
-const feedCols = (narrow: boolean) =>
-  narrow ? { lap: 34, time: 74, delta: 62, type: 58 } : { lap: 50, time: 90, delta: 85, type: 95 };
+// Width of the lap-type pill column (the other lap columns share the rest).
+const feedCols = (narrow: boolean) => ({ type: narrow ? 58 : 110 });
+
+// Drive time as M:SS, or H:MM:SS from an hour.
+function fmtDuration(seconds: number): string {
+  const t = Math.floor(Math.max(0, seconds));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const sec = String(t % 60).padStart(2, '0');
+  return h > 0 ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}
+
+const signed = (n: number, digits = 2) => `${n >= 0 ? '+' : '\u2212'}${Math.abs(n).toFixed(digits)}`;
+
+// Laps listed under "All drivers"; one driver's history lists every lap.
+const ALL_DRIVERS_LAP_LIMIT = 20;
 
 // Short lap-type labels for the phone feed ("CHANGEOVER" doesn't fit).
 const SHORT_TYPE: Record<string, string> = { bonus: 'BONUS', base: 'BASE', broken: 'BROKEN', changeover: 'C/O', safety: 'SC' };
@@ -75,6 +88,9 @@ export default function LiveView() {
   const [soundOn, setSoundOn] = useState(liveSoundDefault);
   const [ending, setEnding] = useState(false);
   const [focusedDriverId, setFocusedDriverId] = useState<string | null>(null);
+  // Lap history filter: null = all drivers.
+  const [historyDriverId, setHistoryDriverId] = useState<string | null>(null);
+  const [historyMenuOpen, setHistoryMenuOpen] = useState(false);
 
   const snapRef = useRef<LiveSnapshot | null>(null);
   snapRef.current = snap;
@@ -259,12 +275,13 @@ export default function LiveView() {
       goal += stats.goalLaps;
       achieved += stats.achievedLaps;
       const last = d.laps[d.laps.length - 1] ?? null;
-      return { d, stats, last };
+      const consistency = calculateConsistency(d.laps).deltaStdDev;
+      const drive = driveTime(coreDrivers, i).total;
+      return { d, stats, last, consistency, drive };
     });
     const recentLaps = snap.drivers
-      .flatMap((d) => d.laps.map((l) => ({ driver: d.name, ...l })))
-      .sort((a, b) => b.timestamp - a.timestamp)
-      .slice(0, 16);
+      .flatMap((d) => d.laps.map((l) => ({ driver: d.name, driverId: d.id, ...l })))
+      .sort((a, b) => b.timestamp - a.timestamp);
     return {
       drivers: withStats,
       teamStats: { percentageFactor: goal > 0 ? (achieved / goal) * 100 : 0, achievedLaps: achieved, goalLaps: goal },
@@ -290,11 +307,10 @@ export default function LiveView() {
     return latest;
   }, [drivers, focusedDriverId]);
 
-  // Standby drivers (all other team drivers)
-  const standbyDrivers = useMemo(() => {
-    if (!activeDriver) return [];
-    return drivers.filter((x) => x.d.id !== activeDriver.d.id);
-  }, [drivers, activeDriver]);
+  const historyDriver = historyDriverId ? drivers.find((x) => x.d.id === historyDriverId) ?? null : null;
+  const historyLaps = historyDriver
+    ? recent.filter((l) => l.driverId === historyDriver.d.id)
+    : recent.slice(0, ALL_DRIVERS_LAP_LIMIT);
 
   if (notFound) {
     return (
@@ -518,92 +534,171 @@ export default function LiveView() {
           </View>
         </View>
 
-        {/* Standby / Non-Active Drivers Section (Subdued & Compact) */}
-        {standbyDrivers.length > 0 && (
+        {/* Every driver's numbers. Tap one to put them in the big card above. */}
+        {drivers.length > 0 && (
           <View style={styles.standbySection}>
             <View style={styles.sectionHeaderRow}>
-              <Text style={styles.sectionTitle}>STANDBY DRIVERS</Text>
-              <Text style={styles.sectionHint}>Tap driver to switch focus</Text>
+              <Text style={styles.sectionTitle}>ALL DRIVERS</Text>
+              <Text style={styles.sectionHint}>Tap a driver to focus</Text>
             </View>
 
-            <View style={styles.standbyGrid}>
-              {standbyDrivers.map(({ d, stats, last }) => (
-                <Pressable
-                  key={d.id}
-                  style={styles.standbyCard}
-                  onPress={() => setFocusedDriverId(d.id)}
-                  accessibilityLabel={`Focus on driver ${d.name}`}
-                >
-                  <View style={styles.standbyCardHeader}>
-                    <View style={styles.standbyIdentity}>
-                      <Text style={styles.standbyName} numberOfLines={1}>{d.name}</Text>
-                      <View style={styles.standbyPill}>
-                        <Text style={styles.standbyPillText}>STANDBY</Text>
+            {isWide ? (
+              <View style={styles.feed}>
+                <View style={styles.feedHeaderRow}>
+                  <Text style={[styles.feedHeaderCell, styles.statName]}>DRIVER</Text>
+                  {['TARGET', 'LAPS', 'ACH / GOAL', 'NET', 'BONUS', 'BASE', 'BROKEN', 'C/O', 'SC', 'AVG Δ', '3-LAP', '±σ', 'DRIVE'].map((h) => (
+                    <Text key={h} style={[styles.feedHeaderCell, styles.statCell]}>{h}</Text>
+                  ))}
+                </View>
+                {drivers.map(({ d, stats, consistency, drive }, i) => {
+                  const focused = activeDriver?.d.id === d.id;
+                  return (
+                    <Pressable
+                      key={d.id}
+                      onPress={() => setFocusedDriverId(d.id)}
+                      style={[styles.feedRow, focused && { backgroundColor: `${C.live}10` }, i === drivers.length - 1 && { borderBottomWidth: 0 }]}
+                      accessibilityLabel={`Focus on driver ${d.name}`}
+                    >
+                      <View style={[styles.statName, styles.statNameInner]}>
+                        {focused ? <LiveDot size={7} color={C.live} active={isLive} /> : null}
+                        <Text style={styles.feedDriver} numberOfLines={1}>{d.name}</Text>
                       </View>
-                    </View>
-                    <Text style={styles.standbyLapCount}>{d.laps.length} LAPS</Text>
-                  </View>
-
-                  <View style={styles.standbyDetailsRow}>
-                    <View style={styles.standbyMetric}>
-                      <Text style={styles.standbyMetricLabel}>TARGET</Text>
-                      <Text style={styles.standbyMetricValue}>{d.targetTime > 0 ? formatTime(d.targetTime) : '—'}</Text>
-                    </View>
-                    <View style={styles.standbyMetric}>
-                      <Text style={styles.standbyMetricLabel}>LAST LAP</Text>
-                      <Text style={styles.standbyMetricValue}>
-                        {last ? formatTime(last.time) : '—'}
+                      <Text style={[styles.statValue, styles.statCell]}>{d.targetTime > 0 ? formatTime(d.targetTime) : '—'}</Text>
+                      <Text style={[styles.statValue, styles.statCell]}>{d.laps.length}</Text>
+                      <Text style={[styles.statValue, styles.statCell]}>
+                        <Text style={{ color: C.green }}>{stats.achievedLaps.toFixed(0)}</Text> / {stats.goalLaps.toFixed(0)}
                       </Text>
-                    </View>
-                    <View style={styles.standbyMetric}>
-                      <Text style={styles.standbyMetricLabel}>AVG Δ</Text>
-                      <Text style={[styles.standbyMetricValue, { color: last ? deltaColor(stats.averageDelta) : C.text }]}>
-                        {last ? `${stats.averageDelta >= 0 ? '+' : '\u2212'}${Math.abs(stats.averageDelta).toFixed(2)}s` : '—'}
+                      <Text style={[styles.statValue, styles.statCell]}>{`${stats.netScore > 0 ? '+' : ''}${stats.netScore}`}</Text>
+                      <Text style={[styles.statValue, styles.statCell, { color: C.green }]}>{stats.bonusLaps}</Text>
+                      <Text style={[styles.statValue, styles.statCell, { color: C.blue }]}>{stats.baseLaps}</Text>
+                      <Text style={[styles.statValue, styles.statCell, { color: C.red }]}>{stats.brokenLaps}</Text>
+                      <Text style={[styles.statValue, styles.statCell, { color: C.changeover }]}>{stats.changeoverLaps}</Text>
+                      <Text style={[styles.statValue, styles.statCell, { color: C.safety }]}>{stats.safetyLaps}</Text>
+                      <Text style={[styles.statValue, styles.statCell, { color: d.laps.length ? deltaColor(stats.averageDelta) : C.text }]}>
+                        {d.laps.length ? signed(stats.averageDelta) : '—'}
                       </Text>
-                    </View>
-                    <View style={styles.standbyMetric}>
-                      <Text style={styles.standbyMetricLabel}>ACHIEVED</Text>
-                      <Text style={[styles.standbyMetricValue, { color: C.green }]}>
-                        {stats.achievedLaps.toFixed(0)}
-                      </Text>
-                    </View>
-                  </View>
-                </Pressable>
-              ))}
-            </View>
+                      <Text style={[styles.statValue, styles.statCell]}>{stats.threelapAvg == null ? '—' : signed(stats.threelapAvg)}</Text>
+                      <Text style={[styles.statValue, styles.statCell]}>{d.laps.length ? consistency.toFixed(2) : '—'}</Text>
+                      <Text style={[styles.statValue, styles.statCell]}>{drive > 0 ? fmtDuration(drive) : '—'}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            ) : (
+              <View style={styles.standbyGrid}>
+                {drivers.map(({ d, stats, consistency, drive }) => {
+                  const focused = activeDriver?.d.id === d.id;
+                  const metrics: Array<[string, string, string?]> = [
+                    ['LAPS', String(d.laps.length)],
+                    ['ACH / GOAL', `${stats.achievedLaps.toFixed(0)} / ${stats.goalLaps.toFixed(0)}`, C.green],
+                    ['NET', `${stats.netScore > 0 ? '+' : ''}${stats.netScore}`],
+                    ['DRIVE', drive > 0 ? fmtDuration(drive) : '—'],
+                    ['AVG Δ', d.laps.length ? signed(stats.averageDelta) : '—', d.laps.length ? deltaColor(stats.averageDelta) : undefined],
+                    ['3-LAP', stats.threelapAvg == null ? '—' : signed(stats.threelapAvg)],
+                    ['±σ', d.laps.length ? consistency.toFixed(2) : '—'],
+                    ['BONUS', String(stats.bonusLaps), C.green],
+                    ['BASE', String(stats.baseLaps), C.blue],
+                    ['BROKEN', String(stats.brokenLaps), C.red],
+                    ['C/O', String(stats.changeoverLaps), C.changeover],
+                    ['SC', String(stats.safetyLaps), C.safety],
+                  ];
+                  return (
+                    <Pressable
+                      key={d.id}
+                      style={[styles.standbyCard, focused && { borderColor: `${C.live}66` }]}
+                      onPress={() => setFocusedDriverId(d.id)}
+                      accessibilityLabel={`Focus on driver ${d.name}`}
+                    >
+                      <View style={styles.standbyCardHeader}>
+                        <View style={styles.standbyIdentity}>
+                          <Text style={styles.standbyName} numberOfLines={1}>{d.name}</Text>
+                          <View style={[styles.standbyPill, focused && { borderColor: `${C.live}55` }]}>
+                            <Text style={[styles.standbyPillText, focused && { color: C.live }]}>
+                              {focused ? (isLive ? 'ON TRACK' : 'LAST OUT') : 'STANDBY'}
+                            </Text>
+                          </View>
+                        </View>
+                        <Text style={styles.standbyLapCount}>{d.targetTime > 0 ? `TARGET ${formatTime(d.targetTime)}` : ''}</Text>
+                      </View>
+                      <View style={styles.metricGrid}>
+                        {metrics.map(([label, value, color]) => (
+                          <View key={label} style={styles.metricCell}>
+                            <Text style={styles.standbyMetricLabel}>{label}</Text>
+                            <Text style={[styles.standbyMetricValue, color ? { color } : null]} numberOfLines={1}>{value}</Text>
+                          </View>
+                        ))}
+                      </View>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
           </View>
         )}
 
-        {/* Recent Laps Telemetry Table */}
-        <View style={styles.recentSection}>
-          <View style={styles.sectionHeaderRow}>
-            <Text style={styles.sectionTitle}>RECENT LAPS</Text>
-            <Text style={styles.sectionHint}>Live telemetry stream</Text>
+        {/* Lap history — everyone's latest laps, or one driver's whole session */}
+        <View style={[styles.recentSection, historyMenuOpen && styles.raised]}>
+          <View style={[styles.sectionHeaderRow, styles.raised]}>
+            <Text style={styles.sectionTitle}>LAP HISTORY</Text>
+            <View style={styles.raised}>
+              <Pressable
+                onPress={() => setHistoryMenuOpen((o) => !o)}
+                style={styles.dropdownBtn}
+                accessibilityRole="button"
+                accessibilityLabel="Choose which driver's laps to show"
+              >
+                <Text style={styles.dropdownText} numberOfLines={1}>{historyDriver ? historyDriver.d.name : 'All drivers'}</Text>
+                <Ionicons name={historyMenuOpen ? 'chevron-up' : 'chevron-down'} size={14} color={C.dim} />
+              </Pressable>
+              {historyMenuOpen ? (
+                <View style={styles.dropdownMenu}>
+                  {[{ id: null as string | null, name: 'All drivers', laps: recent.length }, ...drivers.map(({ d }) => ({ id: d.id as string | null, name: d.name, laps: d.laps.length }))].map((opt) => {
+                    const selected = opt.id === historyDriverId;
+                    return (
+                      <Pressable
+                        key={opt.id ?? 'all'}
+                        onPress={() => {
+                          setHistoryDriverId(opt.id);
+                          setHistoryMenuOpen(false);
+                        }}
+                        style={[styles.dropdownItem, selected && { backgroundColor: `${C.accent}14` }]}
+                      >
+                        <Text style={[styles.dropdownItemText, selected && { color: C.accent }]} numberOfLines={1}>{opt.name}</Text>
+                        <Text style={styles.dropdownCount}>{opt.laps}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              ) : null}
+            </View>
           </View>
 
           <View style={styles.feed}>
-            {recent.length === 0 ? (
-              <Text style={[styles.dim, { padding: 18, textAlign: 'center' }]}>Waiting for live lap recordings…</Text>
+            {historyLaps.length === 0 ? (
+              <Text style={[styles.dim, { padding: 18, textAlign: 'center' }]}>
+                {historyDriver ? `No laps for ${historyDriver.d.name} yet.` : 'Waiting for live lap recordings…'}
+              </Text>
             ) : (
               <View>
-                {/* Table Header Row */}
                 <View style={styles.feedHeaderRow}>
-                  <Text style={[styles.feedHeaderCell, { flex: 1 }]}>DRIVER</Text>
-                  <Text style={[styles.feedHeaderCell, { width: cols.lap, textAlign: 'center' }]}>LAP</Text>
-                  <Text style={[styles.feedHeaderCell, { width: cols.time, textAlign: 'right' }]}>TIME</Text>
-                  <Text style={[styles.feedHeaderCell, { width: cols.delta, textAlign: 'right' }]}>DELTA</Text>
-                  <Text style={[styles.feedHeaderCell, styles.feedTypeCol, { width: cols.type, textAlign: 'center' }]}>TYPE</Text>
+                  {historyDriver ? null : <Text style={[styles.feedHeaderCell, styles.feedDriverCol]}>DRIVER</Text>}
+                  <Text style={[styles.feedHeaderCell, styles.feedLapCol, { textAlign: 'center' }]}>LAP</Text>
+                  <Text style={[styles.feedHeaderCell, styles.feedNumCol, { textAlign: 'right' }]}>TIME</Text>
+                  <Text style={[styles.feedHeaderCell, styles.feedNumCol, { textAlign: 'right' }]}>DELTA</Text>
+                  <View style={[styles.feedTypeCol, { width: cols.type }]}>
+                    <Text style={[styles.feedHeaderCell, { textAlign: 'center' }]}>TYPE</Text>
+                  </View>
                 </View>
 
-                {recent.map((l, i) => {
+                {historyLaps.map((l, i) => {
                   const typeColor = lapTypeColor(l.lapType, l.delta);
                   return (
-                    <View key={`${l.driver}-${l.number}-${i}`} style={[styles.feedRow, i === recent.length - 1 && { borderBottomWidth: 0 }]}>
-                      <Text style={styles.feedDriver} numberOfLines={1}>{l.driver}</Text>
-                      <Text style={[styles.feedLapNumber, { width: cols.lap }]}>#{l.number}</Text>
-                      <Text style={[styles.feedTime, { width: cols.time }]} numberOfLines={1}>{formatTime(l.time)}</Text>
-                      <Text style={[styles.feedDelta, { width: cols.delta, color: deltaColor(l.delta) }]} numberOfLines={1}>
-                        {`${l.delta >= 0 ? '+' : '\u2212'}${Math.abs(l.delta).toFixed(2)}${isNarrow ? '' : 's'}`}
+                    <View key={`${l.driverId}-${l.number}-${l.timestamp}`} style={[styles.feedRow, i === historyLaps.length - 1 && { borderBottomWidth: 0 }]}>
+                      {historyDriver ? null : <Text style={[styles.feedDriver, styles.feedDriverCol]} numberOfLines={1}>{l.driver}</Text>}
+                      <Text style={[styles.feedLapNumber, styles.feedLapCol]}>#{l.number}</Text>
+                      <Text style={[styles.feedTime, styles.feedNumCol]} numberOfLines={1}>{formatTime(l.time)}</Text>
+                      <Text style={[styles.feedDelta, styles.feedNumCol, { color: deltaColor(l.delta) }]} numberOfLines={1}>
+                        {`${signed(l.delta)}${isNarrow ? '' : 's'}`}
                       </Text>
                       <View style={[styles.feedTypePill, styles.feedTypeCol, { width: cols.type, backgroundColor: `${typeColor}18`, borderColor: `${typeColor}33` }]}>
                         <Text style={[styles.feedType, { color: typeColor }]} numberOfLines={1}>
@@ -616,6 +711,9 @@ export default function LiveView() {
               </View>
             )}
           </View>
+          {!historyDriver && recent.length > ALL_DRIVERS_LAP_LIMIT ? (
+            <Text style={styles.feedFootnote}>Latest {ALL_DRIVERS_LAP_LIMIT} of {recent.length} laps. Pick a driver for their full history.</Text>
+          ) : null}
         </View>
 
         <View style={{ height: 40 }} />
@@ -1065,16 +1163,6 @@ function makeStyles(C: LivePalette, isWide: boolean, isNarrow: boolean) {
       fontWeight: '700',
       letterSpacing: 1,
     },
-    standbyDetailsRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      backgroundColor: C.elevated,
-      padding: 8,
-      borderRadius: 8,
-    },
-    standbyMetric: {
-      alignItems: 'flex-start',
-    },
     standbyMetricLabel: {
       color: C.muted,
       fontSize: 9,
@@ -1091,6 +1179,9 @@ function makeStyles(C: LivePalette, isWide: boolean, isNarrow: boolean) {
     // Recent Laps Feed Section
     recentSection: {
       marginBottom: 16,
+      // Five columns across a 1300px screen spread far apart — keep it readable.
+      maxWidth: isWide ? 900 : undefined,
+      width: '100%',
     },
     feed: {
       backgroundColor: C.panel,
@@ -1124,7 +1215,6 @@ function makeStyles(C: LivePalette, isWide: boolean, isNarrow: boolean) {
     },
     feedDriver: {
       color: C.text,
-      flex: 1,
       minWidth: 0,
       fontSize: isNarrow ? 13 : 14,
       fontWeight: '600',
@@ -1146,7 +1236,51 @@ function makeStyles(C: LivePalette, isWide: boolean, isNarrow: boolean) {
       fontSize: isNarrow ? 12 : 13,
       textAlign: 'right',
     },
-    feedTypeCol: { marginLeft: isNarrow ? 6 : 8 },
+    feedTypeCol: { marginLeft: isNarrow ? 6 : 8, alignItems: 'center' },
+    // Columns share the width so the driver name can't take it all.
+    feedDriverCol: { flex: isNarrow ? 1.3 : 1.6, minWidth: 0, paddingRight: 8 },
+    feedLapCol: { flex: isNarrow ? 0.55 : 0.6 },
+    feedNumCol: { flex: 1 },
+    feedFootnote: { color: C.muted, fontSize: 11, marginTop: 8, paddingHorizontal: 4 },
+    statName: { flex: 1.6, minWidth: 0, paddingRight: 8 },
+    statNameInner: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    statCell: { flex: 1, textAlign: 'right' },
+    statValue: { color: C.text, fontFamily: monoBold, fontSize: 13 },
+    metricGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: C.elevated, borderRadius: 8, paddingVertical: 4 },
+    metricCell: { width: '25%', paddingHorizontal: 8, paddingVertical: 5 },
+    raised: { zIndex: 10 },
+    dropdownBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 999,
+      borderWidth: 1,
+      borderColor: C.border,
+      backgroundColor: C.panel,
+      maxWidth: 200,
+    },
+    dropdownText: { color: C.text, fontSize: 13, fontWeight: '700', flexShrink: 1 },
+    dropdownMenu: {
+      position: 'absolute',
+      top: 36,
+      right: 0,
+      minWidth: 200,
+      backgroundColor: C.panel,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: C.border,
+      paddingVertical: 4,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 8,
+    },
+    dropdownItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, paddingHorizontal: 14, paddingVertical: 10 },
+    dropdownItemText: { color: C.text, fontSize: 14, fontWeight: '600', flexShrink: 1 },
+    dropdownCount: { color: C.muted, fontFamily: monoMed, fontSize: 12 },
     feedTypePill: {
       alignItems: 'center',
       paddingVertical: 3,
