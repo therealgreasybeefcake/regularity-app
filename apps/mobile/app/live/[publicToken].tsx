@@ -681,7 +681,7 @@ export default function LiveView() {
             ) : (
               <View>
                 <View style={styles.feedHeaderRow}>
-                  {historyDriver ? null : <Text style={[styles.feedHeaderCell, styles.feedDriverCol]}>DRIVER</Text>}
+                  <Text style={[styles.feedHeaderCell, styles.feedDriverCol]}>DRIVER</Text>
                   <Text style={[styles.feedHeaderCell, styles.feedLapCol, { textAlign: 'center' }]}>LAP</Text>
                   <Text style={[styles.feedHeaderCell, styles.feedNumCol, { textAlign: 'right' }]}>TIME</Text>
                   <Text style={[styles.feedHeaderCell, styles.feedNumCol, { textAlign: 'right' }]}>DELTA</Text>
@@ -694,7 +694,7 @@ export default function LiveView() {
                   const typeColor = lapTypeColor(l.lapType, l.delta);
                   return (
                     <View key={`${l.driverId}-${l.number}-${l.timestamp}`} style={[styles.feedRow, i === historyLaps.length - 1 && { borderBottomWidth: 0 }]}>
-                      {historyDriver ? null : <Text style={[styles.feedDriver, styles.feedDriverCol]} numberOfLines={1}>{l.driver}</Text>}
+                      <Text style={[styles.feedDriver, styles.feedDriverCol]} numberOfLines={1}>{l.driver}</Text>
                       <Text style={[styles.feedLapNumber, styles.feedLapCol]}>#{l.number}</Text>
                       <Text style={[styles.feedTime, styles.feedNumCol]} numberOfLines={1}>{formatTime(l.time)}</Text>
                       <Text style={[styles.feedDelta, styles.feedNumCol, { color: deltaColor(l.delta) }]} numberOfLines={1}>
