@@ -66,7 +66,12 @@ Prices are rough AUD estimates from late 2026 (AliExpress, Core Electronics, Jay
 
 Panel listings are vague, so check these points. **Buy one panel first, flash the firmware and confirm it works**, then order the rest.
 
-1. **Scan rate.** Outdoor P10 RGB panels are usually **1/4 scan**. That's the default here (`PANEL_P10_OUTDOOR_32x16_4S`). 1/8-scan and 1/16-scan panels also work with a one-line change; see [Using different hardware](#using-different-hardware). Avoid 1/2-scan and static (1/1) panels, which this firmware doesn't support.
+There's **no brand to look for.** P10 modules are generic parts made by many factories (Qiangli, Hoozoe, EagerLED, Lightall, JYC and others) and sold under the seller's name. The chips can change between batches from the same seller. What matters is the spec below. Ask the seller to confirm the **scan rate** and the **driver chip** before buying.
+
+1. **Scan rate.** Outdoor P10 RGB panels are usually **1/4 scan**. That's the default here (`PANEL_P10_OUTDOOR_32x16_4S`).
+   - Some 1/4-scan modules are wired differently inside. If yours shows scrambled blocks, use `PANEL_P10_OUTDOOR_32x16_4S_ALT`.
+   - 1/8-scan and 1/16-scan panels also work with a one-line change; see [Using different hardware](#using-different-hardware).
+   - Avoid 1/2-scan and static (1/1) panels, which this firmware doesn't support.
 2. **Interface.** It must be **HUB75 or HUB75E** (a 16-pin IDC socket). Panels marked HUB12, HUB08 or "single colour" won't work.
 3. **Driver chip.** Read the markings on the chips on the back. Plain shift registers (ICN2037, MBI5024, SM16208…) work as they are. **FM6126A** and **ICN2038S** panels need `PANEL_DRIVER` changed in `config.h`, otherwise they stay black.
 4. **Full colour (RGB)**, not single or dual colour.
@@ -187,18 +192,21 @@ The firmware is in `firmware/`, a PlatformIO project. It has been compile-tested
    - `pio run -e esp32s3_generic -t upload` for any ESP32-S3 DevKit
    - `pio run -e esp32_generic -t upload` for a classic ESP32 DevKit / WROOM-32
 5. Power the sign. It shows its name and `PAIR` (`RegSign-XXXX` and `PAIR IN APP` on the 3 × 3), and a blue dot blinks in the corner until a phone connects.
-6. In the app, go to **Settings → LED Sign → Find sign**, pair, then tap **Test sign**. You should see 5 solid colour fills, then `88.8` in a white frame. If the image is scrambled, see [Troubleshooting](#troubleshooting).
+6. In the app, go to **Settings → LED Sign → Find sign**, pair, then tap **Test sign**. You should see 5 solid colour fills, then `88.8` in a white frame crossed by a blue diagonal. If the image is scrambled, see [Troubleshooting](#troubleshooting).
 
 ### Testing with one panel
 
 **Shopping list for the bench test (about A$80–140):**
 
-| Item | Where | Approx. A$ |
-|---|---|---|
-| Adafruit MatrixPortal S3 (product 5778) | Core Electronics, Little Bird, Adafruit | 45–55 |
-| 1 × outdoor P10 RGB module: 320 × 160 mm, 32 × 16 px, **1/4 scan**, HUB75, 5 V, with its ribbon and power lead | AliExpress or similar. Buy from the seller you'd get the other three from, so all four match. | 25–45 + postage |
-| USB-C cable that carries data (C-to-C, or A-to-C for your computer) | Anywhere | 0–15 |
-| *Optional:* USB-C inline power meter | Core Electronics, AliExpress | 15–30 |
+| Item | Model / part no. | Where | Approx. A$ |
+|---|---|---|---|
+| Controller | **Adafruit MatrixPortal S3**, Adafruit PID **5778** | Core Electronics SKU **ADA5778** (about A$39), Little Bird. Generic Amazon resellers ask about A$57. | 39–57 |
+| Panel | Generic **"P10 outdoor full colour SMD3535 LED module, 320 × 160 mm, 32 × 16, 1/4 scan, HUB75"** (no standard model number; see [Buying the panels](#buying-the-panels)) | AliExpress / eBay / Amazon. Buy from the seller you'd get the other three from, so all four match. | 25–45 + postage |
+| USB-C cable | Any USB-C data cable (C-to-C, or A-to-C for your computer) | — | 0–15 |
+| *Optional:* power meter | **FNIRSI FNAC-28** (cheap) or **FNIRSI FNB58** (logs current) | Core Electronics SKUs **CE10557** (about A$28) / **CE10556** (about A$75) | 28–75 |
+| *Only if needed:* header adapter | 2 × 8 pin, 2.54 mm **male–male** IDC header adapter | AliExpress, Core Electronics | 2–5 |
+
+The header adapter is for panels whose HUB75 socket sits in a deep plastic shroud, so the MatrixPortal can't push straight onto it. The panel's own ribbon has sockets on both ends, as does the MatrixPortal, so this adapter joins them.
 
 - **Power:** for one panel you don't need the 5 V wiring kit. The MatrixPortal can feed one panel from its 5 V screw terminals using the panel's power lead (check Adafruit's MatrixPortal S3 guide). Power the MatrixPortal from the Cygnett by USB-C.
 - **USB-C power meter:** worth having. It shows what the sign really draws, so you can check the power estimates before buying the rest.
@@ -302,11 +310,12 @@ Outdoor P10 1/4-scan panels only use A and B, so C, D and E can stay unconnected
 | Panel | `SIGN_PANEL` | Notes |
 |---|---|---|
 | Outdoor P10 RGB 32×16, 1/4 scan | `PANEL_P10_OUTDOOR_32x16_4S` | Default |
+| Outdoor P10 RGB 32×16, 1/4 scan, other wiring | `PANEL_P10_OUTDOOR_32x16_4S_ALT` | Try this if the default comes out scrambled |
 | P10 RGB 32×16, 1/8 scan | `PANEL_P10_32x16_8S` | Common "semi-outdoor" P10 |
 | 64×32, 1/16 scan (P3–P6 indoor) | `PANEL_64x32_16S` | Standard panels. Fine indoors, too dim in direct sun. |
 | Outdoor 64×32, 1/8 scan (P5/P6/P8) | `PANEL_OUTDOOR_64x32_8S` | 2 × 3 of P5 64×32 is about 640 × 480 mm |
 | 64×64, 1/32 scan | `PANEL_64x64_32S` | Needs the E pin (the MatrixPortal has it) |
-| Anything else | `PANEL_CUSTOM` | Set `PANEL_RES_X/Y` and a `PANEL_SCAN` mapping from the library |
+| Anything else | `PANEL_CUSTOM` | Set `PANEL_RES_X/Y`, `PANEL_MAPPING` (a library `ScanTypeMapping<...>` or your own struct in `panel_mappings.h`) and `PANEL_FOUR_SCAN` |
 
 - **Grid size:** change `GRID_COLS` and `GRID_ROWS` (default 2 × 2; 3 × 3 for the larger sign).
 - **Odd panels:** some outdoor panels use unusual internal wiring that no preset covers. The library's *Pixel_Mapping_Test* example helps you work out a custom mapping.
@@ -370,7 +379,7 @@ The timer sends **elapsed** time rather than a timestamp, so the sign needs no c
 | Symptom | Fix |
 |---|---|
 | Panels stay black, but the serial log says ready | Set `PANEL_DRIVER` to match the chips (FM6126A / ICN2038S). Check the 5 V supply and that the ribbon is in the panel's **input**. |
-| Image looks like scrambled stripes or blocks inside each panel | Wrong `SIGN_PANEL` / scan type. Try the 1/8 or 1/16 preset. |
+| Image looks like scrambled stripes or blocks inside each panel (the test's white frame and blue diagonal come out broken) | Wrong `SIGN_PANEL` / scan type. On outdoor P10s, try `PANEL_P10_OUTDOOR_32x16_4S_ALT` first, then the 1/8 preset. The HUB75 library's *Pixel_Mapping_Test* example helps work out an unusual panel. |
 | Each panel looks right, but they're in the wrong order or upside down | Wrong `GRID_CHAIN`. Try the other `CHAIN_*` options, or `_ZZ` if every panel is upright. |
 | Pixels smeared or shifted by one column | Set `PANEL_CLK_PHASE false`. |
 | Ghosting or flicker on generic ESP32 boards | Some panels need 5 V logic. Use a HUB75 shield with a 74HCT245 level shifter, or the MatrixPortal S3. |

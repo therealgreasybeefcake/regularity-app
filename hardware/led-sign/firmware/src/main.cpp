@@ -9,6 +9,7 @@
 
 #include "ble_link.h"
 #include "config.h"
+#include "panel_mappings.h"
 #include "power.h"
 #include "protocol.h"
 #include "renderer.h"
@@ -17,11 +18,11 @@
 #error "Needs an ESP32 or ESP32-S3: the S2 has no Bluetooth, and the C3/C6 aren't supported by the HUB75 library."
 #endif
 
-using SignPanel = VirtualMatrixPanel_T<GRID_CHAIN, ScanTypeMapping<PANEL_SCAN>>;
+using SignPanel = VirtualMatrixPanel_T<GRID_CHAIN, PANEL_MAPPING>;
 
-// 1/4-scan outdoor panels are wired electrically as twice as wide and half as
-// tall as they look; the ScanTypeMapping folds pixels back.
-constexpr bool kFourScan = PANEL_SCAN != STANDARD_TWO_SCAN;
+// Folded outdoor panels are wired electrically as twice as wide and half as
+// tall as they look; PANEL_MAPPING folds pixels back.
+constexpr bool kFourScan = PANEL_FOUR_SCAN;
 constexpr int kDmaResX = kFourScan ? PANEL_RES_X * 2 : PANEL_RES_X;
 constexpr int kDmaResY = kFourScan ? PANEL_RES_Y / 2 : PANEL_RES_Y;
 

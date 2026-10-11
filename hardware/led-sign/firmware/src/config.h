@@ -62,50 +62,66 @@
 // ---------------------------------------------------------------------------
 // 2. Panel module type. Pick ONE (check the seller's listing / the label on
 //    the back for size and "scan").
-//    PANEL_P10_OUTDOOR_32x16_4S — outdoor P10 RGB, 32x16, 1/4 scan (recommended, 320x160 mm)
-//    PANEL_P10_32x16_8S         — P10 RGB 32x16, 1/8 scan (common indoor/semi-outdoor)
-//    PANEL_64x32_16S            — standard 64x32, 1/16 scan (P3/P4/P5/P6 indoor)
-//    PANEL_OUTDOOR_64x32_8S     — outdoor 64x32, 1/8 scan (P5/P6/P8 outdoor)
-//    PANEL_64x64_32S            — 64x64, 1/32 scan (needs PIN_E)
-//    PANEL_CUSTOM               — set PANEL_RES_X/Y and PANEL_SCAN below
+//    PANEL_P10_OUTDOOR_32x16_4S     — outdoor P10 RGB, 32x16, 1/4 scan (recommended, 320x160 mm)
+//    PANEL_P10_OUTDOOR_32x16_4S_ALT — the same, for modules that come out
+//                                     scrambled with the preset above (try this second)
+//    PANEL_P10_32x16_8S             — P10 RGB 32x16, 1/8 scan (common indoor/semi-outdoor)
+//    PANEL_64x32_16S                — standard 64x32, 1/16 scan (P3/P4/P5/P6 indoor)
+//    PANEL_OUTDOOR_64x32_8S         — outdoor 64x32, 1/8 scan (P5/P6/P8 outdoor)
+//    PANEL_64x64_32S                — 64x64, 1/32 scan (needs PIN_E)
+//    PANEL_CUSTOM                   — set PANEL_RES_X/Y, PANEL_MAPPING and PANEL_FOUR_SCAN below
 // ---------------------------------------------------------------------------
-#define PANEL_P10_OUTDOOR_32x16_4S 1
-#define PANEL_P10_32x16_8S         2
-#define PANEL_64x32_16S            3
-#define PANEL_OUTDOOR_64x32_8S     4
-#define PANEL_64x64_32S            5
-#define PANEL_CUSTOM               6
+#define PANEL_P10_OUTDOOR_32x16_4S     1
+#define PANEL_P10_32x16_8S             2
+#define PANEL_64x32_16S                3
+#define PANEL_OUTDOOR_64x32_8S         4
+#define PANEL_64x64_32S                5
+#define PANEL_CUSTOM                   6
+#define PANEL_P10_OUTDOOR_32x16_4S_ALT 7
 
 #ifndef SIGN_PANEL
 #define SIGN_PANEL PANEL_P10_OUTDOOR_32x16_4S
 #endif
 
-// PANEL_SCAN is a ScanTypeMapping from the HUB75 library: STANDARD_TWO_SCAN
-// for "normal" panels, FOUR_SCAN_* for the folded outdoor ones.
+// PANEL_MAPPING turns sign pixels into the panel's wiring order: the HUB75
+// library's ScanTypeMapping<...> or one from panel_mappings.h.
+// PANEL_FOUR_SCAN = 1 for "folded" 1/4- and 1/8-scan outdoor panels, which
+// are wired as twice as wide and half as tall as they look.
 #if SIGN_PANEL == PANEL_P10_OUTDOOR_32x16_4S
   #define PANEL_RES_X 32
   #define PANEL_RES_Y 16
-  #define PANEL_SCAN  FOUR_SCAN_16PX_HIGH
+  #define PANEL_MAPPING ScanTypeMapping<FOUR_SCAN_16PX_HIGH>
+  #define PANEL_FOUR_SCAN 1
+#elif SIGN_PANEL == PANEL_P10_OUTDOOR_32x16_4S_ALT
+  #define PANEL_RES_X 32
+  #define PANEL_RES_Y 16
+  #define PANEL_MAPPING P10QuarterScanAlt
+  #define PANEL_FOUR_SCAN 1
 #elif SIGN_PANEL == PANEL_P10_32x16_8S
   #define PANEL_RES_X 32
   #define PANEL_RES_Y 16
-  #define PANEL_SCAN  STANDARD_TWO_SCAN
+  #define PANEL_MAPPING ScanTypeMapping<STANDARD_TWO_SCAN>
+  #define PANEL_FOUR_SCAN 0
 #elif SIGN_PANEL == PANEL_64x32_16S
   #define PANEL_RES_X 64
   #define PANEL_RES_Y 32
-  #define PANEL_SCAN  STANDARD_TWO_SCAN
+  #define PANEL_MAPPING ScanTypeMapping<STANDARD_TWO_SCAN>
+  #define PANEL_FOUR_SCAN 0
 #elif SIGN_PANEL == PANEL_OUTDOOR_64x32_8S
   #define PANEL_RES_X 64
   #define PANEL_RES_Y 32
-  #define PANEL_SCAN  FOUR_SCAN_32PX_HIGH
+  #define PANEL_MAPPING ScanTypeMapping<FOUR_SCAN_32PX_HIGH>
+  #define PANEL_FOUR_SCAN 1
 #elif SIGN_PANEL == PANEL_64x64_32S
   #define PANEL_RES_X 64
   #define PANEL_RES_Y 64
-  #define PANEL_SCAN  STANDARD_TWO_SCAN
+  #define PANEL_MAPPING ScanTypeMapping<STANDARD_TWO_SCAN>
+  #define PANEL_FOUR_SCAN 0
 #else
   #define PANEL_RES_X 32
   #define PANEL_RES_Y 16
-  #define PANEL_SCAN  FOUR_SCAN_16PX_HIGH
+  #define PANEL_MAPPING ScanTypeMapping<FOUR_SCAN_16PX_HIGH>
+  #define PANEL_FOUR_SCAN 1
 #endif
 
 // Driver chip on the panel (printed on the ICs). Most are plain shift

@@ -233,7 +233,9 @@ void drawTest(Adafruit_GFX& gfx, const SignState& st, uint32_t elapsed) {
     gfx.fillScreen(rgb565(st.config.colors[step]));
     return;
   }
+  // Frame + diagonal: a wrong panel mapping shows up as broken lines.
   gfx.drawRect(0, 0, gfx.width(), gfx.height(), WHITE);
+  gfx.drawLine(0, 0, gfx.width() - 1, gfx.height() - 1, rgb565(0, 120, 255));
   drawTextFit(gfx, "88.8", 2, 2, gfx.width() - 4, gfx.height() - 4, WHITE);
 }
 
