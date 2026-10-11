@@ -84,7 +84,17 @@ void drawGlyph(Adafruit_GFX& gfx, int x, int y, const Metrics& m, char c, uint16
 }
 
 // Built-in 6x8 GFX font, scaled. Used for letters (driver initials) and the strip.
-void drawFontText(Adafruit_GFX& gfx, const char* s, int bx, int by, int bw, int bh, uint16_t color, bool center) {
+void drawFontText(Adafruit_GFX& gfx, const char* text, int bx, int by, int bw, int bh, uint16_t color, bool center) {
+  // Too wide even at size 1 (e.g. "DA L12" on one 32 px panel): drop the spaces.
+  char packed[32];
+  const char* s = text;
+  if ((int)strlen(text) * 6 - 1 > bw) {
+    size_t n = 0;
+    for (const char* p = text; *p && n < sizeof packed - 1; p++)
+      if (*p != ' ') packed[n++] = *p;
+    packed[n] = 0;
+    s = packed;
+  }
   int len = strlen(s);
   if (!len) return;
   int size = max(1, min(bh / 8, (bw + 1) / (len * 6)));
@@ -255,8 +265,8 @@ void draw(Adafruit_GFX& gfx, const SignState& st, uint32_t now) {
     const char* name = st.name;
     const char* dash = strchr(name, '-');
     if ((int)strlen(name) * 6 - 1 > W && dash) name = dash + 1;
-    drawSmallCentered(gfx, name, H / 2 - 9, DIM);
-    drawSmallCentered(gfx, 11 * 6 - 1 > W ? "PAIR" : "PAIR IN APP", H / 2 + 2, DIM);
+    drawSmallCentered(gfx, name, max(0, H / 2 - 9), DIM);
+    drawSmallCentered(gfx, 11 * 6 - 1 > W ? "PAIR" : "PAIR IN APP", min(H - 8, H / 2 + 2), DIM);
     drawLinkHint(gfx, st, now);
     return;
   }

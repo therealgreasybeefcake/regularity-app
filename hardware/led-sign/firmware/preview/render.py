@@ -56,8 +56,8 @@ def main(out_dir: str) -> None:
         img.save(out / f"{row['id']}.png")
         caption = f"{row['title']}"
         power = f"≈{float(row['watts_full']):.0f} W at 75%  ·  30 W bank: {int(row['brightness_bank']) * 100 // 255}% → {float(row['watts_bank']):.0f} W"
-        tile = Image.new("RGB", (img.width, img.height + 64), (24, 24, 28))
-        tile.paste(img, (0, 0))
+        tile = Image.new("RGB", (max(img.width, 600), img.height + 64), (24, 24, 28))
+        tile.paste(img, ((tile.width - img.width) // 2, 0))
         t = ImageDraw.Draw(tile)
         t.text((BORDER, img.height + 8), caption, fill=(235, 235, 235), font=font(22))
         t.text((BORDER, img.height + 36), power, fill=(150, 150, 160), font=font(17))

@@ -135,7 +135,9 @@
 // then each row below reverses (serpentine; alternate rows mounted upside
 // down). _ZZ variants = every row runs the same way, all panels upright.
 // If the test pattern comes out scrambled, this is the setting to change.
+#ifndef GRID_CHAIN
 #define GRID_CHAIN CHAIN_TOP_RIGHT_DOWN
+#endif
 
 // ---------------------------------------------------------------------------
 // 4. Power.

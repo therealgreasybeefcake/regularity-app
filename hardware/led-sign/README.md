@@ -161,6 +161,16 @@ The firmware is in `firmware/`, a PlatformIO project. It has been compile-tested
 5. Power the sign. It shows its name and `PAIR` (`RegSign-XXXX` and `PAIR IN APP` on the 3 × 3), and a blue dot blinks in the corner until a phone connects.
 6. In the app, go to **Settings → LED Sign → Find sign**, pair, then tap **Test sign**. You should see 5 solid colour fills, then `88.8` in a white frame. If the image is scrambled, see [Troubleshooting](#troubleshooting).
 
+### Testing with one panel
+
+Before buying all four panels, you can test the whole system (Bluetooth, the app, every layout, colours, the display window, power limiting) on one panel and the MatrixPortal on your bench:
+
+1. Flash the one-panel build: `pio run -e matrixportal_s3_single -t upload`.
+2. Plug the MatrixPortal into the panel's input and power both from the 5 V USB-C cable. One panel draws only about 2–8 W.
+3. Pair and test from the app as normal.
+
+It's the same firmware, at 32 × 16 px, so the digits are about 140 mm tall ([renders](docs/screens-1x1.png)). When the other panels arrive, flash `matrixportal_s3` (2 × 2) again. Nothing in the app changes.
+
 The sign saves its settings (colours, layout, power) in flash, so it boots looking the same. The app also re-sends everything each time it connects.
 
 ### Previewing layouts
