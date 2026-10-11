@@ -46,7 +46,7 @@ Prices are rough AUD estimates from late 2026 (AliExpress, Core Electronics, Jay
 | 5 | 5 V distribution | 1 set | Wago 221 blocks, a 5 A inline fuse, and **0.75–1.5 mm²** leads to each panel. | 15 |
 | 6 | USB-C pigtail (screw terminal → USB-C) | 1 | Powers the MatrixPortal from the 5 V bus. A DevKit can take 5 V on its 5V/VIN pin instead. | 10 |
 | 7 | HUB75 ribbon cables | 3 | Usually included with the panels. | incl. |
-| 8 | Frame | 1 | 20 × 20 mm aluminium angle or extrusion, about 680 × 360 mm outside. Panels screw on through their magnet/screw holes. | 30–60 |
+| 8 | Frame | 1 | A 680 × 360 mm backing board (6 mm ply or 3 mm aluminium composite), 20 × 20 mm aluminium angle round the edge, and two steel strips for the panel magnets. See [Frame](#frame). | 30–60 |
 | 9 | Front louvre / hood | 1 | Matte black. Use a louvre grille, or a 50 mm hood over the top edge plus matte black paint on the frame. Optional smoked polycarbonate face (2–3 mm). | 20–50 |
 | 10 | Mounting | 1 | A pit-wall clamp or tripod bracket. The finished sign weighs about 3 kg. | 30–60 |
 | | **Total** (plus your bank) | | | **≈ 280–490**, or ≈ 240–435 with your own ESP32 |
@@ -88,6 +88,34 @@ Seen from the **front**, with the default `GRID_CHAIN CHAIN_TOP_RIGHT_DOWN` (ser
 - Each panel's HUB75 **output** connects by ribbon to the next panel's **input**. The arrows printed on the back of each panel show the data direction.
 - To keep **all panels upright**, use `CHAIN_TOP_RIGHT_DOWN_ZZ` and a longer ribbon from panel 2 back to panel 3.
 - If the test pattern comes out scrambled or mirrored, change `GRID_CHAIN`. The HUB75 library's [VirtualMatrixPanel docs](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/tree/master/examples/VirtualMatrixPanel) have diagrams of every option.
+
+### Frame
+
+```
+   front                                   back
+ ┌──────────────── hood ────────────────┐ ┌──────────────────────────────────────┐
+ │ ┌───────────────┬───────────────┐    │ │  ══════ steel strip ═══════════════  │
+ │ │      P10      │      P10      │    │ │ [MatrixPortal]   [Wago 5 V]  handle  │
+ │ ├───────────────┼───────────────┤    │ │  ══════ steel strip ═══════════════  │
+ │ │      P10      │      P10      │    │ │          bank in a pouch / velcro    │
+ │ └───────────────┴───────────────┘    │ └──────────────────────────────────────┘
+ └──── 20 mm black border, 680 × 360 ───┘
+```
+
+- **Backing board:** 6 mm marine ply or 3 mm aluminium composite panel (ACM, e.g. Alupanel), cut to 680 × 360 mm and painted **matte black**. That gives a 20 mm border round the 640 × 320 mm of panels.
+- **Mounting the panels:** P10 modules usually come with magnet posts on the back.
+  - Glue or rivet two strips of galvanised steel flat bar (25 × 3 mm) across the board, so the panels snap on and off.
+  - Or unscrew the magnets and fix the panels with M3 screws through the board; check the thread on your panels.
+  - Butt the panels tightly together so there are no gaps between digits.
+- **Edge:** 20 × 20 mm aluminium angle around the perimeter, riveted or screwed on. It stiffens the board and protects the panel edges.
+- **Sun hood:** a 50–80 mm deep strip of matte black Correx or aluminium flashing along the top edge, plus the sides if you like. Shading the panels is what keeps the black background black in sunlight, which does more for contrast than brightness.
+- **Back:**
+  - The MatrixPortal and Wago blocks go in a small box or under a cover. The panel fronts are weatherproof (IP65); the backs and electronics are not.
+  - Add a strain relief for the USB-C cable.
+  - Velcro or a pouch holds the power bank.
+- **Holding it up:** the finished sign is about 3–3.5 kg.
+  - Bolt a handle to the back to hold it out like a pit board.
+  - Or fit a pit-wall clamp, or a 1/4"-20 tripod plate in the centre of the back.
 
 ### Power wiring
 
@@ -162,6 +190,18 @@ The firmware is in `firmware/`, a PlatformIO project. It has been compile-tested
 6. In the app, go to **Settings → LED Sign → Find sign**, pair, then tap **Test sign**. You should see 5 solid colour fills, then `88.8` in a white frame. If the image is scrambled, see [Troubleshooting](#troubleshooting).
 
 ### Testing with one panel
+
+**Shopping list for the bench test (about A$80–140):**
+
+| Item | Where | Approx. A$ |
+|---|---|---|
+| Adafruit MatrixPortal S3 (product 5778) | Core Electronics, Little Bird, Adafruit | 45–55 |
+| 1 × outdoor P10 RGB module: 320 × 160 mm, 32 × 16 px, **1/4 scan**, HUB75, 5 V, with its ribbon and power lead | AliExpress or similar. Buy from the seller you'd get the other three from, so all four match. | 25–45 + postage |
+| USB-C cable that carries data (C-to-C, or A-to-C for your computer) | Anywhere | 0–15 |
+| *Optional:* USB-C inline power meter | Core Electronics, AliExpress | 15–30 |
+
+- **Power:** for one panel you don't need the 5 V wiring kit. The MatrixPortal can feed one panel from its 5 V screw terminals using the panel's power lead (check Adafruit's MatrixPortal S3 guide). Power the MatrixPortal from the Cygnett by USB-C.
+- **USB-C power meter:** worth having. It shows what the sign really draws, so you can check the power estimates before buying the rest.
 
 Before buying all four panels, you can test the whole system (Bluetooth, the app, every layout, colours, the display window, power limiting) on one panel and the MatrixPortal on your bench:
 
