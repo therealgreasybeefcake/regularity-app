@@ -51,6 +51,13 @@ Prices are rough AUD estimates from late 2026 (AliExpress, Core Electronics, Jay
 | 10 | Mounting | 1 | A pit-wall clamp or tripod bracket. The finished sign weighs about 3 kg. | 30–60 |
 | | **Total** (plus your bank) | | | **≈ 280–490**, or ≈ 240–435 with your own ESP32 |
 
+**Budget build, about A$155–255:**
+- 4 panels at the cheap end, no spare.
+- Your own ESP32 DevKit.
+- The USB-C cable and wiring (rows 4–6).
+- A frame and hood made from timber or aluminium offcuts and Correx, painted matte black.
+- A clamp or tripod you already have.
+
 **Optional, for full brightness all the time:** a USB-C PD trigger set to **9 V** plus a **9 V → 5 V, 8–10 A step-down converter** (about A$25–45). This gets the bank's full 30 W instead of 15 W. You won't need it with the after-lap display window; see [Power](#power).
 
 **Tools:** PlatformIO (VS Code) to flash the firmware, a multimeter, and ideally a USB-C power meter, so you can see what the sign really draws.
