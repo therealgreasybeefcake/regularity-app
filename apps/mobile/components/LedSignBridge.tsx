@@ -32,6 +32,7 @@ export function LedSignBridge() {
         lapType: last.lapType,
         lapNumber: last.number,
         deltaSec: last.delta,
+        timeSec: last.time,
         targetSec: driver.targetTime,
         driverName: driver.name,
       });

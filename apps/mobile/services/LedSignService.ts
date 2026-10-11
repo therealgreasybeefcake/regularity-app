@@ -9,6 +9,8 @@ import {
   encodeClearPacket,
   encodeConfigPacket,
   encodeLapPacket,
+  encodeLayoutPacket,
+  encodePowerPacket,
   encodeTestPacket,
   encodeTimerPacket,
   type LedSignConfig,
@@ -130,6 +132,7 @@ class LedSignServiceClass {
             config: {
               ...DEFAULT_LED_SIGN_CONFIG,
               ...saved.config,
+              layout: { ...DEFAULT_LED_SIGN_CONFIG.layout, ...saved.config?.layout },
               colors: { ...DEFAULT_LED_SIGN_CONFIG.colors, ...saved.config?.colors },
             },
           },
@@ -332,7 +335,10 @@ class LedSignServiceClass {
   }
 
   private replayState() {
-    void this.write(encodeConfigPacket(this.state.settings.config));
+    const { config } = this.state.settings;
+    void this.write(encodePowerPacket(config.powerBudgetW, config.ecoLeadSec));
+    void this.write(encodeConfigPacket(config));
+    void this.write(encodeLayoutPacket(config.layout));
     void this.write(this.lastLap ? encodeLapPacket(this.lastLap) : encodeClearPacket());
     void this.write(this.timerPacket());
   }
@@ -340,7 +346,10 @@ class LedSignServiceClass {
   updateConfig(patch: Partial<LedSignConfig>) {
     const config = { ...this.state.settings.config, ...patch };
     this.setSettings({ config });
-    void this.write(encodeConfigPacket(config));
+    if ('powerBudgetW' in patch || 'ecoLeadSec' in patch) void this.write(encodePowerPacket(config.powerBudgetW, config.ecoLeadSec));
+    if ('layout' in patch) void this.write(encodeLayoutPacket(config.layout));
+    const NOT_IN_CONFIG_PACKET = ['layout', 'preset', 'powerBudgetW', 'ecoLeadSec'];
+    if (Object.keys(patch).some((k) => !NOT_IN_CONFIG_PACKET.includes(k))) void this.write(encodeConfigPacket(config));
   }
 
   /** Show a lap's delta on the sign (the active driver's latest lap). */

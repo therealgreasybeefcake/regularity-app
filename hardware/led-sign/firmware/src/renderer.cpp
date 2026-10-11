@@ -20,11 +20,23 @@ Metrics metricsFor(int h) {
   return m;
 }
 
-//                      0     1     2     3     4     5     6     7     8     9
-const uint8_t SEG[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};  // bits: a b c d e f g
+// Segment bits a b c d e f g; 0 = not a segment glyph.
+uint8_t segBits(char c) {
+  static const uint8_t DIGITS[10] = {0x3F, 0x06, 0x5B, 0x4F, 0x66, 0x6D, 0x7D, 0x07, 0x7F, 0x6F};
+  if (c >= '0' && c <= '9') return DIGITS[c - '0'];
+  if (c == 'L') return 0x38;
+  return 0;
+}
+
+/** True if every char can be drawn in the segment font (else use the text font). */
+bool isSegmentText(const char* s) {
+  for (; *s; s++)
+    if (!segBits(*s) && !strchr("+-.: ", *s)) return false;
+  return true;
+}
 
 int glyphWidth(char c, const Metrics& m) {
-  if (c >= '0' && c <= '9') return m.w;
+  if (segBits(c)) return m.w;
   if (c == '+' || c == '-') return m.signW;
   if (c == '.' || c == ':') return m.t;
   if (c == ' ') return m.w / 2;
@@ -42,23 +54,22 @@ int textWidth(const char* s, const Metrics& m) {
   return n ? w + (n - 1) * m.gap : 0;
 }
 
-void drawDigit(Adafruit_GFX& gfx, int x, int y, const Metrics& m, int d, uint16_t color) {
-  const uint8_t s = SEG[d];
+void drawSegments(Adafruit_GFX& gfx, int x, int y, const Metrics& m, uint8_t s, uint16_t color) {
   const int t = m.t, w = m.w, h = m.h;
   const int mid = y + (h - t) / 2;
-  if (s & 0x01) gfx.fillRect(x, y, w, t, color);                    // a
-  if (s & 0x02) gfx.fillRect(x + w - t, y, t, mid - y + t, color);  // b
-  if (s & 0x04) gfx.fillRect(x + w - t, mid, t, y + h - mid, color);// c
-  if (s & 0x08) gfx.fillRect(x, y + h - t, w, t, color);            // d
-  if (s & 0x10) gfx.fillRect(x, mid, t, y + h - mid, color);        // e
-  if (s & 0x20) gfx.fillRect(x, y, t, mid - y + t, color);          // f
-  if (s & 0x40) gfx.fillRect(x, mid, w, t, color);                  // g
+  if (s & 0x01) gfx.fillRect(x, y, w, t, color);                     // a
+  if (s & 0x02) gfx.fillRect(x + w - t, y, t, mid - y + t, color);   // b
+  if (s & 0x04) gfx.fillRect(x + w - t, mid, t, y + h - mid, color); // c
+  if (s & 0x08) gfx.fillRect(x, y + h - t, w, t, color);             // d
+  if (s & 0x10) gfx.fillRect(x, mid, t, y + h - mid, color);         // e
+  if (s & 0x20) gfx.fillRect(x, y, t, mid - y + t, color);           // f
+  if (s & 0x40) gfx.fillRect(x, mid, w, t, color);                   // g
 }
 
 void drawGlyph(Adafruit_GFX& gfx, int x, int y, const Metrics& m, char c, uint16_t color) {
   const int mid = y + (m.h - m.t) / 2;
-  if (c >= '0' && c <= '9') {
-    drawDigit(gfx, x, y, m, c - '0', color);
+  if (uint8_t s = segBits(c)) {
+    drawSegments(gfx, x, y, m, s, color);
   } else if (c == '-') {
     gfx.fillRect(x, mid, m.signW, m.t, color);
   } else if (c == '+') {
@@ -72,8 +83,22 @@ void drawGlyph(Adafruit_GFX& gfx, int x, int y, const Metrics& m, char c, uint16
   }
 }
 
+// Built-in 6x8 GFX font, scaled. Used for letters (driver initials) and the strip.
+void drawFontText(Adafruit_GFX& gfx, const char* s, int bx, int by, int bw, int bh, uint16_t color, bool center) {
+  int len = strlen(s);
+  if (!len) return;
+  int size = max(1, min(bh / 8, (bw + 1) / (len * 6)));
+  int tw = len * 6 * size - size;
+  gfx.setTextWrap(false);
+  gfx.setTextSize(size);
+  gfx.setTextColor(color);
+  gfx.setCursor(center ? bx + max(0, (bw - tw) / 2) : bx, by + (bh - 8 * size) / 2 + (size > 1 ? size / 2 : 0));
+  gfx.print(s);
+}
+
 // Largest glyph height whose text fits the box, centred in it.
 void drawTextFit(Adafruit_GFX& gfx, const char* s, int bx, int by, int bw, int bh, uint16_t color) {
+  if (!isSegmentText(s)) return drawFontText(gfx, s, bx, by, bw, bh, color, true);
   for (int h = bh; h >= 5; h--) {
     Metrics m = metricsFor(h);
     int tw = textWidth(s, m);
@@ -90,18 +115,8 @@ void drawTextFit(Adafruit_GFX& gfx, const char* s, int bx, int by, int bw, int b
   }
 }
 
-// Built-in 6x8 GFX font, for the small info lines.
-void drawSmall(Adafruit_GFX& gfx, const char* s, int x, int y, uint16_t color) {
-  gfx.setTextWrap(false);
-  gfx.setTextSize(1);
-  gfx.setTextColor(color);
-  gfx.setCursor(x, y);
-  gfx.print(s);
-}
-
 void drawSmallCentered(Adafruit_GFX& gfx, const char* s, int y, uint16_t color) {
-  int w = strlen(s) * 6 - 1;
-  drawSmall(gfx, s, max(0, (gfx.width() - w) / 2), y, color);
+  drawFontText(gfx, s, 0, y, gfx.width(), 8, color, true);
 }
 
 uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b) { return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3); }
@@ -110,6 +125,91 @@ uint16_t rgb565(const Rgb& c) { return rgb565(c.r, c.g, c.b); }
 const uint16_t WHITE = 0xFFFF;
 const uint16_t DIM = rgb565(90, 90, 90);
 const uint16_t LINK_BLUE = rgb565(0, 80, 255);
+
+bool isLive(uint8_t f) { return f == F_COUNTDOWN || f == F_ELAPSED; }
+
+uint32_t targetMs(const SignState& st) { return st.timer.targetMs ? st.timer.targetMs : st.lap.targetMs; }
+
+/** Live fields give way to the hold field for a few seconds after each lap. */
+uint8_t effectiveField(const SignState& st, uint8_t field, uint32_t now) {
+  if (isLive(field) && st.lap.valid && st.layout.holdSec && now - st.lap.receivedAt < st.layout.holdSec * 1000UL)
+    return st.layout.holdField;
+  return field;
+}
+
+void trimmed(const char* in, char* out, size_t n) {
+  snprintf(out, n, "%s", in);
+  for (int i = strlen(out) - 1; i >= 0 && out[i] == ' '; i--) out[i] = 0;
+}
+
+/** Same strings as signFieldText() in the app. False = nothing to show yet. */
+bool fieldText(const SignState& st, uint8_t field, uint32_t now, char* out, size_t n) {
+  const LapInfo& lap = st.lap;
+  const uint8_t dec = st.config.decimals;
+  char initials[4];
+  trimmed(lap.initials, initials, sizeof initials);
+  switch (field) {
+    case F_DELTA:
+      if (!lap.valid) return false;
+      formatDelta(lap.deltaMs, dec, out, n);
+      return true;
+    case F_LAP_TIME:
+    case F_LAP_TIME_FULL:
+      if (!lap.valid) return false;
+      formatTime(lap.timeMs, dec, field == F_LAP_TIME, out, n);
+      return true;
+    case F_COUNTDOWN:
+      if (!st.timer.known) return false;
+      formatCountdown((int64_t)targetMs(st) - (int64_t)st.timer.elapsedNow(now), out, n);
+      return true;
+    case F_ELAPSED:
+      if (!st.timer.known) return false;
+      formatTime(st.timer.elapsedNow(now), 1, true, out, n);
+      return true;
+    case F_LAP_NUMBER:
+      if (!lap.valid) return false;
+      snprintf(out, n, "L%u", lap.number);
+      return true;
+    case F_DRIVER:
+      if (!lap.valid || !initials[0]) return false;
+      snprintf(out, n, "%s", initials);
+      return true;
+    case F_DRIVER_LAP:
+      if (!lap.valid) return false;
+      snprintf(out, n, initials[0] ? "%s L%u" : "%sL%u", initials, lap.number);
+      return true;
+    case F_TARGET:
+      if (!targetMs(st)) return false;
+      formatTime(targetMs(st), dec, true, out, n);
+      return true;
+    default:
+      return false;
+  }
+}
+
+uint16_t fieldColor(const SignState& st, uint8_t field, const FieldStyle& style, uint32_t now) {
+  if (!style.byLapType) return rgb565(style.rgb);
+  if (isLive(field)) {
+    // Colour of the lap if it ended now: not yet due = white, bonus window, then base.
+    int64_t over = (int64_t)st.timer.elapsedNow(now) - (int64_t)targetMs(st);
+    if (over < 0) return WHITE;
+    return rgb565(st.config.colors[over < 1000 ? LAP_BONUS : LAP_BASE]);
+  }
+  return st.lap.valid ? rgb565(st.config.colors[st.lap.type]) : DIM;
+}
+
+void drawField(Adafruit_GFX& gfx, const SignState& st, const FieldStyle& style, int x, int y, int w, int h, bool strip,
+               bool blackText, uint32_t now) {
+  const uint8_t field = effectiveField(st, style.field, now);
+  char text[24];
+  if (!fieldText(st, field, now, text, sizeof text)) {
+    if (!strip) drawTextFit(gfx, st.config.decimals == 2 ? "-.--" : "-.-", x, y, w, h, DIM);
+    return;
+  }
+  uint16_t color = blackText ? 0 : fieldColor(st, field, style, now);
+  if (strip) drawFontText(gfx, text, x, y, w, h, color, false);
+  else drawTextFit(gfx, text, x, y, w, h, color);
+}
 
 void drawLinkHint(Adafruit_GFX& gfx, const SignState& st, uint32_t now) {
   if (!st.connected && (now / 500) % 2 == 0) gfx.fillRect(0, 0, 2, 2, LINK_BLUE);
@@ -127,28 +227,16 @@ void drawTest(Adafruit_GFX& gfx, const SignState& st, uint32_t elapsed) {
   drawTextFit(gfx, "88.8", 2, 2, gfx.width() - 4, gfx.height() - 4, WHITE);
 }
 
-void drawCountdown(Adafruit_GFX& gfx, const SignState& st, uint32_t now) {
-  uint32_t target = st.timer.targetMs ? st.timer.targetMs : st.lap.targetMs;
-  int64_t remaining = (int64_t)target - (int64_t)st.timer.elapsedNow(now);
-  char text[12];
-  uint16_t color = WHITE;
-  if (remaining > 0) {
-    uint32_t r = (uint32_t)remaining;
-    if (r >= 60000) snprintf(text, sizeof text, "%lu:%02lu", (unsigned long)(r / 60000), (unsigned long)((r / 1000) % 60));
-    else if (r >= 10000) snprintf(text, sizeof text, "%lu", (unsigned long)(r / 1000));
-    else snprintf(text, sizeof text, "%lu.%lu", (unsigned long)(r / 1000), (unsigned long)((r % 1000) / 100));
-  } else {
-    // Past target: count up, in the colour the lap would score if crossed now.
-    int32_t over = (int32_t)(-remaining);
-    formatDelta(over, 1, text, sizeof text);
-    color = rgb565(st.config.colors[over < 1000 ? LAP_BONUS : LAP_BASE]);
-  }
-  drawTextFit(gfx, text, 1, 1, gfx.width() - 2, gfx.height() - 2, color);
-}
-
 }  // namespace
 
 namespace Renderer {
+
+bool isLit(const SignState& st, uint32_t now) {
+  if (!st.power.ecoLeadSec || !st.timer.known || !st.timer.running || !targetMs(st)) return true;
+  const uint32_t afterLapMs = max<uint32_t>(ECO_AFTER_LAP_MS, st.layout.holdSec * 1000UL);
+  if (st.lap.valid && now - st.lap.receivedAt < afterLapMs) return true;
+  return st.timer.elapsedNow(now) + st.power.ecoLeadSec * 1000UL >= targetMs(st);
+}
 
 void draw(Adafruit_GFX& gfx, const SignState& st, uint32_t now) {
   const int W = gfx.width(), H = gfx.height();
@@ -159,46 +247,38 @@ void draw(Adafruit_GFX& gfx, const SignState& st, uint32_t now) {
     return;
   }
 
+  if (!st.lap.valid && !st.connected) {
+    // Name on screen so you know which sign to pick in the app.
+    drawSmallCentered(gfx, st.name, H / 2 - 9, DIM);
+    drawSmallCentered(gfx, "PAIR IN APP", H / 2 + 2, DIM);
+    drawLinkHint(gfx, st, now);
+    return;
+  }
+
+  if (!isLit(st, now)) {
+    gfx.drawPixel(W / 2, H - 1, DIM);  // eco: dark between passes, one "alive" pixel
+    drawLinkHint(gfx, st, now);
+    return;
+  }
+
   const SignConfig& cfg = st.config;
-  const bool holdingDelta = st.lap.valid && now - st.lap.receivedAt < DELTA_HOLD_MS;
-  if (cfg.mode == MODE_COUNTDOWN && st.timer.known && st.timer.running && !holdingDelta) {
-    drawCountdown(gfx, st, now);
-    drawLinkHint(gfx, st, now);
-    return;
-  }
+  const bool filled = st.lap.valid && st.lap.type == LAP_BROKEN && (cfg.flags & FLAG_FILL_ON_BROKEN);
+  if (filled) gfx.fillScreen(rgb565(cfg.colors[LAP_BROKEN]));
+  const bool flashOff = st.lap.valid && st.lap.type == LAP_SAFETY && (cfg.flags & FLAG_FLASH_SAFETY) && (now / 250) % 2;
 
-  if (!st.lap.valid) {
-    if (!st.connected) {
-      // Name on screen so you know which sign to pick in the app.
-      drawSmallCentered(gfx, st.name, H / 2 - 9, DIM);
-      drawSmallCentered(gfx, "PAIR IN APP", H / 2 + 2, DIM);
+  if (!flashOff) {
+    const SignLayout& lay = st.layout;
+    if (lay.secondary.field == F_NONE) {
+      drawField(gfx, st, lay.main, 1, 1, W - 2, H - 2, false, filled, now);
+    } else if (lay.secondarySize == SEC_STRIP && H >= 24) {
+      drawField(gfx, st, lay.main, 1, 1, W - 2, H - 12, false, filled, now);
+      drawField(gfx, st, lay.secondary, 1, H - 9, W - 2, 8, true, filled, now);
     } else {
-      drawTextFit(gfx, cfg.decimals == 2 ? "-.--" : "-.-", 1, 1, W - 2, H - 2, DIM);
+      const int secH = lay.secondarySize == SEC_HALF ? (H - 3) / 2 : H / 3;
+      const int mainH = H - secH - 3;
+      drawField(gfx, st, lay.main, 1, 1, W - 2, mainH, false, filled, now);
+      drawField(gfx, st, lay.secondary, 1, mainH + 2, W - 2, secH, false, filled, now);
     }
-    drawLinkHint(gfx, st, now);
-    return;
-  }
-
-  uint16_t color = rgb565(cfg.colors[st.lap.type]);
-  if (st.lap.type == LAP_BROKEN && (cfg.flags & FLAG_FILL_ON_BROKEN)) {
-    gfx.fillScreen(color);
-    color = 0;  // black digits on a solid board
-  }
-  const bool flashOff = st.lap.type == LAP_SAFETY && (cfg.flags & FLAG_FLASH_SAFETY) && (now / 250) % 2;
-
-  char text[16];
-  formatDelta(st.lap.deltaMs, cfg.decimals, text, sizeof text);
-
-  if (cfg.mode == MODE_DELTA_LAP && H >= 24) {
-    const int strip = 10;  // 8 px font + 2 px gap
-    if (!flashOff) drawTextFit(gfx, text, 1, 1, W - 2, H - strip - 2, color);
-    char lapText[8];
-    snprintf(lapText, sizeof lapText, "L%u", st.lap.number);
-    uint16_t stripColor = color ? DIM : 0;
-    drawSmall(gfx, st.lap.initials, 1, H - 8, stripColor);
-    drawSmall(gfx, lapText, W - (int)strlen(lapText) * 6, H - 8, stripColor);
-  } else if (!flashOff) {
-    drawTextFit(gfx, text, 1, 1, W - 2, H - 2, color);
   }
   drawLinkHint(gfx, st, now);
 }

@@ -5,6 +5,8 @@
 
 struct SignState {
   SignConfig config;
+  SignLayout layout;
+  PowerConfig power;
   LapInfo lap;
   TimerInfo timer;
   bool connected = false;
@@ -17,4 +19,6 @@ struct SignState {
 // changes main.cpp's display setup, never this.
 namespace Renderer {
 void draw(Adafruit_GFX& gfx, const SignState& state, uint32_t now);
+/** Eco mode: false while the car is nowhere near the board (sign goes dark). */
+bool isLit(const SignState& state, uint32_t now);
 }

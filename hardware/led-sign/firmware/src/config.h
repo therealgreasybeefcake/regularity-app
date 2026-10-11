@@ -130,15 +130,28 @@
 #define GRID_CHAIN CHAIN_TOP_RIGHT_DOWN
 
 // ---------------------------------------------------------------------------
-// 4. Power. Hard cap on brightness (0–255) whatever the app asks for — lower
-//    it if your 5 V supply browns out (flicker / resets) on bright frames.
+// 4. Power.
+//    The sign estimates each frame's draw and dims itself to stay under the
+//    budget the app sends (Settings → LED Sign → Power source). The default
+//    below applies until the app connects, and suits a 30 W USB-C power bank.
+//    Calibrate the per-LED figures against a meter on your panels: show a
+//    known frame, read the 5 V current, adjust until the serial log's
+//    estimate matches.
 // ---------------------------------------------------------------------------
-#define MAX_BRIGHTNESS 255
+#define MAX_BRIGHTNESS 255           // hard cap (0–255) whatever the app asks for
+#define MIN_BRIGHTNESS 8             // never dim below this when power-limiting
+#define POWER_BUDGET_DEFAULT_W 22    // 30 W PD bank via a 9 V trigger + buck; 0 = no limit
+#define ECO_LEAD_DEFAULT_SEC 0       // eco mode off until the app turns it on
+#define ECO_AFTER_LAP_MS 10000       // eco: stay lit this long after each lap
+// One LED colour channel at full duty. 4608 px x 3 channels x 0.025 W ≈ 345 W
+// at full white for 9 outdoor P10 modules, in line with their spec sheets.
+#define WATTS_PER_LED_CHANNEL 0.025f
+#define IDLE_WATTS_PER_PANEL 0.3f    // driver ICs + scanning with every LED off
+#define CONTROLLER_WATTS 0.6f        // ESP32-S3 with BLE
 
 // ---------------------------------------------------------------------------
 // 5. Misc
 // ---------------------------------------------------------------------------
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.1.0"
 #define SIGN_NAME_PREFIX "RegSign"   // advertised as RegSign-XXXX (last MAC bytes)
-#define DELTA_HOLD_MS 8000           // countdown mode: show the delta this long after a lap
 #define FRAME_MS 40                  // redraw interval (25 fps)
