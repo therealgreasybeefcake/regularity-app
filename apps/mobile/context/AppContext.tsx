@@ -8,6 +8,7 @@ import { subscribeTeamEvents } from '../lib/teamEvents';
 import { syncQueue, type SyncState } from '../lib/syncQueue';
 import { randomUuid, deterministicUuid } from '../lib/uuid';
 import { WEB_URL } from '../constants/config';
+import { LedSignService } from '../services/LedSignService';
 
 interface LiveSessionState {
   id: string;
@@ -983,6 +984,8 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const reportTimerState = useCallback(
     (running: boolean, lapStartedAt: number | null, stoppedAt: number | null = null) => {
+      // The LED sign follows the stopwatch whether or not a live session exists.
+      LedSignService.sendTimer(running, lapStartedAt, stoppedAt);
       const live = liveSessionRef.current;
       if (!live) return;
       if (userRoleRef.current && !canRecord(userRoleRef.current)) return;

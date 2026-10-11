@@ -89,6 +89,17 @@
             ]
           }
         }
+      ],
+      [
+        "react-native-ble-plx",
+        {
+          "isBackgroundEnabled": false,
+          "modes": [
+            "central"
+          ],
+          "bluetoothAlwaysPermission": "Regularity connects to your Bluetooth LED pit-board sign to show lap deltas.",
+          "neverForLocation": true
+        }
       ]
     ],
     "web": {

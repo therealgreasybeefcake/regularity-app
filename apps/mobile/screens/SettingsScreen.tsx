@@ -34,6 +34,7 @@ import {
   Divider,
   Collapsible,
 } from '../components/ui';
+import { LedSignSettings } from '../components/LedSignSettings';
 
 // ---- Shared role helpers ----
 
@@ -947,6 +948,13 @@ export default function SettingsScreen() {
               }
               theme={theme}
             />
+          </Collapsible>
+        )}
+
+        {/* LED Sign — Bluetooth pit board (hardware/led-sign) */}
+        {Platform.OS !== 'web' && (
+          <Collapsible title="LED Sign" defaultOpen={false} icon="bluetooth-outline">
+            <LedSignSettings />
           </Collapsible>
         )}
 
