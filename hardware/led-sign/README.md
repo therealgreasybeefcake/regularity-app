@@ -46,8 +46,8 @@ Prices are rough AUD estimates from late 2026 (AliExpress, Core Electronics, Jay
 | 5 | 5 V distribution | 1 set | Wago 221 blocks, a 5 A inline fuse, and **0.75–1.5 mm²** leads to each panel. | 15 |
 | 6 | USB-C pigtail (screw terminal → USB-C) | 1 | Powers the MatrixPortal from the 5 V bus. A DevKit can take 5 V on its 5V/VIN pin instead. | 10 |
 | 7 | HUB75 ribbon cables | 3 | Usually included with the panels. | incl. |
-| 8 | Frame | 1 | A 680 × 360 mm backing board (6 mm ply or 3 mm aluminium composite), 20 × 20 mm aluminium angle round the edge, and two steel strips for the panel magnets. See [Frame](#frame). | 30–60 |
-| 9 | Front louvre / hood | 1 | Matte black. Use a louvre grille, or a 50 mm hood over the top edge plus matte black paint on the frame. Optional smoked polycarbonate face (2–3 mm). | 20–50 |
+| 8 | Frame | 1 | An open ladder frame: 20 × 20 mm aluminium angle round the edge, two steel flat-bar rails for the panel magnets, a black Correx back cover. See [Frame](#frame). | 30–60 |
+| 9 | Front mask + sun hood | 1 | Matte black Correx or ACM: a 20 mm border around the panels plus an 80 mm hood along the top. Optional smoked polycarbonate face (2–3 mm). | 10–30 |
 | 10 | Mounting | 1 | A pit-wall clamp or tripod bracket. The finished sign weighs about 3 kg. | 30–60 |
 | | **Total** (plus your bank) | | | **≈ 280–490**, or ≈ 240–435 with your own ESP32 |
 
@@ -96,31 +96,39 @@ Seen from the **front**, with the default `GRID_CHAIN CHAIN_TOP_RIGHT_DOWN` (ser
 
 ### Frame
 
+Use an **open "ladder" frame** rather than a solid board. The MatrixPortal and the power leads plug into the back of the panels and stick out about 25–30 mm, so they need open space behind. A solid board would need cut-outs behind every connector.
+
 ```
-   front                                   back
- ┌──────────────── hood ────────────────┐ ┌──────────────────────────────────────┐
- │ ┌───────────────┬───────────────┐    │ │  ══════ steel strip ═══════════════  │
- │ │      P10      │      P10      │    │ │ [MatrixPortal]   [Wago 5 V]  handle  │
- │ ├───────────────┼───────────────┤    │ │  ══════ steel strip ═══════════════  │
- │ │      P10      │      P10      │    │ │          bank in a pouch / velcro    │
- │ └───────────────┴───────────────┘    │ └──────────────────────────────────────┘
- └──── 20 mm black border, 680 × 360 ───┘
+ BACK VIEW (panels face away from you)          SIDE VIEW
+ ┌──────────────── 680 ────────────────┐           hood ▶ ╲___
+ │ ┌─────────────────────────────────┐ │                   │▌ panel
+ │ │═══ steel rail ═════════════════ │ │ 360          rail ─┤▌
+ │ │      [MP]    [Wago]   ▐handle▌  │ │                   │▌ panel
+ │ │═══ steel rail ═════════════════ │ │              rail ─┤▌
+ │ └─────────────────────────────────┘ │                   │
+ └──── 20×20 aluminium angle edge ─────┘           (Correx back cover)
 ```
 
-- **Backing board:** 6 mm marine ply or 3 mm aluminium composite panel (ACM, e.g. Alupanel), cut to 680 × 360 mm and painted **matte black**. That gives a 20 mm border round the 640 × 320 mm of panels.
-- **Mounting the panels:** P10 modules usually come with magnet posts on the back.
-  - Glue or rivet two strips of galvanised steel flat bar (25 × 3 mm) across the board, so the panels snap on and off.
-  - Or unscrew the magnets and fix the panels with M3 screws through the board; check the thread on your panels.
-  - Butt the panels tightly together so there are no gaps between digits.
-- **Edge:** 20 × 20 mm aluminium angle around the perimeter, riveted or screwed on. It stiffens the board and protects the panel edges.
-- **Sun hood:** a 50–80 mm deep strip of matte black Correx or aluminium flashing along the top edge, plus the sides if you like. Shading the panels is what keeps the black background black in sunlight, which does more for contrast than brightness.
-- **Back:**
-  - The MatrixPortal and Wago blocks go in a small box or under a cover. The panel fronts are weatherproof (IP65); the backs and electronics are not.
-  - Add a strain relief for the USB-C cable.
-  - Velcro or a pouch holds the power bank.
-- **Holding it up:** the finished sign is about 3–3.5 kg.
-  - Bolt a handle to the back to hold it out like a pit board.
-  - Or fit a pit-wall clamp, or a 1/4"-20 tripod plate in the centre of the back.
+**Cut list** (Bunnings has all of it):
+
+| Part | Size | Qty | Notes |
+|---|---|---|---|
+| Aluminium angle, 20 × 20 × 1.6 mm | 680 mm and 360 mm lengths | 2 + 2 | The outer edge. Butt-join the corners with small gusset plates or angle brackets, and pop-rivet. |
+| Galvanised steel flat bar, 25 × 3 mm | 680 mm | 2 | Horizontal rails riveted to the side angles. The panels' magnets stick to these, so the panels snap on and off. **Measure your panel's magnet positions first** and set the rail heights to match. |
+| Front border "mask" | 680 × 360 mm with a 640 × 320 mm window | 1 | Black Correx or 3 mm aluminium composite (ACM), matte black. It hides the edges and makes the digits pop. |
+| Sun hood | 680 × 80 mm | 1 | Black Correx or aluminium flashing along the top edge, angled slightly down. It keeps sun off the LEDs so the black stays black. |
+| Back cover | 680 × 360 mm | 1 | Black Correx, screwed on. It keeps rain and fingers off the electronics, with a slot for the USB-C cable. |
+| Handle | — | 1 | A cupboard D-handle bolted to a rail, to hold it up as a pit board. Or fit a pit-wall clamp, or a 1/4"-20 tripod plate in the centre. |
+| Fixings | — | — | Pop rivets, M4 bolts, velcro or a pouch for the power bank, cable ties. |
+
+That comes to roughly **A$40–70**, and the finished sign is about **3 kg**.
+
+**Tips:**
+- **No magnets?** Fix the panels with M3 screws through the rails into the magnet holes; check the thread on your panels.
+- **Gaps:** butt the panels tightly together so there are no gaps through the digits.
+- **Mounting:** mount the MatrixPortal on panel 1's input (top right, seen from the front). Run the power leads to Wago blocks fixed on a rail.
+- **Weather:** the panel fronts are weatherproof (IP65); the backs and electronics are not, so keep the back cover on in rain.
+- **Ready-made option:** AliExpress sells **"P10 LED sign aluminium profile frame" kits** (extrusion, corners and a back sheet) cut to 640 × 320 mm. Add the front mask and the hood.
 
 ### Power wiring
 
