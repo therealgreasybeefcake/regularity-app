@@ -232,10 +232,12 @@ void drawTest(Adafruit_GFX& gfx, const SignState& st, uint32_t elapsed) {
 namespace Renderer {
 
 bool isLit(const SignState& st, uint32_t now) {
-  if (!st.power.ecoLeadSec || !st.timer.known || !st.timer.running || !targetMs(st)) return true;
-  const uint32_t afterLapMs = max<uint32_t>(ECO_AFTER_LAP_MS, st.layout.holdSec * 1000UL);
-  if (st.lap.valid && now - st.lap.receivedAt < afterLapMs) return true;
-  return st.timer.elapsedNow(now) + st.power.ecoLeadSec * 1000UL >= targetMs(st);
+  const PowerConfig& p = st.power;
+  if ((!p.ecoLeadSec && !p.ecoAfterSec) || !st.timer.known || !st.timer.running) return true;
+  // After a lap: the lap's digits, for ecoAfterSec (measured from lap start, i.e. when the lap arrived).
+  if (p.ecoAfterSec && st.lap.valid && now - st.lap.receivedAt < p.ecoAfterSec * 1000UL) return true;
+  // Before the car is due: e.g. for a countdown.
+  return p.ecoLeadSec && targetMs(st) && st.timer.elapsedNow(now) + p.ecoLeadSec * 1000UL >= targetMs(st);
 }
 
 void draw(Adafruit_GFX& gfx, const SignState& st, uint32_t now) {
@@ -248,9 +250,13 @@ void draw(Adafruit_GFX& gfx, const SignState& st, uint32_t now) {
   }
 
   if (!st.lap.valid && !st.connected) {
-    // Name on screen so you know which sign to pick in the app.
-    drawSmallCentered(gfx, st.name, H / 2 - 9, DIM);
-    drawSmallCentered(gfx, "PAIR IN APP", H / 2 + 2, DIM);
+    // Name on screen so you know which sign to pick in the app (shortened to
+    // its unique suffix if the sign is too narrow for "RegSign-AB12").
+    const char* name = st.name;
+    const char* dash = strchr(name, '-');
+    if ((int)strlen(name) * 6 - 1 > W && dash) name = dash + 1;
+    drawSmallCentered(gfx, name, H / 2 - 9, DIM);
+    drawSmallCentered(gfx, 11 * 6 - 1 > W ? "PAIR" : "PAIR IN APP", H / 2 + 2, DIM);
     drawLinkHint(gfx, st, now);
     return;
   }

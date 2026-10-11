@@ -39,7 +39,7 @@ static void applyRotation() { panel->setRotation((state.config.flags & FLAG_FLIP
 // Settings survive a reboot (or a power-bank swap) so the sign comes back
 // looking the same before the app reconnects.
 static void loadSettings() {
-  state.power = {POWER_BUDGET_DEFAULT_W, ECO_LEAD_DEFAULT_SEC};
+  state.power = {POWER_BUDGET_DEFAULT_W, ECO_LEAD_DEFAULT_SEC, ECO_AFTER_DEFAULT_SEC};
   prefs.begin("sign", false);
   if (prefs.getBytesLength("cfg") == sizeof(SignConfig)) prefs.getBytes("cfg", &state.config, sizeof(SignConfig));
   if (prefs.getBytesLength("layout") == sizeof(SignLayout)) prefs.getBytes("layout", &state.layout, sizeof(SignLayout));

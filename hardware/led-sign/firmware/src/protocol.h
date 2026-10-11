@@ -50,7 +50,8 @@ struct SignConfig {
   uint8_t reserved = 0;
   uint8_t decimals = 1;
   uint8_t flags = FLAG_FLASH_SAFETY;
-  Rgb colors[LAP_TYPE_COUNT] = {{0, 255, 0}, {255, 160, 0}, {255, 0, 0}, {0, 120, 255}, {255, 220, 0}};
+  // No red by default (banned in some formats): green, yellow, orange, blue, white.
+  Rgb colors[LAP_TYPE_COUNT] = {{0, 255, 0}, {255, 220, 0}, {255, 80, 0}, {0, 120, 255}, {255, 255, 255}};
 };
 
 struct FieldStyle {
@@ -67,9 +68,11 @@ struct SignLayout {
   uint8_t holdSec = 0;
 };
 
+// Eco applies while the stopwatch runs; with both times 0 the sign is always lit.
 struct PowerConfig {
-  uint16_t budgetW;  // 0 = no limit
-  uint8_t ecoLeadSec;  // 0 = always lit; else light only from this long before the car is due
+  uint16_t budgetW;     // 0 = no limit
+  uint8_t ecoLeadSec;   // light up this long before the car is due (0 = off)
+  uint8_t ecoAfterSec;  // show the digits this long after each lap (0 = off)
 };
 
 struct LapInfo {
@@ -146,6 +149,7 @@ inline bool parsePower(const uint8_t* d, size_t len, PowerConfig& out) {
   if (len < 3 || d[0] != OP_POWER) return false;
   out.budgetW = rdU16(d + 1);
   out.ecoLeadSec = len >= 4 ? d[3] : 0;
+  out.ecoAfterSec = len >= 5 ? d[4] : 0;
   return true;
 }
 

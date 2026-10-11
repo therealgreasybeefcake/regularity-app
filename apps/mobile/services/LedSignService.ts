@@ -13,6 +13,7 @@ import {
   encodePowerPacket,
   encodeTestPacket,
   encodeTimerPacket,
+  withoutRed,
   type LedSignConfig,
   type LedSignLap,
 } from '@regularity/core';
@@ -125,17 +126,14 @@ class LedSignServiceClass {
       const raw = await AsyncStorage.getItem(STORAGE_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as Partial<LedSignSettings>;
+        const config: LedSignConfig = {
+          ...DEFAULT_LED_SIGN_CONFIG,
+          ...saved.config,
+          layout: { ...DEFAULT_LED_SIGN_CONFIG.layout, ...saved.config?.layout },
+          colors: { ...DEFAULT_LED_SIGN_CONFIG.colors, ...saved.config?.colors },
+        };
         this.setState({
-          settings: {
-            ...DEFAULT_SETTINGS,
-            ...saved,
-            config: {
-              ...DEFAULT_LED_SIGN_CONFIG,
-              ...saved.config,
-              layout: { ...DEFAULT_LED_SIGN_CONFIG.layout, ...saved.config?.layout },
-              colors: { ...DEFAULT_LED_SIGN_CONFIG.colors, ...saved.config?.colors },
-            },
-          },
+          settings: { ...DEFAULT_SETTINGS, ...saved, config: config.allowRed ? config : withoutRed(config) },
         });
       }
     } catch {
@@ -336,7 +334,7 @@ class LedSignServiceClass {
 
   private replayState() {
     const { config } = this.state.settings;
-    void this.write(encodePowerPacket(config.powerBudgetW, config.ecoLeadSec));
+    void this.write(encodePowerPacket(config.powerBudgetW, config.ecoLeadSec, config.ecoAfterSec));
     void this.write(encodeConfigPacket(config));
     void this.write(encodeLayoutPacket(config.layout));
     void this.write(this.lastLap ? encodeLapPacket(this.lastLap) : encodeClearPacket());
@@ -344,11 +342,15 @@ class LedSignServiceClass {
   }
 
   updateConfig(patch: Partial<LedSignConfig>) {
-    const config = { ...this.state.settings.config, ...patch };
+    const merged = { ...this.state.settings.config, ...patch };
+    // Red stays off the sign entirely unless the user allows it (race rules).
+    const config = merged.allowRed ? merged : withoutRed(merged);
     this.setSettings({ config });
-    if ('powerBudgetW' in patch || 'ecoLeadSec' in patch) void this.write(encodePowerPacket(config.powerBudgetW, config.ecoLeadSec));
-    if ('layout' in patch) void this.write(encodeLayoutPacket(config.layout));
-    const NOT_IN_CONFIG_PACKET = ['layout', 'preset', 'powerBudgetW', 'ecoLeadSec'];
+    if ('powerBudgetW' in patch || 'ecoLeadSec' in patch || 'ecoAfterSec' in patch) {
+      void this.write(encodePowerPacket(config.powerBudgetW, config.ecoLeadSec, config.ecoAfterSec));
+    }
+    if ('layout' in patch || 'allowRed' in patch) void this.write(encodeLayoutPacket(config.layout));
+    const NOT_IN_CONFIG_PACKET = ['layout', 'preset', 'powerBudgetW', 'ecoLeadSec', 'ecoAfterSec'];
     if (Object.keys(patch).some((k) => !NOT_IN_CONFIG_PACKET.includes(k))) void this.write(encodeConfigPacket(config));
   }
 

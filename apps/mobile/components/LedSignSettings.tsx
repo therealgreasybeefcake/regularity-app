@@ -4,6 +4,7 @@ import {
   LED_SIGN_LAP_TYPES,
   LED_SIGN_LIVE_FIELDS,
   LED_SIGN_PRESETS,
+  isRed,
   signFieldText,
   type LapType,
   type LedSignColor,
@@ -56,16 +57,18 @@ const SECONDARY_FIELDS: LedSignField[] = ['none', 'delta', 'lapTime', 'lapTimeFu
 const HOLD_FIELDS: LedSignField[] = ['delta', 'lapTime'];
 
 /** Saturated, high-contrast LED colours (pastels wash out on a sign in sunlight). */
-const SWATCHES: Rgb[] = [
+const ALL_SWATCHES: Rgb[] = [
   [255, 255, 255],
   [0, 255, 0],
+  [255, 220, 0],
   [255, 160, 0],
+  [255, 80, 0],
   [255, 0, 0],
   [0, 120, 255],
-  [255, 220, 0],
   [0, 255, 255],
   [255, 0, 255],
 ];
+const swatchesFor = (allowRed: boolean) => (allowRed ? ALL_SWATCHES : ALL_SWATCHES.filter((s) => !isRed(s)));
 
 const BRIGHTNESS = [
   { label: '25%', value: '64' },
@@ -84,6 +87,14 @@ const POWER_SOURCES = [
   { label: '100 W PD', value: '75' },
 ];
 
+const ECO_AFTER = [
+  { label: 'Always', value: '0' },
+  { label: '10 s', value: '10' },
+  { label: '15 s', value: '15' },
+  { label: '20 s', value: '20' },
+  { label: '30 s', value: '30' },
+];
+
 const ECO_LEAD = [
   { label: 'Off', value: '0' },
   { label: '10 s', value: '10' },
@@ -96,7 +107,7 @@ const HOW_IT_WORKS: [string, string][] = [
   ['Pair once', 'Power the sign, tap Find sign and pick the name it shows on its panels. After that the app reconnects by itself.'],
   ['Time as normal', 'Every lap you record for the active driver appears on the sign within a second. Edits, deletes, changeovers and driver switches update it too.'],
   ['Choose the display', 'Pick a preset (delta, lap time, both, countdown…) or build your own. Colours follow the lap type — bonus, base, broken — or stay fixed.'],
-  ['Power', 'Tell it what powers it. The sign dims itself to stay within a power bank\'s limit, and Eco keeps it dark until the car is due.'],
+  ['Power', 'Tell it what powers it. The sign dims itself to stay within a power bank\'s limit, and can show the digits for just the first few seconds of each lap, then go dark.'],
 ];
 
 const PREVIEW_DELTA: Record<LapType, number> = { bonus: 0.42, base: 1.73, broken: -0.38, changeover: 4.12, safety: 21.5 };
@@ -153,12 +164,12 @@ function SignPreview({ config, lapType }: { config: LedSignConfig; lapType: LapT
   );
 }
 
-function ColorPicker({ value, onChange }: { value: LedSignColor; onChange: (c: LedSignColor) => void }) {
+function ColorPicker({ value, swatches, onChange }: { value: LedSignColor; swatches: Rgb[]; onChange: (c: LedSignColor) => void }) {
   const { theme } = useTheme();
   return (
     <View style={styles.swatches}>
       <Chip label="Lap type" size="sm" active={value === 'lapType'} onPress={() => onChange('lapType')} />
-      {SWATCHES.map((s) => (
+      {swatches.map((s) => (
         <Pressable
           key={s.join(',')}
           accessibilityLabel={`Colour ${s.join(',')}`}
@@ -202,6 +213,8 @@ export function LedSignSettings() {
     LedSignService.updateConfig({ preset: 'custom', layout: { ...layout, ...patch } });
   const hasLiveField = LED_SIGN_LIVE_FIELDS.includes(layout.main.field) || LED_SIGN_LIVE_FIELDS.includes(layout.secondary.field);
   const preset = LED_SIGN_PRESETS.find((p) => p.id === config.preset);
+  const swatches = swatchesFor(config.allowRed);
+  const ecoOn = config.ecoAfterSec > 0 || config.ecoLeadSec > 0;
 
   const nearest = (options: { value: string }[], v: number) =>
     options.reduce((best, o) => (Math.abs(Number(o.value) - v) < Math.abs(Number(best.value) - v) ? o : best)).value;
@@ -334,7 +347,7 @@ export function LedSignSettings() {
         <View>
           {sectionTitle('Main line')}
           <FieldPicker fields={MAIN_FIELDS} value={layout.main.field} onChange={(field) => editLayout({ main: { ...layout.main, field } })} />
-          <ColorPicker value={layout.main.color} onChange={(color) => editLayout({ main: { ...layout.main, color } })} />
+          <ColorPicker value={layout.main.color} swatches={swatches} onChange={(color) => editLayout({ main: { ...layout.main, color } })} />
 
           {sectionTitle('Second line')}
           <FieldPicker
@@ -356,7 +369,7 @@ export function LedSignSettings() {
                   onChange={(size) => editLayout({ secondary: { ...layout.secondary, size } })}
                 />
               </View>
-              <ColorPicker value={layout.secondary.color} onChange={(color) => editLayout({ secondary: { ...layout.secondary, color } })} />
+              <ColorPicker value={layout.secondary.color} swatches={swatches} onChange={(color) => editLayout({ secondary: { ...layout.secondary, color } })} />
             </>
           )}
 
@@ -407,17 +420,38 @@ export function LedSignSettings() {
           ? `The sign dims itself to stay under about ${config.powerBudgetW} W, so the power bank never cuts out.`
           : 'No power limit — for the 12 V battery and 40 A converter.',
       )}
-      {sectionTitle('Eco — light up only when the car is due')}
+      {sectionTitle('Show the digits')}
       <SegmentedControl
         size="sm"
-        options={ECO_LEAD}
-        value={nearest(ECO_LEAD, config.ecoLeadSec)}
-        onChange={(v) => LedSignService.updateConfig({ ecoLeadSec: Number(v) })}
+        scrollable
+        options={ECO_AFTER}
+        value={ecoOn ? nearest(ECO_AFTER.slice(1), config.ecoAfterSec) : '0'}
+        onChange={(v) =>
+          LedSignService.updateConfig(v === '0' ? { ecoAfterSec: 0, ecoLeadSec: 0 } : { ecoAfterSec: Number(v) })
+        }
       />
       {caption(
-        config.ecoLeadSec > 0
-          ? `While the Timer runs, the sign stays dark until ${config.ecoLeadSec} s before the target and for 10 s after each lap. On a 1:45 lap that's about a quarter of the time, so a power bank lasts 2–3× longer.`
+        ecoOn
+          ? `While the Timer runs, the sign shows each lap for ${config.ecoAfterSec} s after the lap starts, then goes dark until the next lap. On a 1:45 lap it's lit about ${Math.round((config.ecoAfterSec + config.ecoLeadSec) / 1.05)}% of the time, so a power bank lasts far longer. When the Timer is stopped the sign stays lit.`
           : 'Always lit.',
+      )}
+      {ecoOn && (
+        <>
+          {sectionTitle('Also light up before the car is due')}
+          <SegmentedControl
+            size="sm"
+            options={ECO_LEAD}
+            value={nearest(ECO_LEAD, config.ecoLeadSec)}
+            onChange={(v) => LedSignService.updateConfig({ ecoLeadSec: Number(v) })}
+          />
+          {caption(
+            config.ecoLeadSec > 0
+              ? `Lights up ${config.ecoLeadSec} s before the target time too — handy for the countdown.`
+              : 'Off — dark until the next lap.',
+          )}
+          {hasLiveField && config.ecoLeadSec === 0 &&
+            caption('Note: the countdown and lap clock only show while the sign is lit. Turn this on to see them as the car approaches.')}
+        </>
       )}
 
       {/* Colours per lap type */}
@@ -430,7 +464,7 @@ export function LedSignSettings() {
               <Text style={[styles.title, { color: theme.text }]}>{LAP_TYPE_LABEL[type]}</Text>
             </View>
             <View style={[styles.swatches, { flex: 1, marginTop: 0 }]}>
-              {SWATCHES.map((s) => (
+              {swatches.map((s) => (
                 <Pressable
                   key={s.join(',')}
                   accessibilityLabel={`${LAP_TYPE_LABEL[type]} colour ${s.join(',')}`}
@@ -446,6 +480,12 @@ export function LedSignSettings() {
         );
       })}
 
+      {toggle(
+        'Allow red',
+        'Some regularity formats ban red on pit boards. While off, red is replaced with orange everywhere on the sign.',
+        config.allowRed,
+        (v) => LedSignService.updateConfig({ allowRed: v }),
+      )}
       <Divider faint />
       {toggle('Solid board on broken laps', 'Fill the whole sign with the broken colour, digits in black. Uses much more power.', config.fillOnBroken, (v) =>
         LedSignService.updateConfig({ fillOnBroken: v }),

@@ -43,7 +43,7 @@ int main(int argc, char** argv) {
   const std::vector<Scene> scenes = {
       {"delta-bonus", "Delta · bonus lap", [](SignState& s) { lap(s, LAP_BONUS, 420, 108740); }},
       {"delta-base", "Delta · base lap", [](SignState& s) { lap(s, LAP_BASE, 1730, 110050); }},
-      {"delta-broken", "Delta · broken lap", [](SignState& s) { lap(s, LAP_BROKEN, -380, 107940); }},
+      {"delta-broken", "Delta · broken lap (orange)", [](SignState& s) { lap(s, LAP_BROKEN, -380, 107940); }},
       {"laptime", "Lap time (1:48.7 → 48.7)", [](SignState& s) {
          s.layout.main = byLap(F_LAP_TIME);
          lap(s, LAP_BONUS, 420, 108740);
@@ -90,9 +90,9 @@ int main(int argc, char** argv) {
          s.config.flags |= FLAG_FILL_ON_BROKEN;
          lap(s, LAP_BROKEN, -380, 107940);
        }},
-      {"eco-dark", "Eco · dark between passes", [](SignState& s) {
-         s.power.ecoLeadSec = 15;
-         lap(s, LAP_BONUS, 420, 108740);
+      {"eco-dark", "Eco · dark after the first 15 s of the lap", [](SignState& s) {
+         s.power.ecoAfterSec = 15;
+         lap(s, LAP_BONUS, 420, 108740, 40000);
          timer(s, 40000, 108320);
        }},
       {"pairing", "Waiting to pair", [](SignState& s) { s.connected = false; }},
@@ -108,7 +108,7 @@ int main(int argc, char** argv) {
     SignState s;
     s.connected = true;
     strcpy(s.name, "RegSign-AB12");
-    s.power = {0, 0};
+    s.power = {0, 0, 0};
     sc.setup(s);
 
     GFXcanvas16 canvas(W, H);

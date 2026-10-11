@@ -117,10 +117,18 @@
 #define PANEL_CLK_PHASE true
 
 // ---------------------------------------------------------------------------
-// 3. Panel grid. 3 x 3 of 320x160 mm P10 modules = 960 x 480 mm, 96 x 48 px.
+// 3. Panel grid.
+//    2 x 2 P10 = 640 x 320 mm, 64 x 32 px: ~300 mm digits, plenty for three
+//               digits like 48.7 or +0.4 at 50 m (recommended).
+//    3 x 3 P10 = 960 x 480 mm, 96 x 48 px: ~460 mm digits, and room for
+//               two-line layouts (delta + time).
 // ---------------------------------------------------------------------------
-#define GRID_COLS 3
-#define GRID_ROWS 3
+#ifndef GRID_COLS
+#define GRID_COLS 2
+#endif
+#ifndef GRID_ROWS
+#define GRID_ROWS 2
+#endif
 
 // How the ribbon cable snakes through the grid, seen from the FRONT (LED side):
 // CHAIN_TOP_RIGHT_DOWN = data enters the top-right panel, runs right-to-left,
@@ -141,10 +149,10 @@
 #define MAX_BRIGHTNESS 255           // hard cap (0–255) whatever the app asks for
 #define MIN_BRIGHTNESS 8             // never dim below this when power-limiting
 #define POWER_BUDGET_DEFAULT_W 22    // 30 W PD bank via a 9 V trigger + buck; 0 = no limit
-#define ECO_LEAD_DEFAULT_SEC 0       // eco mode off until the app turns it on
-#define ECO_AFTER_LAP_MS 10000       // eco: stay lit this long after each lap
-// One LED colour channel at full duty. 4608 px x 3 channels x 0.025 W ≈ 345 W
-// at full white for 9 outdoor P10 modules, in line with their spec sheets.
+#define ECO_LEAD_DEFAULT_SEC 0       // eco: light up before the car is due (0 = off)
+#define ECO_AFTER_DEFAULT_SEC 15     // eco: show the digits this long after each lap (0 = off)
+// One LED colour channel at full duty. 512 px x 3 channels x 0.025 W ≈ 38 W
+// at full white per outdoor P10 module, in line with their spec sheets.
 #define WATTS_PER_LED_CHANNEL 0.025f
 #define IDLE_WATTS_PER_PANEL 0.3f    // driver ICs + scanning with every LED off
 #define CONTROLLER_WATTS 0.6f        // ESP32-S3 with BLE

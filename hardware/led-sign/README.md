@@ -1,32 +1,33 @@
 # Regularity LED Sign
 
-A large Bluetooth pit-board sign. The Regularity app sends it each lap's delta or lap time, and drivers can read it from about 50 m at speed.
+A Bluetooth pit-board sign. The Regularity app sends it each lap's delta or lap time, and drivers can read it from about 50 m at speed.
 
-- **Size:** 960 × 480 mm, from a 3 × 3 grid of outdoor P10 RGB panels (96 × 48 pixels).
-- **Digits:** about 460 mm tall with one decimal (`+0.4`) and about 420 mm with two (`+0.42`). That's well above the roughly 250 mm needed at 50 m.
+- **Size:** 640 × 320 mm, from a 2 × 2 grid of outdoor P10 RGB panels (64 × 32 pixels). That's enough for three digits (`48.7`, `+0.4`).
+- **Digits:** about **300 mm tall**, above the roughly 250 mm needed at 50 m. For 460 mm digits or two lines (delta + time), build the [larger 3 × 3 sign](#larger-3--3-sign).
 - **Readability:** about 5,000–7,000 nit outdoor panels behind a matte black louvre, so it reads in direct sun.
-- **Display:** choose a preset (delta, lap time, both, countdown…) or your own layout and colours in the app.
-- **Power:** a 30 W USB-C power bank lasts a 6-hour day in Eco mode. For all-day full brightness, use a 12 V LiFePO4 battery.
+- **Display:** choose a preset (delta, lap time, countdown…) or your own fields and colours in the app. Red is off by default, since some formats ban it; broken laps show in orange.
+- **Power:** a 30 W USB-C power bank, through a plain USB-C cable. With the digits shown for 15 s after each lap, it should last well over a 6-hour day.
 
 ```
- Regularity app ──BLE (≤20-byte writes)──▶ ESP32-S3 (MatrixPortal S3) ──HUB75──▶ 9 × P10 panels
+ Regularity app ──BLE (≤20-byte writes)──▶ ESP32-S3 (MatrixPortal S3) ──HUB75──▶ 4 × P10 panels
  (phone on pit wall)                         firmware/ in this folder           ▲
-                                                                               5 V / 40 A
-                                         30 W PD power bank or 12 V LiFePO4 ──▶ DC-DC converter
+                                                                               5 V
+                                                    30 W USB-C power bank ─────┘
 ```
 
-![Example screens, rendered by the firmware's own drawing code](docs/screens.png)
+![Example screens on the 2 × 2 sign, rendered by the firmware's own drawing code](docs/screens.png)
 
-*These are rendered by the firmware's real drawing code (see [Previewing layouts](#previewing-layouts)). Under each screen: estimated draw at 75% brightness, and the brightness the sign drops to on a 30 W power bank.*
+*These are rendered by the firmware's real drawing code (see [Previewing layouts](#previewing-layouts)). Under each screen: estimated draw at 75% brightness, and the brightness on a 30 W bank's power budget. The two-line screens show why two lines need the 3 × 3 sign: on 2 × 2 each line is only about 150 mm tall. [3 × 3 renders](docs/screens-3x3.png).*
 
 ## How it works
 
-1. **The sign** is 9 LED panels on a frame, driven by an ESP32 board running the firmware in `firmware/`. It advertises itself over Bluetooth LE as `RegSign-XXXX`.
+1. **The sign** is 4 LED panels on a frame, driven by an ESP32 board running the firmware in `firmware/`. It advertises itself over Bluetooth LE as `RegSign-XXXX`.
 2. **Pair once** in the app (**Settings → LED Sign → Find sign**). The app remembers the sign and reconnects by itself, including after the sign is power-cycled or a power bank is swapped.
 3. **Time as normal.** Each time a lap is recorded for the active driver, the app sends one small Bluetooth message (lap type, delta, lap time, lap number, driver initials). The sign shows it within about a second. Lap edits, deletes, changeovers and driver switches re-send it.
-4. **The stopwatch is mirrored.** The app tells the sign when the lap started and what the target is. The sign then runs live fields (countdown, lap clock) itself, so nothing is sent every second.
-5. **The sign does the drawing.** The app sends data and settings, not pixels. The firmware picks the largest digits that fit, colours them, and dims itself to stay within the power budget.
-6. **Settings persist on the sign**, so after a reboot it looks the same before the app reconnects. The app also re-sends everything on every connect.
+4. **The sign lights up when it matters.** While the stopwatch runs, it shows the digits for a set time after each lap starts (10–30 s, chosen in the app), then goes dark until the next lap. It can also light up a little before the car is due. When the stopwatch is stopped, the sign stays lit.
+5. **The stopwatch is mirrored.** The app tells the sign when the lap started and what the target is. The sign runs its own timing (the display window, countdown, lap clock), so nothing is sent every second.
+6. **The sign does the drawing.** The app sends data and settings, not pixels. The firmware picks the largest digits that fit, colours them, and dims itself if needed to stay within the power budget.
+7. **Settings persist on the sign**, so after a reboot it looks the same before the app reconnects.
 
 Contents: [How it works](#how-it-works) · [Parts list](#parts-list) · [Buying the panels](#buying-the-panels) · [Building it](#building-it) · [Power](#power) · [Firmware](#firmware) · [What the sign shows](#what-the-sign-shows) · [Using different hardware](#using-different-hardware) · [App](#app) · [Protocol](#protocol) · [Troubleshooting](#troubleshooting)
 
@@ -38,34 +39,25 @@ Prices are rough AUD estimates from late 2026 (AliExpress, Core Electronics, Jay
 
 | # | Part | Qty | Spec / notes | Approx. A$ |
 |---|------|-----|--------------|-----------|
-| 1 | **Outdoor P10 RGB LED module** | 9 (+1 spare) | 320 × 160 mm, 32 × 16 px, **1/4 scan**, HUB75, 5 V, SMD, front IP65, ≥ 5,000 nit. Most come with a ribbon cable and a power lead. | 25–45 each |
-| 2 | **Adafruit MatrixPortal S3** (product 5778) | 1 | ESP32-S3 controller with Bluetooth. Plugs straight into the first panel's HUB75 input socket. | 40–55 |
-| 3 | DC-DC step-down converter, **12 V → 5 V, 40 A (200 W)** | 1 | Potted/waterproof type. 30 A is the bare minimum. | 40–70 |
-| 4 | **12 V LiFePO4 battery, 30 Ah** | 1 | Built-in BMS, ≥ 50 A continuous. About 8–12 h at full brightness (see [Power](#power)); a 20 Ah battery gives about 6–9 h. Optional if you use a power bank. | 250–400 |
-| 5 | Inline blade fuse holder + **30 A fuse** | 1 | On the battery positive lead. | 10 |
-| 6 | 5 V distribution | 1 set | 2 × bus bars (or Wago 221 blocks). Use **1.5 mm²** wire to each panel and **4 mm²** from the converter to the bus. One 15 A fuse per panel row is recommended. | 30 |
-| 7 | Battery-to-sign cable | 1 | 2-core 2.5 mm², 2–3 m, with an Anderson SB50 or XT60 plug, so the battery sits at your feet. | 30 |
-| 8 | USB-C pigtail (5 V screw terminal → USB-C) | 1 | Powers the MatrixPortal from the 5 V bus. | 10 |
-| 9 | HUB75 ribbon cables | 8 | Usually included with the panels. Buy 30–50 cm ones if you'll use the zig-zag layout. | incl. |
-| 10 | Frame | 1 | 20 × 20 mm aluminium angle or extrusion, 1000 × 520 mm outside size. Panels screw on through their magnet/screw holes. | 50–100 |
-| 11 | Front louvre / hood | 1 | Matte black. Use a louvre grille, or a 50 mm hood over the top edge plus matte black paint on the frame. Optional smoked polycarbonate face (2–3 mm). | 30–80 |
-| 12 | Mounting | 1 | A pit-wall clamp or tripod bracket. The finished sign weighs about 6–8 kg, so it isn't really hand-held. | 30–60 |
-| | **Total** | | | **≈ 700–1,100** |
+| 1 | **Outdoor P10 RGB LED module** | 4 (+1 spare) | 320 × 160 mm, 32 × 16 px, **1/4 scan**, HUB75, 5 V, SMD, front IP65, ≥ 5,000 nit. Most come with a ribbon cable and a power lead. | 25–45 each |
+| 2 | **Adafruit MatrixPortal S3** (product 5778), *or an ESP32 / ESP32-S3 DevKit you already have* | 1 | Bluetooth controller. The MatrixPortal plugs straight into the first panel's HUB75 input; a DevKit needs jumper wires (see [Controller boards](#controller-boards)). | 40–55 |
+| 3 | **30 W USB-C PD power bank**, e.g. your Cygnett 20,000 mAh | 1 | Must give **5 V at 3 A** on USB-C (almost all do). | — |
+| 4 | **USB-C "sink" cable or breakout → bare wires** | 1 | Has 5.1 kΩ CC resistors so the bank turns on 5 V at up to 3 A (search "USB-C to DC bare wire 5V 3A" or "USB-C 5V sink breakout"). A USB-C PD trigger board set to 5 V also works. Use 1 mm² wire, ≤ 2 m. | 10–15 |
+| 5 | 5 V distribution | 1 set | Wago 221 blocks, a 5 A inline fuse, and **0.75–1.5 mm²** leads to each panel. | 15 |
+| 6 | USB-C pigtail (screw terminal → USB-C) | 1 | Powers the MatrixPortal from the 5 V bus. A DevKit can take 5 V on its 5V/VIN pin instead. | 10 |
+| 7 | HUB75 ribbon cables | 3 | Usually included with the panels. | incl. |
+| 8 | Frame | 1 | 20 × 20 mm aluminium angle or extrusion, about 680 × 360 mm outside. Panels screw on through their magnet/screw holes. | 30–60 |
+| 9 | Front louvre / hood | 1 | Matte black. Use a louvre grille, or a 50 mm hood over the top edge plus matte black paint on the frame. Optional smoked polycarbonate face (2–3 mm). | 20–50 |
+| 10 | Mounting | 1 | A pit-wall clamp or tripod bracket. The finished sign weighs about 3 kg. | 30–60 |
+| | **Total** (plus your bank) | | | **≈ 280–490**, or ≈ 240–435 with your own ESP32 |
 
-**Power bank kit (instead of rows 3–8):** about A$40–60 on top of the bank. See [Running from a power bank](#running-from-a-power-bank).
+**Optional, for full brightness all the time:** a USB-C PD trigger set to **9 V** plus a **9 V → 5 V, 8–10 A step-down converter** (about A$25–45). This gets the bank's full 30 W instead of 15 W. You won't need it with the after-lap display window; see [Power](#power).
 
-| Part | Qty | Spec / notes | Approx. A$ |
-|------|-----|--------------|-----------|
-| USB-C PD trigger cable/board, set to **9 V** | 1 | Requests 9 V from the bank, with bare-wire or screw-terminal output. 9 V at 3 A is supported by almost every 30 W bank. | 10–15 |
-| DC-DC step-down converter, **6–24 V in → 5 V, 8–10 A out** | 1 | Needs at least 5 A at 5 V. | 15–30 |
-| 5 V distribution | 1 set | As row 6, but a 7.5 A fuse per row is enough. | 20 |
-| USB-C pigtail for the MatrixPortal | 1 | As row 8. | 10 |
-
-**Tools:** PlatformIO (VS Code) to flash the firmware, a multimeter, and a clamp meter (useful for measuring real current draw).
+**Tools:** PlatformIO (VS Code) to flash the firmware, a multimeter, and ideally a USB-C power meter, so you can see what the sign really draws.
 
 ## Buying the panels
 
-Panel listings are vague, so check these points before buying all nine. **Buy one panel first, flash the firmware and confirm it works**, then order the rest.
+Panel listings are vague, so check these points. **Buy one panel first, flash the firmware and confirm it works**, then order the rest.
 
 1. **Scan rate.** Outdoor P10 RGB panels are usually **1/4 scan**. That's the default here (`PANEL_P10_OUTDOOR_32x16_4S`). 1/8-scan and 1/16-scan panels also work with a one-line change; see [Using different hardware](#using-different-hardware). Avoid 1/2-scan and static (1/1) panels, which this firmware doesn't support.
 2. **Interface.** It must be **HUB75 or HUB75E** (a 16-pin IDC socket). Panels marked HUB12, HUB08 or "single colour" won't work.
@@ -80,77 +72,69 @@ Panel listings are vague, so check these points before buying all nine. **Buy on
 Seen from the **front**, with the default `GRID_CHAIN CHAIN_TOP_RIGHT_DOWN` (serpentine):
 
 ```
- data in ─▶ ┌──3──┬──2──┬──1──┐ ◀─ MatrixPortal plugs into panel 1's input
-            └─────┴─────┴──┬──┘
-            ┌──4──┬──5──┬──6──┐   row 2 runs the other way: these panels are
-            └──┬──┴─────┴─────┘   mounted upside down (rotated 180°)
-            ┌──9──┬──8──┬──7──┐
-            └─────┴─────┴─────┘
+ data in ─▶ ┌──2──┬──1──┐ ◀─ controller plugs into panel 1's input
+            └─────┴──┬──┘
+            ┌──3──┬──4──┐   row 2 runs the other way: these two panels are
+            └─────┴─────┘   mounted upside down (rotated 180°)
 ```
 
 - Each panel's HUB75 **output** connects by ribbon to the next panel's **input**. The arrows printed on the back of each panel show the data direction.
-- The serpentine layout keeps ribbons short, but every second row is mounted upside down.
-- To keep **every panel upright**, use a `_ZZ` (zig-zag) chain type and longer ribbons back to the start of each row.
+- To keep **all panels upright**, use `CHAIN_TOP_RIGHT_DOWN_ZZ` and a longer ribbon from panel 2 back to panel 3.
 - If the test pattern comes out scrambled or mirrored, change `GRID_CHAIN`. The HUB75 library's [VirtualMatrixPanel docs](https://github.com/mrcodetastic/ESP32-HUB75-MatrixPanel-DMA/tree/master/examples/VirtualMatrixPanel) have diagrams of every option.
 
 ### Power wiring
 
 ```
- 12 V LiFePO4 ─[30 A fuse]─ SB50 ── 2.5 mm² ──▶ DC-DC 12→5 V 40 A ──4 mm²──▶ +5 V bus ─┬─[15 A]─ row 1: 3 × panel leads (1.5 mm²)
-                                                                         GND bus ─┤          ├─[15 A]─ row 2
-                                                                                  │          ├─[15 A]─ row 3
-                                                                                  │          └─ USB-C pigtail ─▶ MatrixPortal S3
+ 30 W USB-C bank ── USB-C sink cable (5 V, up to 3 A, 1 mm²) ─[5 A fuse]─▶ +5 V / GND (Wago) ─┬─ 4 × panel power leads
+                                                                                            └─ USB-C pigtail ─▶ MatrixPortal S3
 ```
 
-- **Give every panel its own power lead from the bus.** Never daisy-chain power through panels.
-- **All grounds must be common**: the panels, the converter and the MatrixPortal.
-- Don't power the panels through the MatrixPortal's terminals. They're meant for one small panel.
-- Mount the converter on the frame with some airflow; it gets warm at 30 A or more.
+- **Give every panel its own power lead from the Wago blocks.** Never daisy-chain power through panels.
+- **All grounds must be common**: the panels, the supply and the controller.
+- Keep the bank at the bottom of the frame or in a pouch on it, so the USB-C cable stays short.
 
 ## Power
 
-Outdoor P10 RGB spec sheets quote roughly **300–400 W for nine panels at full white**. The sign never shows full white, and it only lights the pixels in the digits. The firmware estimates each frame's draw and **dims itself to stay under the budget** set in the app (**Settings → LED Sign → Power source**). The budget includes about 3 W for the panels' and controller's idle draw.
+The sign only lights the pixels in the digits, and only while it's showing them. The firmware estimates each frame's draw and **dims itself to stay under the budget** set in the app (**Settings → LED Sign → Power source**). The budget includes about 1.8 W for the panels' and controller's idle draw.
 
-Estimated draw for each preset, from the preview tool, at 75% brightness:
+Estimated draw on the 2 × 2 sign, from the preview tool, at 75% brightness:
 
-| What's showing | Draw | On a 30 W bank (22 W budget) |
-|---|---|---|
-| Delta, e.g. `+0.4` in green or red | ≈ 33 W | dims to ≈ 50% |
-| Lap time `48.7` | ≈ 39 W | ≈ 45% |
-| Delta + driver strip | ≈ 22 W | full 75% |
-| Countdown in white (mid-lap) | ≈ 72 W | ≈ 22% (white lights all 3 colours) |
-| Solid red board | ≈ 60 W | ≈ 27% |
-| Eco, dark between passes | ≈ 3 W | — |
+| What's showing | Draw | On USB 5 V (13 W budget) | On 30 W PD (22 W budget) |
+|---|---|---|---|
+| Delta `+0.4` (green / orange / yellow) | ≈ 13–14 W | ≈ 70–75% | full 75% |
+| Lap time `48.7` | ≈ 15 W | ≈ 65% | full 75% |
+| Countdown in white (mid-lap) | ≈ 28 W | ≈ 35% | ≈ 57% |
+| Solid board on broken laps | ≈ 31 W | ≈ 30% | ≈ 51% |
+| Dark between laps | ≈ 1.8 W | — | — |
 
-These estimates come from typical panel figures. **Measure your own sign** on the 5 V bus with a clamp meter, and adjust `WATTS_PER_LED_CHANNEL` and `IDLE_WATTS_PER_PANEL` in `config.h` until the serial log's `est. … W` line matches your meter. Half brightness on a 5,000+ nit outdoor panel is still roughly 2,500 nit, more than a phone screen in sunlight.
+These estimates come from typical panel figures. **Measure your own sign** with a USB-C power meter, and adjust `WATTS_PER_LED_CHANNEL` and `IDLE_WATTS_PER_PANEL` in `config.h` until the serial log's `est. … W` line matches. Even 65% brightness on a 5,000+ nit outdoor panel is over 3,000 nit, brighter than a phone screen in sunlight.
 
-### Running from a power bank
+### Running from your power bank
 
-**Your Cygnett 30 W 20,000 mAh works.** Two things matter:
+**Your Cygnett 30 W 20,000 mAh is enough:**
 
-1. **Get the power at 9 V, not 5 V.** "30 W" is only available at 9 V (3 A) or higher. At 5 V, banks stop at 3 A, which is **15 W**. Use a **USB-C PD trigger set to 9 V** feeding a **9 V → 5 V step-down converter**. In the app, set **Power source → 30 W PD** (22 W budget, which leaves room for converter losses).
-   - *Simplest option:* a plain USB-C-to-5 V cable straight into the 5 V bus, with **Power source → USB 5 V** (13 W budget). It works, but the digits are about half as bright.
-2. **Turn on Eco** (**Settings → LED Sign → Eco**). While the stopwatch runs, the sign stays dark until 15 s before the car is due, then stays lit for 10 s after the lap is recorded. On a 1:45 lap it's lit about a quarter of the time. The driver only sees the board as they pass, so they never see it dark.
+1. **Plug in by USB-C at 5 V** (parts list row 4). In the app, set **Power source → USB 5 V**. That's a 13 W budget, which keeps you inside the bank's 15 W at 5 V.
+2. **Set Show the digits → 15 s after each lap** (**Settings → LED Sign**). While the stopwatch runs, the sign shows each lap's digits for 15 s from lap start, then goes dark until the next lap. You can choose 10, 15, 20 or 30 s, or Always.
 
-**Will it last 6 hours?** The bank holds about 74 Wh. After the bank's and converter's losses, about **57 Wh** reaches the sign.
+**Runtime:** the bank holds about 74 Wh, and about 63 Wh reaches the sign at 5 V.
 
 | Setup | Average draw | Runtime |
 |---|---|---|
-| 30 W PD (22 W budget), **Eco 15 s**, 1:45 laps | ≈ 8 W | **≈ 7 h** ✅ |
-| 30 W PD, Eco 15 s, 1:00 laps | ≈ 11 W | ≈ 5 h. Use Eco 10 s to get ≈ 6 h |
-| 30 W PD, Eco **off** | ≈ 22 W | ≈ 2.5 h ❌ |
-| USB 5 V (13 W budget), Eco 15 s | ≈ 6 W | ≈ 9–10 h, dimmer |
+| USB 5 V, **15 s after each lap**, 1:45 laps | ≈ 3.5 W | **≈ 15+ h** ✅ |
+| USB 5 V, 20 s after each lap, 1:00 laps | ≈ 5.5 W | ≈ 11 h ✅ |
+| USB 5 V, 15 s after + 15 s before the car is due, 1:00 laps | ≈ 8 W | ≈ 8 h ✅ |
+| USB 5 V, **always lit** | ≈ 13 W | ≈ 4.5 h ❌ |
 
-The biggest unknown is the panels' idle draw (about 3 W assumed here). If yours measures higher, add margin:
-- Use **Eco 10 s**.
-- Use green, red or blue digits rather than amber or white (they light one LED colour instead of two or three).
-- Use one decimal.
-- Leave the solid board off.
-- Or carry a second bank. The sign reboots in about 2 s on a swap and the app reconnects.
+The biggest unknown is the panels' real idle draw. If it measured 1 W per panel instead of 0.3 W, the 15 s window would still run about 10 h, comfortably over 6. The bank must also not switch itself off while the sign is dark; at about 360 mA idle, it shouldn't.
 
-### Running from a battery (all day, full brightness)
+<a id="larger-3--3-sign"></a>
+### Larger 3 × 3 sign
 
-A 30 Ah 12 V LiFePO4 holds about 380 Wh. At a typical 25–40 W, after about 90% converter efficiency, that's **8–12 hours** with no power limit (**Power source → Battery**).
+For 460 mm digits, or two readable lines (delta over lap time), build a 3 × 3 grid (960 × 480 mm, 9 panels, about 7 kg):
+- Set `GRID_COLS 3` and `GRID_ROWS 3` in `config.h`.
+- Digits draw about 33–39 W at 75% ([renders](docs/screens-3x3.png)).
+- On the bank, use the 9 V trigger + converter (**Power source → 30 W PD**). With a 15 s window it runs about 10 h, and the digits dim to about 45% while lit.
+- For full brightness, use a **12 V 20–30 Ah LiFePO4** with a 12 V → 5 V 30–40 A converter, fused, with a 15 A fuse per row of panels (**Power source → Battery**). Feed every panel separately with 1.5 mm² wire from a bus bar.
 
 ---
 
@@ -167,14 +151,14 @@ The firmware is in `firmware/`, a PlatformIO project. It has been compile-tested
    - `pio run -e matrixportal_s3 -t upload` for the Adafruit MatrixPortal S3
    - `pio run -e esp32s3_generic -t upload` for any ESP32-S3 DevKit
    - `pio run -e esp32_generic -t upload` for a classic ESP32 DevKit / WROOM-32
-5. Power the sign. It shows its name (`RegSign-XXXX`) and `PAIR IN APP`, and a blue dot blinks in the corner until a phone connects.
+5. Power the sign. It shows its name and `PAIR` (`RegSign-XXXX` and `PAIR IN APP` on the 3 × 3), and a blue dot blinks in the corner until a phone connects.
 6. In the app, go to **Settings → LED Sign → Find sign**, pair, then tap **Test sign**. You should see 5 solid colour fills, then `88.8` in a white frame. If the image is scrambled, see [Troubleshooting](#troubleshooting).
 
 The sign saves its settings (colours, layout, power) in flash, so it boots looking the same. The app also re-sends everything each time it connects.
 
 ### Previewing layouts
 
-`firmware/preview/build.sh` compiles the firmware's real `renderer.cpp` and `power.cpp` for your computer. It writes PNGs of each example screen, plus the contact sheet at the top of this page, to `firmware/preview/out/`. To preview your own layout, add a `Scene` to `preview.cpp`. It needs `g++`, `git` and Python with Pillow.
+`firmware/preview/build.sh` compiles the firmware's real `renderer.cpp` and `power.cpp` for your computer. It writes PNGs of each example screen, plus the contact sheet at the top of this page, to `firmware/preview/out/`. `COLS=3 ROWS=3 ./build.sh` renders the 3 × 3 sign instead. To preview your own layout, add a `Scene` to `preview.cpp`. It needs `g++`, `git` and Python with Pillow.
 
 ## What the sign shows
 
@@ -184,8 +168,8 @@ Choose in **Settings → LED Sign → Display**. The app's preview matches the s
 |---|---|---|
 | **Delta** | `+0.4` full height | — |
 | **Lap time** | `48.7` full height (1:48.7, minutes implied) | — |
-| **Delta + time** | `+0.4` | `48.7` (half height) |
-| **Time + delta** | `48.7` | `+0.4` (half height) |
+| **Delta + time** | `+0.4` | `48.7` (half height; needs the 3 × 3 sign at 50 m) |
+| **Time + delta** | `48.7` | `+0.4` (half height; needs the 3 × 3 sign at 50 m) |
 | **Delta + driver** | `+0.4` | `DA L12` strip |
 | **Countdown** | Live countdown to the target, with the delta for 8 s after each lap | — |
 | **Custom** | Any field, any colour | Any field, at small strip, third or half height |
@@ -205,7 +189,8 @@ Choose in **Settings → LED Sign → Display**. The app's preview matches the s
 | Target | `48.3` | |
 
 **Colours:** each line is either **Lap type** or a **fixed colour**.
-- *Lap type* uses the colour of the last lap (bonus, base, broken, changeover, safety; each set in the app).
+- *Lap type* uses the colour of the last lap. Each colour is set in the app; the defaults are bonus green, base yellow, broken orange, changeover blue, safety white.
+- **Red is off by default.** Some regularity formats ban red on pit boards. While **Allow red** is off, the red swatch is hidden and any red already set is replaced with orange. Broken laps also always show a minus sign, so they don't rely on colour.
 - For live fields, *Lap type* means the colour the lap would get if it ended now: white before the target, bonus colour in the 1-second bonus window, then base colour.
 
 **For live fields** (countdown, lap clock), *After each lap, show* swaps in the delta or lap time for 5, 8 or 15 s after each lap.
@@ -214,7 +199,13 @@ Choose in **Settings → LED Sign → Display**. The app's preview matches the s
 - Deltas always show a sign.
 - Deltas and times are **truncated, not rounded**, so a 0.96 s bonus lap shows `+0.9`, never a misleading `+1.0`.
 - One or two decimals (set in the app).
-- Digits are a bold 7-segment style sized to fill the space: about 460 mm tall full height with one decimal, about 220 mm on a half line. Letters (driver initials) use a scaled pixel font.
+- Digits are a bold 7-segment style sized to fill the space. On the 2 × 2 sign they're about 300 mm full height, or about 150 mm on a half line. On the 3 × 3 they're about 460 mm, or about 220 mm on a half line. Letters (driver initials) use a scaled pixel font.
+
+**When the digits show** (**Show the digits**):
+- **10–30 s after each lap:** lit for that long from lap start, then dark until the next lap. This is the big power saver.
+- **Always:** lit the whole time.
+- **Also light up before the car is due** (Off / 10 / 15 / 20 s): useful with the countdown, which otherwise only shows while the sign is lit.
+- The window only applies while the stopwatch runs. When it's stopped, the sign stays lit.
 
 **Extras:**
 - Flash safety car laps.
@@ -260,7 +251,7 @@ Outdoor P10 1/4-scan panels only use A and B, so C, D and E can stay unconnected
 | 64×64, 1/32 scan | `PANEL_64x64_32S` | Needs the E pin (the MatrixPortal has it) |
 | Anything else | `PANEL_CUSTOM` | Set `PANEL_RES_X/Y` and a `PANEL_SCAN` mapping from the library |
 
-- **Grid size:** change `GRID_COLS` and `GRID_ROWS`.
+- **Grid size:** change `GRID_COLS` and `GRID_ROWS` (default 2 × 2; 3 × 3 for the larger sign).
 - **Odd panels:** some outdoor panels use unusual internal wiring that no preset covers. The library's *Pixel_Mapping_Test* example helps you work out a custom mapping.
 - **WS2812 / NeoPixel LED matrices** aren't HUB75. They'd need a different display driver in `main.cpp` (e.g. Adafruit_NeoMatrix), but `renderer.cpp` draws to any Adafruit_GFX surface, so nothing else changes.
 
@@ -298,7 +289,7 @@ GATT service `a9fa0001-8e2e-4c12-9682-7dd27dea5a5b`:
 | Characteristic | UUID | Properties |
 |---|---|---|
 | Command | `a9fa0002-8e2e-4c12-9682-7dd27dea5a5b` | write / write-without-response. One packet per write, ≤ 20 bytes. |
-| Info | `a9fa0003-8e2e-4c12-9682-7dd27dea5a5b` | read: `proto=1;fw=1.1.0;w=96;h=48` |
+| Info | `a9fa0003-8e2e-4c12-9682-7dd27dea5a5b` | read: `proto=1;fw=1.1.0;w=64;h=32` |
 
 Byte 0 is the opcode. Integers are little-endian.
 - **Lap type codes:** 0 bonus, 1 base, 2 broken, 3 changeover, 4 safety.
@@ -313,7 +304,7 @@ Byte 0 is the opcode. Integers are little-endian.
 | `0x04` | Clear | op (blank the delta) | 1 |
 | `0x05` | Test | op (5 s test pattern) | 1 |
 | `0x06` | Layout | op, main field u8, main colour mode u8, main RGB, second field u8, second colour mode u8, second RGB, second size u8 (0 strip, 1 third, 2 half), hold field u8, hold seconds u8 | 14 |
-| `0x07` | Power | op, budget W u16 (0 = no limit), eco lead seconds u8 (0 = off) | 4 |
+| `0x07` | Power | op, budget W u16 (0 = no limit), light-before-due seconds u8 (0 = off), show-after-lap seconds u8 (0 = always lit) | 5 |
 
 The timer sends **elapsed** time rather than a timestamp, so the sign needs no clock sync; it counts on from when the packet arrives. If you change the protocol, change `packages/core/src/ledSign.ts`, its tests, and `firmware/src/protocol.h` together.
 
@@ -327,7 +318,8 @@ The timer sends **elapsed** time rather than a timestamp, so the sign needs no c
 | Pixels smeared or shifted by one column | Set `PANEL_CLK_PHASE false`. |
 | Ghosting or flicker on generic ESP32 boards | Some panels need 5 V logic. Use a HUB75 shield with a 74HCT245 level shifter, or the MatrixPortal S3. |
 | Sign resets or flickers on bright frames | The supply is browning out. Lower `MAX_BRIGHTNESS`, use a bigger converter or thicker wire, and check every panel has its own feed. |
-| Power bank cuts out | The bank is being asked for more than it gives. Check the PD trigger really negotiated 9 V (measure it). Pick a lower **Power source**, or calibrate `WATTS_PER_LED_CHANNEL` upwards. |
+| Power bank cuts out on bright frames | The bank is being asked for more than it gives. Pick a lower **Power source**, or calibrate `WATTS_PER_LED_CHANNEL` upwards. If you use a 9 V trigger, check it really negotiated 9 V. |
+| Power bank switches off while the sign is dark | The bank's low-current auto-off kicked in. Check with **Show the digits → Always**; if that stays on, enable the bank's low-current/trickle mode if it has one (often a double-press of the button). |
 | Classic ESP32 boot-loops only while the panel is connected | GPIO 12 (G2) is a boot strapping pin. Move G2 to another free pin (e.g. 32) with `BOARD_CUSTOM`. |
 | App can't find the sign | Bluetooth on? Location/Bluetooth permission granted (Android)? Is the sign showing `PAIR IN APP`? Only one phone can be mid-pairing at a time. |
 | Delta doesn't update | Check **Settings → LED Sign** shows *Connected*. The sign shows the **active driver's** latest lap, so check the right driver is selected on the Timer. |

@@ -108,7 +108,7 @@ export const LED_SIGN_PRESETS: readonly { id: LedSignPresetId; label: string; de
   {
     id: 'deltaOverTime',
     label: 'Delta + time',
-    description: 'Delta on top, lap time underneath.',
+    description: 'Delta on top, lap time underneath. Two lines need the 3×3 sign to read at 50 m.',
     layout: {
       main: { field: 'delta', color: 'lapType' },
       secondary: { field: 'lapTime', color: WHITE, size: 'half' },
@@ -118,7 +118,7 @@ export const LED_SIGN_PRESETS: readonly { id: LedSignPresetId; label: string; de
   {
     id: 'timeOverDelta',
     label: 'Time + delta',
-    description: 'Lap time on top, delta underneath.',
+    description: 'Lap time on top, delta underneath. Two lines need the 3×3 sign to read at 50 m.',
     layout: {
       main: { field: 'lapTime', color: WHITE },
       secondary: { field: 'delta', color: 'lapType', size: 'half' },
@@ -165,9 +165,38 @@ export interface LedSignConfig {
   flip: boolean;
   /** Max estimated draw in watts — the sign dims itself to stay under it (0 = no limit). */
   powerBudgetW: number;
-  /** Eco: while the stopwatch runs, stay dark until this long before the car is due (0 = always lit). */
+  /**
+   * Eco, while the stopwatch runs: show the digits for this long after each lap,
+   * dark otherwise (0 = always lit).
+   */
+  ecoAfterSec: number;
+  /** Eco: also light up this long before the car is due (0 = off). */
   ecoLeadSec: number;
+  /** Some regularity formats ban red on pit boards; when false red is replaced by orange. */
+  allowRed: boolean;
 }
+
+export const LED_ORANGE: Rgb = [255, 80, 0];
+
+/** Pure-ish red (as opposed to orange, amber or magenta). */
+export const isRed = ([r, g, b]: Rgb): boolean => r >= 160 && g < 64 && b < 96;
+
+/** Swap any red in the colour table and layout for orange. */
+export const withoutRed = (config: LedSignConfig): LedSignConfig => {
+  const fix = (c: Rgb): Rgb => (isRed(c) ? LED_ORANGE : c);
+  const fixColor = (c: LedSignColor): LedSignColor => (c === 'lapType' ? c : fix(c));
+  const colors = Object.fromEntries(Object.entries(config.colors).map(([k, c]) => [k, fix(c)])) as Record<LapType, Rgb>;
+  const { layout } = config;
+  return {
+    ...config,
+    colors,
+    layout: {
+      ...layout,
+      main: { ...layout.main, color: fixColor(layout.main.color) },
+      secondary: { ...layout.secondary, color: fixColor(layout.secondary.color) },
+    },
+  };
+};
 
 export const DEFAULT_LED_SIGN_CONFIG: LedSignConfig = {
   brightness: 192,
@@ -176,16 +205,19 @@ export const DEFAULT_LED_SIGN_CONFIG: LedSignConfig = {
   decimals: 1,
   colors: {
     bonus: [0, 255, 0],
-    base: [255, 160, 0],
-    broken: [255, 0, 0],
+    // No red by default (banned in some formats); broken laps also show a minus sign.
+    base: [255, 220, 0],
+    broken: LED_ORANGE,
     changeover: [0, 120, 255],
-    safety: [255, 220, 0],
+    safety: [255, 255, 255],
   },
   fillOnBroken: false,
   flashSafety: true,
   flip: false,
   powerBudgetW: 22,
+  ecoAfterSec: 15,
   ecoLeadSec: 0,
+  allowRed: false,
 };
 
 const FLAG_FILL_ON_BROKEN = 1 << 0;
@@ -363,12 +395,13 @@ export const encodeLayoutPacket = (layout: LedSignLayout): Uint8Array => {
   return buf;
 };
 
-/** [0x07, budgetW u16, ecoLeadSec u8] — 4 bytes. 0 = no limit / eco off. */
-export const encodePowerPacket = (budgetW: number, ecoLeadSec: number): Uint8Array => {
-  const buf = new Uint8Array(4);
+/** [0x07, budgetW u16, ecoLeadSec u8, ecoAfterSec u8] — 5 bytes. 0 = no limit / off. */
+export const encodePowerPacket = (budgetW: number, ecoLeadSec: number, ecoAfterSec: number): Uint8Array => {
+  const buf = new Uint8Array(5);
   buf[0] = LedSignOp.Power;
   new DataView(buf.buffer).setUint16(1, clampInt(budgetW, 0, 0xffff), true);
   buf[3] = clampInt(ecoLeadSec, 0, 255);
+  buf[4] = clampInt(ecoAfterSec, 0, 255);
   return buf;
 };
 

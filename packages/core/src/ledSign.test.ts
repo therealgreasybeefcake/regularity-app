@@ -12,8 +12,12 @@ import {
   formatSignCountdown,
   formatSignDelta,
   formatSignTime,
+  LED_ORANGE,
   LED_SIGN_PRESETS,
+  isRed,
   signFieldText,
+  withoutRed,
+  type Rgb,
 } from './ledSign';
 
 describe('formatSignDelta', () => {
@@ -123,7 +127,7 @@ describe('encodeConfigPacket', () => {
     expect(p.length).toBe(20);
     expect([p[0], p[1], p[2], p[3], p[4]]).toEqual([LedSignOp.Config, 192, 0, 2, 0b011]);
     expect(Array.from(p.slice(5, 8))).toEqual([0, 255, 0]); // bonus
-    expect(Array.from(p.slice(17, 20))).toEqual([255, 220, 0]); // safety
+    expect(Array.from(p.slice(17, 20))).toEqual([255, 255, 255]); // safety
   });
 
   it('clamps brightness into 1–255', () => {
@@ -146,9 +150,27 @@ describe('encodeLayoutPacket', () => {
 });
 
 describe('encodePowerPacket', () => {
-  it('encodes the budget as u16 watts, then the eco lead time', () => {
-    expect(Array.from(encodePowerPacket(24, 0))).toEqual([LedSignOp.Power, 24, 0, 0]);
-    expect(Array.from(encodePowerPacket(300, 15))).toEqual([LedSignOp.Power, 44, 1, 15]);
+  it('encodes the budget as u16 watts, then the eco lead and after-lap times', () => {
+    expect(Array.from(encodePowerPacket(24, 0, 15))).toEqual([LedSignOp.Power, 24, 0, 0, 15]);
+    expect(Array.from(encodePowerPacket(300, 10, 0))).toEqual([LedSignOp.Power, 44, 1, 10, 0]);
+  });
+});
+
+describe('withoutRed', () => {
+  it('has no red in the defaults', () => {
+    expect(Object.values(DEFAULT_LED_SIGN_CONFIG.colors).some(isRed)).toBe(false);
+  });
+
+  it('swaps red for orange in the colour table and fixed layout colours, leaving the rest', () => {
+    const config = {
+      ...DEFAULT_LED_SIGN_CONFIG,
+      colors: { ...DEFAULT_LED_SIGN_CONFIG.colors, broken: [255, 0, 0] as Rgb, base: [255, 0, 255] as Rgb },
+      layout: { ...DEFAULT_LED_SIGN_CONFIG.layout, main: { field: 'delta' as const, color: [220, 20, 20] as Rgb } },
+    };
+    const fixed = withoutRed(config);
+    expect(fixed.colors.broken).toEqual(LED_ORANGE);
+    expect(fixed.colors.base).toEqual([255, 0, 255]); // magenta isn't red
+    expect(fixed.layout.main.color).toEqual(LED_ORANGE);
   });
 });
 
